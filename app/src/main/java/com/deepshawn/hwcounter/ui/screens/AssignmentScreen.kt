@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.ViewWeek
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -352,6 +353,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     ActionChip("实时扫描", Icons.Filled.DocumentScanner) { kit.nav.push(Route.Live(a.id)) }
                     ActionChip("侧面学号", Icons.Filled.ViewWeek) { kit.nav.push(Route.Spine(a.id)) }
                     ActionChip("数本数", Icons.Filled.Layers) { kit.nav.push(Route.Stack(a.id)) }
+                    ActionChip("数试卷", Icons.Filled.Description) { kit.nav.push(Route.Paper(a.id)) }
                     ActionChip("剩余标未交", Icons.Filled.DoneAll) { confirmFill = true }
                     ActionChip("播报未交", Icons.AutoMirrored.Filled.VolumeUp) {
                         val miss = c.students.filter { (a.statuses[it.id] ?: HwStatus.NONE) in setOf(HwStatus.MISSING, HwStatus.NONE) }

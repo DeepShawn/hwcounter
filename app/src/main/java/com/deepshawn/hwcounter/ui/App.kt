@@ -71,6 +71,7 @@ import com.deepshawn.hwcounter.ui.screens.LiveScanScreen
 import com.deepshawn.hwcounter.ui.screens.RecognizeScreen
 import com.deepshawn.hwcounter.ui.screens.ScoresScreen
 import com.deepshawn.hwcounter.ui.screens.SettingsScreen
+import com.deepshawn.hwcounter.ui.screens.PaperCountScreen
 import com.deepshawn.hwcounter.ui.screens.SpineScreen
 import com.deepshawn.hwcounter.ui.screens.StackCountScreen
 import com.deepshawn.hwcounter.ui.screens.StatsScreen
@@ -91,6 +92,7 @@ sealed interface Route {
     data class Live(val assignmentId: String) : Route
     data class Stack(val assignmentId: String?) : Route
     data class Spine(val assignmentId: String) : Route
+    data class Paper(val assignmentId: String?) : Route
     data class StudentDetail(val id: String) : Route
 }
 
@@ -230,6 +232,7 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         is Route.Live -> LiveScanScreen(vm, data, route.assignmentId)
         is Route.Stack -> StackCountScreen(vm, data, route.assignmentId)
         is Route.Spine -> SpineScreen(vm, data, route.assignmentId)
+        is Route.Paper -> PaperCountScreen(vm, data, route.assignmentId)
         is Route.StudentDetail -> StudentDetailScreen(vm, data, route.id)
     }
 }

@@ -130,6 +130,7 @@ fun StackCountScreen(vm: AppViewModel, data: AppData, assignmentId: String?) {
             title = { Text("数本数 · 扫描线") },
             navigationIcon = { IconButton(onClick = { kit.nav.pop() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } },
         )
+        CountModeSwitch(false, assignmentId)
         val b = bmp
         if (b == null) {
             EmptyState("📚", "拍一张作业本侧面照", "把一摞作业本侧面（书脊/纸边）对准镜头，尽量拍正、光线均匀。\n然后在照片上沿着本子叠放方向画一条线，自动数出分界线。") {
