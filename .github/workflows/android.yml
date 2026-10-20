@@ -6,6 +6,11 @@ on:
     tags: [ "v*" ]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "发布版本标签（如 v1.0.0），留空则只构建"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -49,7 +54,30 @@ jobs:
           path: out/*.apk
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: 作业通 ${{ inputs.release_tag || github.ref_name }}
+          make_latest: true
+          body: |
+            ## 📚 作业通 ${{ inputs.release_tag || github.ref_name }}（Android · arm64-v8a）
+
+            老师的收作业神器：拍照识别学号、实时扫描、数本数、积分、统计、一键导出 Excel。
+
+            **下载安装**：下方 `HwCounter-arm64-v8a-*.apk`（Android 8.0+，64 位 ARM 手机）
+
+            ### ✨ 主要功能
+            - 📸 拍照/相册多选识别作业本封面学号、姓名、二维码，自动去重，可手动补录
+            - 🎥 实时扫描：逐本翻封面，识别即“嘀”一声
+            - 📦 数本数：拍一摞侧面画扫描线自动计数，并与登记人数比对
+            - 🧠 本地离线 OCR（免费、隐私安全）或接入多模态大模型（通义千问/豆包/智谱/Kimi/OpenAI/Claude/Ollama…）
+            - ✅ 已交/优秀/迟交/未交/请假，长期请假自动处理，批量操作与撤销
+            - 🧮 可配置计分规则（默认未交 −2），手动加减分，个人/小组/催交榜
+            - 📊 趋势图、状态分布、各科对比、全班热力图
+            - 📤 Excel / CSV / 战报海报 / 家长群文字通报；🏷️ 学号二维码贴纸 PDF
+            - 📥 JSON/CSV/粘贴导入名单；🎨 10 套主题 × 深浅色 × 圆角 × 4 种排版；💾 备份恢复
+
+            > 首次打开自带示例班级，可在“设置 → 数据”重置或导入你自己的名单。
           files: out/*.apk
