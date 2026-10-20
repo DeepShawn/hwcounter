@@ -36,16 +36,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun load(): AppData {
         return try {
-            if (file.exists()) json.decodeFromString<AppData>(file.readText())
-            else {
-                val demo = DemoData.demoClass()
-                AppData(classes = listOf(demo), currentClassId = demo.id)
-            }
+            if (file.exists()) json.decodeFromString<AppData>(file.readText()) else AppData()
         } catch (e: Exception) {
             val bak = File(file.parentFile, "hwcounter.broken.json")
             runCatching { file.copyTo(bak, overwrite = true) }
-            val demo = DemoData.demoClass()
-            AppData(classes = listOf(demo), currentClassId = demo.id)
+            AppData()
         }
     }
 
@@ -97,8 +92,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- 班级 ----------
     fun switchClass(id: String) = update(false) { it.copy(currentClassId = id) }
 
-    fun addClass(name: String, emoji: String, demo: Boolean = false) = update { d ->
-        val c = if (demo) DemoData.demoClass().copy(name = name, emoji = emoji) else SchoolClass(name = name, emoji = emoji)
+    fun addClass(name: String, emoji: String) = update { d ->
+        val c = SchoolClass(name = name, emoji = emoji)
         d.copy(classes = d.classes + c, currentClassId = c.id)
     }
 
@@ -213,8 +208,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun resetAll() = update {
-        val demo = DemoData.demoClass()
-        AppData(classes = listOf(demo), currentClassId = demo.id, settings = it.settings)
-    }
+    /** 清空所有班级数据（保留设置） */
+    fun resetAll() = update { AppData(settings = it.settings) }
 }

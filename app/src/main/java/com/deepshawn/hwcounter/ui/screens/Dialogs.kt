@@ -22,7 +22,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -92,11 +91,10 @@ val ClassEmojis = listOf("🎒", "🚀", "🌟", "📚", "🦄", "🐼", "🌈",
 fun ClassDialog(
     initial: SchoolClass?,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, emoji: String, demo: Boolean) -> Unit,
+    onConfirm: (name: String, emoji: String) -> Unit,
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var emoji by remember { mutableStateOf(initial?.emoji ?: ClassEmojis.first()) }
-    var demo by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "新建班级" else "编辑班级") },
@@ -107,16 +105,9 @@ fun ClassDialog(
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     ClassEmojis.forEach { e -> Chip2(e, e == emoji, { emoji = e }) }
                 }
-                if (initial == null) {
-                    Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("填充示例学生（体验用）", Modifier.weight(1f))
-                        Switch(demo, { demo = it })
-                    }
-                }
             }
         },
-        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name.trim(), emoji, demo) }) { Text("确定") } },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name.trim(), emoji) }) { Text("确定") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }

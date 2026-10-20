@@ -73,6 +73,7 @@ import com.deepshawn.hwcounter.ui.components.StackedBar
 import com.deepshawn.hwcounter.ui.components.StatTile
 import com.deepshawn.hwcounter.ui.components.statusColor
 import com.deepshawn.hwcounter.ui.rememberPhotoLauncher
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -124,13 +125,11 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
     var deleteA by remember { mutableStateOf<Assignment?>(null) }
 
     if (c == null) {
-        Column(Modifier.fillMaxSize()) {
-            GradientHeader { Text("作业通", color = Color.White, style = MaterialTheme.typography.headlineMedium) }
-            EmptyState("🏫", "还没有班级", "新建一个班级，或在“名单”里导入 JSON") {
-                androidx.compose.material3.Button(onClick = { newClass = true }) { Text("新建班级") }
-            }
-        }
-        if (newClass) ClassDialog(null, { newClass = false }) { n, e, d -> vm.addClass(n, e, d); newClass = false }
+        WelcomeScreen(onNewClass = { newClass = true }, onImported = { r ->
+            val n = vm.importRoster(r, replace = false, asNewClass = true)
+            kit.toast("✅ 已创建「${r.className ?: "新班级"}」，共 $n 人")
+        })
+        if (newClass) ClassDialog(null, { newClass = false }) { n, e -> vm.addClass(n, e); newClass = false }
         return
     }
 
@@ -294,9 +293,9 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
             vm.deleteAssignment(a.id); kit.undoable("已删除「${a.title}」")
         }
     }
-    if (newClass) ClassDialog(null, { newClass = false }) { n, e, d -> vm.addClass(n, e, d); newClass = false }
+    if (newClass) ClassDialog(null, { newClass = false }) { n, e -> vm.addClass(n, e); newClass = false }
     classDialog?.let { k ->
-        ClassDialog(k, { classDialog = null }) { n, e, _ -> vm.renameClass(k.id, n, e); classDialog = null }
+        ClassDialog(k, { classDialog = null }) { n, e -> vm.renameClass(k.id, n, e); classDialog = null }
     }
     if (random) RandomPickDialog(c.students, onDismiss = { random = false }) { s -> vm.addScore(listOf(s.id), 1.0, "随机点名回答"); kit.toast("${s.name} +1") }
 }
@@ -391,6 +390,63 @@ fun AssignmentRow(
             DropdownMenuItem(text = { Text(if (a.pinned) "取消置顶" else "置顶") }, leadingIcon = { Icon(Icons.Outlined.PushPin, null) }, onClick = { onPin(); menu = false })
             DropdownMenuItem(text = { Text("编辑") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { onEdit(); menu = false })
             DropdownMenuItem(text = { Text("删除") }, leadingIcon = { Icon(Icons.Filled.Delete, null) }, onClick = { onDelete(); menu = false })
+        }
+    }
+}
+
+/** 首次使用：没有任何班级时的欢迎页 */
+@Composable
+private fun WelcomeScreen(onNewClass: () -> Unit, onImported: (com.deepshawn.hwcounter.data.RosterImport.Result) -> Unit) {
+    val kit = LocalKit.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val openJson = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                val text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    ctx.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
+                }
+                val r = com.deepshawn.hwcounter.data.RosterImport.parse(text)
+                if (r.students.isEmpty()) kit.toast("没有解析到学生，请检查格式") else onImported(r)
+            } catch (e: Exception) {
+                kit.toast("解析失败：${e.message}")
+            }
+        }
+    }
+    Column(Modifier.fillMaxSize()) {
+        GradientHeader {
+            Spacer(Modifier.height(24.dp))
+            Text("📚", fontSize = 48.sp)
+            Text("欢迎使用作业通", color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+            Text("拍一张照，就知道谁交了作业", color = Color.White.copy(alpha = 0.85f))
+            Spacer(Modifier.height(12.dp))
+        }
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("第一步：建立你的班级", style = MaterialTheme.typography.titleMedium)
+            AppCard(onClick = { openJson.launch(arrayOf("application/json", "text/*", "*/*")) }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("📥", fontSize = 30.sp)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("导入名单文件", fontWeight = FontWeight.Bold)
+                        Text("JSON / CSV，自动识别学号、姓名、小组，一步建好班级", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            AppCard(onClick = onNewClass) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("✏️", fontSize = 30.sp)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("手动新建班级", fontWeight = FontWeight.Bold)
+                        Text("之后可在“名单”页添加学生或粘贴 Excel 两列", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Text(
+                "名单 JSON 示例：{\"className\":\"高一3班\",\"students\":[{\"no\":\"202401\",\"name\":\"张三\"}]}",
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

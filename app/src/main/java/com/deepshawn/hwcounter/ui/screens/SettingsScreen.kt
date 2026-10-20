@@ -280,7 +280,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
                 FilledTonalButton(onClick = { restore.launch(arrayOf("application/json", "*/*")) }, Modifier.weight(1f)) { Text("从备份恢复") }
             }
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { confirmReset = true }, Modifier.fillMaxWidth()) { Text("重置为示例数据", color = MaterialTheme.colorScheme.error) }
+            OutlinedButton(onClick = { confirmReset = true }, Modifier.fillMaxWidth()) { Text("清空所有数据", color = MaterialTheme.colorScheme.error) }
             Text("数据保存在本机，卸载前请先备份。", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
         }
 
@@ -294,8 +294,8 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
         }
     }
 
-    if (confirmReset) ConfirmDialog("重置数据", "将删除所有班级和记录，恢复为示例数据（设置保留）。建议先备份。", "重置", { confirmReset = false }) {
-        vm.resetAll(); kit.undoable("已重置")
+    if (confirmReset) ConfirmDialog("清空所有数据", "将删除所有班级、名单和记录（设置保留）。建议先备份。", "清空", { confirmReset = false }) {
+        vm.resetAll(); kit.undoable("已清空所有数据")
     }
 }
 
