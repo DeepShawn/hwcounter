@@ -136,7 +136,11 @@ fun SpineScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                 }
                 result = r
                 r.books.forEachIndexed { i, b -> rows += Row2("b$i", b.studentId, b.text) }
-                if (settings.recogMode != RecogMode.LOCAL && settings.ai.vision) {
+                val aiReady = settings.ai.apiKey.isNotBlank() || settings.ai.baseUrl.contains("localhost") || settings.ai.baseUrl.contains("192.168.")
+                if (settings.recogMode != RecogMode.LOCAL && settings.ai.vision && !aiReady) {
+                    aiNote = "未配置 API Key，已跳过 AI 复核（仅本地识别）"
+                }
+                if (settings.recogMode != RecogMode.LOCAL && settings.ai.vision && aiReady) {
                     phase = "AI 复核中 ✨"
                     try {
                         val ai = AiRecognizer.recognize(settings.ai, r.bitmap, c.students, "spine")
@@ -298,6 +302,9 @@ fun SpineScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                 }
             }
             item {
+                RawTextPanel(r.rawText)
+            }
+            item {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { addDialog = true }, Modifier.weight(1f)) { Text("➕ 手动补录") }
                     OutlinedButton(onClick = { photo.takePhoto() }, Modifier.weight(1f)) { Text("📷 重拍") }
@@ -422,4 +429,24 @@ private fun StudentPickDialog(
         confirmButton = { if (onExclude != null) TextButton(onClick = onExclude) { Text("不是作业，剔除", color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
+}
+
+/** 可展开的“原始识别文字”，方便排查为什么某个学号没认出来 */
+@Composable
+fun RawTextPanel(lines: List<String>) {
+    var open by remember { mutableStateOf(false) }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Text(
+            (if (open) "▾ " else "▸ ") + "原始识别文字（${lines.size} 段）· 学号没认出来时看这里",
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clip(MaterialTheme.shapes.small).clickable { open = !open }.padding(vertical = 6.dp),
+        )
+        if (open) {
+            Text(
+                if (lines.isEmpty()) "（OCR 没有读到任何文字：试试靠近、补光，或把字写大一点）" else lines.joinToString("  ｜  "),
+                fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small).background(MaterialTheme.colorScheme.surfaceVariant).padding(10.dp),
+            )
+        }
+    }
 }

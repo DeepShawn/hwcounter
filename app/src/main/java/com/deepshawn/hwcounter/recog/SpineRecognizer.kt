@@ -27,12 +27,26 @@ object SpineRecognizer {
         /** 条纹扫描线（图像坐标）与分界位置，供界面绘制 */
         val stripeLine: FloatArray?,
         val stripeMarks: List<Float>,
+        /** OCR 读到的原始文字（用于排查识别问题） */
+        val rawText: List<String> = emptyList(),
     )
 
     private fun rotate(src: Bitmap, deg: Int): Bitmap {
         if (deg == 0) return src
         val m = Matrix().apply { postRotate(deg.toFloat()) }
         return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
+    }
+
+    /** 灰度 + 拉伸对比度：淡色笔迹/铅笔字更清楚 */
+    private fun enhance(src: Bitmap): Bitmap {
+        val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        val cm = android.graphics.ColorMatrix().apply { setSaturation(0f) }
+        val k = 1.8f
+        val t = -128f * (k - 1f)
+        cm.postConcat(android.graphics.ColorMatrix(floatArrayOf(k, 0f, 0f, 0f, t, 0f, k, 0f, 0f, t, 0f, 0f, k, 0f, t, 0f, 0f, 0f, 1f, 0f)))
+        val paint = android.graphics.Paint().apply { colorFilter = android.graphics.ColorMatrixColorFilter(cm) }
+        android.graphics.Canvas(out).drawBitmap(src, 0f, 0f, paint)
+        return out
     }
 
     private fun scaled(src: Bitmap, maxSide: Int): Bitmap {
@@ -71,6 +85,8 @@ object SpineRecognizer {
         val pieces = ArrayList<TextPiece>()
         val codes = ArrayList<TextPiece>()
         LocalRecognizer.recognize(full).let { pieces += it.lines; codes += it.barcodes }
+        onPhase("增强对比度再读一遍…")
+        runCatching { LocalRecognizer.recognize(enhance(full)) }.getOrNull()?.let { pieces += it.lines; codes += it.barcodes }
         val alongY = full.height >= full.width
         val len = if (alongY) full.height else full.width
         if (len > 1200) {
@@ -102,6 +118,9 @@ object SpineRecognizer {
         m.hits.forEach { h -> if (h.box != null) books += Book(h.studentId, h.raw, h.box, h.source) }
         val matchedRaw = m.hits.map { it.raw }.toSet()
         m.unknown.filter { (t, r) -> r != null && t !in matchedRaw && idLike(t, noLens, minLen) }
+            .forEach { (t, r) -> books += Book(null, t, r!!, null) }
+        // 认不清的短标签（如手写“3X”）也算一本，交给老师指派
+        m.loose.filter { (t, r) -> r != null && t !in matchedRaw }
             .forEach { (t, r) -> books += Book(null, t, r!!, null) }
 
         // 同一位置重复读到的未匹配文字只算一次
@@ -148,7 +167,8 @@ object SpineRecognizer {
             // 两端各有一条外边缘：本数 ≈ 分界线 - 1，至少不少于学号数
             stripe = (res.marks.size - 1).coerceAtLeast(0)
         }
-        return Result(full, bestRot, sorted, stripe, line, marks)
+        val raw = (pieces.map { it.text } + codes.map { "QR:" + it.text }).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        return Result(full, bestRot, sorted, stripe, line, marks, raw)
     }
 
     private fun median(v: List<Int>): Float = if (v.isEmpty()) 0f else v.sorted()[v.size / 2].toFloat()

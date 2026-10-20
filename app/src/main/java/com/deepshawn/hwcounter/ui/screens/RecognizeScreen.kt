@@ -104,6 +104,7 @@ private class ImageResult(
     val aiCount: Int?,
     val aiNote: String,
     val error: String?,
+    val rawText: List<String> = emptyList(),
 )
 
 @Composable
@@ -140,22 +141,26 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
             var aiNote = ""
             var err: String? = null
             var ocrLines = emptyList<String>()
+            var aiNoteSkip: String? = null
             // 纯文本 AI 需要先拿到 OCR 文字，所以即使是“仅 AI”模式也跑一次本地 OCR
-            val needOcr = settings.recogMode != RecogMode.AI || !settings.ai.vision
+            val aiKeyOk = settings.ai.apiKey.isNotBlank() || settings.ai.baseUrl.contains("localhost") || settings.ai.baseUrl.contains("192.168.")
+            val needOcr = settings.recogMode != RecogMode.AI || !settings.ai.vision || !aiKeyOk
             if (needOcr) {
                 phase = "第 ${i + 1}/${uris.size} 张：本地 OCR 识别中"
                 try {
                     val raw = LocalRecognizer.recognize(bmp)
                     ocrLines = raw.lines.map { it.text } + raw.barcodes.map { it.text }
-                    if (settings.recogMode != RecogMode.AI) {
+                    if (settings.recogMode != RecogMode.AI || !aiKeyOk) {
                         val m = withContext(Dispatchers.Default) { matcher.match(raw.lines, raw.barcodes) }
-                        hits = m.hits; unknown = m.unknown
+                        hits = m.hits; unknown = m.unknown + m.loose
                     }
                 } catch (e: Exception) {
                     err = "本地识别失败：${e.message}"
                 }
             }
-            if (settings.recogMode != RecogMode.LOCAL) {
+            val aiReady = settings.ai.apiKey.isNotBlank() || settings.ai.baseUrl.contains("localhost") || settings.ai.baseUrl.contains("192.168.")
+            if (settings.recogMode != RecogMode.LOCAL && !aiReady) aiNoteSkip = "未配置 API Key，已跳过 AI（仅本地识别）"
+            if (settings.recogMode != RecogMode.LOCAL && aiReady) {
                 phase = "第 ${i + 1}/${uris.size} 张：AI 大模型分析中 ✨"
                 try {
                     val r = if (settings.ai.vision) AiRecognizer.recognize(settings.ai, bmp, roster)
@@ -170,7 +175,7 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
                     err = (err?.let { "$it\n" } ?: "") + "AI 识别失败：${e.message}"
                 }
             }
-            results += ImageResult(bmp, hits, unknown, aiCount, aiNote, err)
+            results += ImageResult(bmp, hits, unknown, aiCount, aiNoteSkip ?: aiNote, err, ocrLines)
             progress = i + 1
             if (hits.isNotEmpty()) kit.haptic()
         }
@@ -255,6 +260,7 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
                 )
             }
         }
+        item { RawTextPanel(results.flatMap { it.rawText }.distinct()) }
         item {
             SectionTitle("➕ 漏识别？点击手动补录", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
             OutlinedTextField(addQuery, { addQuery = it }, placeholder = { Text("搜索姓名/学号") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
