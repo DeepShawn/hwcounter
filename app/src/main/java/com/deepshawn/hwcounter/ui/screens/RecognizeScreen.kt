@@ -312,7 +312,7 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
 }
 
 @Composable
-private fun Legend(c: Color, t: String) {
+fun Legend(c: Color, t: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(10.dp).clip(CircleShape).background(c))
         Spacer(Modifier.width(4.dp))
@@ -321,7 +321,7 @@ private fun Legend(c: Color, t: String) {
 }
 
 @Composable
-private fun MatchChip(s: Student, tag: String, on: Boolean, onClick: () -> Unit) {
+fun MatchChip(s: Student, tag: String, on: Boolean, onClick: () -> Unit) {
     Surface(
         shape = CircleShape,
         color = if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
@@ -366,7 +366,7 @@ private fun AnnotatedImage(r: ImageResult, modifier: Modifier) {
 }
 
 @Composable
-private fun ScanningPlaceholder(modifier: Modifier) {
+fun ScanningPlaceholder(modifier: Modifier) {
     val t = rememberInfiniteTransition(label = "scan")
     val y by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Reverse), label = "y")
     val brush = gradientBrush()

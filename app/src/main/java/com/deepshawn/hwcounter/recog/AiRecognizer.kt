@@ -35,6 +35,13 @@ object AiRecognizer {
 
     private fun prompt(roster: List<Student>, mode: String): String {
         val list = roster.take(150).joinToString("; ") { "${it.no} ${it.name}" }
+        if (mode == "spine") return """
+你是一名细心的助教。图片是一摞叠放的作业本的侧面，每本作业本的侧面（书脊或纸边）上写着学生学号（可能是手写、竖排或横排）。
+任务：从上到下（或从左到右）逐本读出侧面的学号，并数出总本数（包括看不清学号的本子）。
+班级名单（学号 姓名）：$list
+请尽量把读到的学号对应到名单中；看不清的不要编造。
+只输出 JSON，不要任何解释：{"count": 本数(整数), "ids": ["学号", ...], "names": [], "note": "一句话说明"}
+""".trimIndent()
         return if (mode == "stack") """
 你是一名细心的助教。图片是一摞叠放的作业本（可能是侧面或俯视）。请仔细数出作业本的数量。
 只输出 JSON，不要任何解释：{"count": 本数(整数), "ids": [], "names": [], "note": "一句话说明依据"}
