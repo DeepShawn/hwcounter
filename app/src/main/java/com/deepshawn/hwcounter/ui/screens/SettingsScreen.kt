@@ -40,6 +40,9 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,9 +79,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private data class AiPreset(val name: String, val provider: String, val url: String, val model: String)
+private data class AiPreset(val name: String, val provider: String, val url: String, val model: String, val vision: Boolean = true)
 
 private val aiPresets = listOf(
+    AiPreset("DeepSeek视觉", "openai", "https://api.deepseek.com/v1", "deepseek-v4-flash-vision-exp"),
+    AiPreset("DeepSeek文本", "openai", "https://api.deepseek.com/v1", "deepseek-chat", vision = false),
     AiPreset("通义千问VL", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-vl-max"),
     AiPreset("豆包视觉", "openai", "https://ark.cn-beijing.volces.com/api/v3", "doubao-1.5-vision-pro-32k"),
     AiPreset("智谱GLM-4V", "openai", "https://open.bigmodel.cn/api/paas/v4", "glm-4v-plus"),
@@ -99,6 +104,9 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
     var testing by remember { mutableStateOf(false) }
     var newSubject by remember { mutableStateOf("") }
     var confirmReset by remember { mutableStateOf(false) }
+    var models by remember { mutableStateOf<List<String>>(emptyList()) }
+    var modelMenu by remember { mutableStateOf(false) }
+    var loadingModels by remember { mutableStateOf(false) }
 
     val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) scope.launch {
@@ -198,7 +206,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
                 Spacer(Modifier.height(6.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     aiPresets.forEach { p ->
-                        Chip2(p.name, s.ai.baseUrl == p.url && s.ai.model == p.model, { ai { it.copy(provider = p.provider, baseUrl = p.url, model = p.model) } })
+                        Chip2(p.name, s.ai.baseUrl == p.url && s.ai.model == p.model, { ai { it.copy(provider = p.provider, baseUrl = p.url, model = p.model, vision = p.vision) } })
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -206,7 +214,39 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(s.ai.baseUrl, { v -> ai { it.copy(baseUrl = v.trim()) } }, label = { Text("接口地址 Base URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(s.ai.model, { v -> ai { it.copy(model = v.trim()) } }, label = { Text("模型名称（需支持图片）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Box {
+                    OutlinedTextField(
+                        s.ai.model, { v -> ai { it.copy(model = v.trim()) } }, label = { Text("模型名称") }, singleLine = true,
+                        trailingIcon = {
+                            TextButton(enabled = !loadingModels, onClick = {
+                                loadingModels = true
+                                scope.launch {
+                                    try {
+                                        models = AiRecognizer.listModels(s.ai)
+                                        if (models.isEmpty()) kit.toast("没有获取到模型") else modelMenu = true
+                                    } catch (e: Exception) {
+                                        kit.toast("获取失败：${e.message?.take(100)}")
+                                    }
+                                    loadingModels = false
+                                }
+                            }) { Text(if (loadingModels) "…" else "列表") }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    DropdownMenu(modelMenu, { modelMenu = false }) {
+                        models.forEach { m ->
+                            DropdownMenuItem(
+                                text = { Text(m + if (looksVision(m)) "  🖼️" else "") },
+                                onClick = { ai { it.copy(model = m, vision = looksVision(m) || it.vision && m == it.model) }; modelMenu = false },
+                            )
+                        }
+                    }
+                }
+                SwitchRow(
+                    "模型支持看图（多模态）",
+                    if (s.ai.vision) "直接把照片发给模型识别、数本数" else "纯文本模式：本地 OCR 出文字后交给模型纠错对名单，照片不离开手机",
+                    s.ai.vision,
+                ) { v -> ai { it.copy(vision = v) } }
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
                     s.ai.apiKey, { v -> ai { it.copy(apiKey = v.trim()) } }, label = { Text("API Key") }, singleLine = true,
@@ -297,6 +337,12 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
     if (confirmReset) ConfirmDialog("清空所有数据", "将删除所有班级、名单和记录（设置保留）。建议先备份。", "清空", { confirmReset = false }) {
         vm.resetAll(); kit.undoable("已清空所有数据")
     }
+}
+
+/** 根据模型名粗略判断是否多模态，仅用于列表提示与默认开关 */
+private fun looksVision(model: String): Boolean {
+    val m = model.lowercase()
+    return listOf("vision", "-vl", "vl-", "4v", "gpt-4o", "gpt-4.1", "gpt-5", "claude", "gemini", "omni", "qvq", "llava").any { it in m }
 }
 
 @Composable

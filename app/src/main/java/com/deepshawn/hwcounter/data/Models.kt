@@ -86,6 +86,8 @@ data class AiConfig(
     val baseUrl: String = "https://dashscope.aliyuncs.com/compatible-mode/v1",
     val apiKey: String = "",
     val model: String = "qwen-vl-max",
+    /** 模型能否直接看图；纯文本模型（如 deepseek-chat）改为“本地 OCR 文字 → AI 校对匹配” */
+    val vision: Boolean = true,
 )
 
 object RecogMode {

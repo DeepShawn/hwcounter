@@ -139,12 +139,18 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
             var aiCount: Int? = null
             var aiNote = ""
             var err: String? = null
-            if (settings.recogMode != RecogMode.AI) {
+            var ocrLines = emptyList<String>()
+            // 纯文本 AI 需要先拿到 OCR 文字，所以即使是“仅 AI”模式也跑一次本地 OCR
+            val needOcr = settings.recogMode != RecogMode.AI || !settings.ai.vision
+            if (needOcr) {
                 phase = "第 ${i + 1}/${uris.size} 张：本地 OCR 识别中"
                 try {
                     val raw = LocalRecognizer.recognize(bmp)
-                    val m = withContext(Dispatchers.Default) { matcher.match(raw.lines, raw.barcodes) }
-                    hits = m.hits; unknown = m.unknown
+                    ocrLines = raw.lines.map { it.text } + raw.barcodes.map { it.text }
+                    if (settings.recogMode != RecogMode.AI) {
+                        val m = withContext(Dispatchers.Default) { matcher.match(raw.lines, raw.barcodes) }
+                        hits = m.hits; unknown = m.unknown
+                    }
                 } catch (e: Exception) {
                     err = "本地识别失败：${e.message}"
                 }
@@ -152,7 +158,8 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
             if (settings.recogMode != RecogMode.LOCAL) {
                 phase = "第 ${i + 1}/${uris.size} 张：AI 大模型分析中 ✨"
                 try {
-                    val r = AiRecognizer.recognize(settings.ai, bmp, roster)
+                    val r = if (settings.ai.vision) AiRecognizer.recognize(settings.ai, bmp, roster)
+                    else AiRecognizer.recognizeText(settings.ai, ocrLines, roster)
                     aiCount = r.count
                     aiNote = r.note
                     val aiPieces = r.ids.map { TextPiece(it) } + r.names.map { TextPiece(it) }

@@ -257,8 +257,9 @@ fun StackCountScreen(vm: AppViewModel, data: AppData, assignmentId: String?) {
             FilledTonalButton(
                 enabled = !aiBusy,
                 onClick = {
-                    aiBusy = true; aiMsg = "🤖 AI 正在数…"
-                    scope.launch {
+                    if (!data.settings.ai.vision) kit.toast("当前 AI 模型为纯文本模式，无法看图数本数")
+                    else scope.launch {
+                        aiBusy = true; aiMsg = "🤖 AI 正在数…"
                         try {
                             val r = AiRecognizer.recognize(data.settings.ai, b, emptyList(), "stack")
                             aiMsg = "🤖 AI：${r.count ?: "?"} 本。${r.note}"
