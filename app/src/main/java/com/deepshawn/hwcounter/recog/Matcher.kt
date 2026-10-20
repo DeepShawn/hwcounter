@@ -101,7 +101,9 @@ class Matcher(
                 val r = run.value
                 val exact = byNo[r]
                 if (exact != null) {
-                    add(Hit(exact.id, MatchSource.EXACT, r, p.box)); matchedInPiece = true; continue
+                    // 名单里学号长短不一（如 1~50）时，读到的数字比最长学号短，可能是被截断（“49”读成“4”），标为“≈”
+                    val src = if (r.length < maxNoLen && byNo.keys.any { it.length > r.length && it.startsWith(r) || it.endsWith(r) && it.length > r.length }) MatchSource.FUZZY else MatchSource.EXACT
+                    add(Hit(exact.id, src, r, p.box)); matchedInPiece = true; continue
                 }
                 // 学号嵌在更长数字串中（如 “2024010523” 中含 “20240105”），取最长的
                 val inner = byNo.entries.filter { it.key.length >= minLen && it.key.all { ch -> ch.isDigit() } && r.contains(it.key) }

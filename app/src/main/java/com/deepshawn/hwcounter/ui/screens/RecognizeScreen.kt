@@ -86,6 +86,7 @@ import com.deepshawn.hwcounter.recog.ImageUtils
 import com.deepshawn.hwcounter.recog.LocalRecognizer
 import com.deepshawn.hwcounter.recog.MatchSource
 import com.deepshawn.hwcounter.recog.Matcher
+import com.deepshawn.hwcounter.recog.Reconcile
 import com.deepshawn.hwcounter.recog.TextPiece
 import com.deepshawn.hwcounter.ui.LocalKit
 import com.deepshawn.hwcounter.ui.Route
@@ -130,6 +131,7 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
 
     LaunchedEffect(uris) {
         val roster = c.students
+        val byIdAll = roster.associateBy { it.id }
         val matcher = Matcher(roster, settings.minIdLength, settings.fuzzy, settings.matchNames)
         for ((i, u) in uris.withIndex()) {
             phase = "第 ${i + 1}/${uris.size} 张：读取图片"
@@ -167,10 +169,21 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
                     else AiRecognizer.recognizeText(settings.ai, ocrLines, roster)
                     aiCount = r.count
                     aiNote = r.note
-                    val aiPieces = r.ids.map { TextPiece(it) } + r.names.map { TextPiece(it) }
-                    val m2 = Matcher(roster, 2, false, true).match(aiPieces)
-                    val known = hits.map { it.studentId }.toSet()
-                    hits = hits + m2.hits.filter { it.studentId !in known }.map { it.copy(source = MatchSource.AI) }
+                    val aiStudents = (aiIdsToStudents(roster, r.ids) + Matcher(roster, 9, false, true).match(r.names.map { TextPiece(it) }).hits.map { it.studentId }).distinct()
+                    // 用 AI 纠正本地不可靠的读数（含没对上名单的文字），而不是简单相加
+                    val local = hits.map { Reconcile.Local(it.studentId, it.raw, it.source == MatchSource.FUZZY || it.source == MatchSource.NAME) } +
+                        unknown.map { Reconcile.Local(null, it.first, true) }
+                    val out = Reconcile.merge(local, aiStudents, r.count) { id -> byIdAll[id]?.no ?: "" }
+                    val newHits = ArrayList<Hit>()
+                    hits.forEachIndexed { i, h -> newHits += if (i in out.correctedIdx) h.copy(studentId = out.corrected[i]!!, source = MatchSource.AI) else h }
+                    val keepUnknown = ArrayList<Pair<String, Rect?>>()
+                    unknown.forEachIndexed { j, u ->
+                        val i = hits.size + j
+                        if (i in out.correctedIdx) newHits += Hit(out.corrected[i]!!, MatchSource.AI, u.first, u.second) else keepUnknown += u
+                    }
+                    out.extra.forEach { id -> newHits += Hit(id, MatchSource.AI, byIdAll[id]?.no ?: id, null) }
+                    hits = newHits.distinctBy { it.studentId }
+                    unknown = keepUnknown
                 } catch (e: Exception) {
                     err = (err?.let { "$it\n" } ?: "") + "AI 识别失败：${e.message}"
                 }

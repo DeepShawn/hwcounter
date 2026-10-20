@@ -79,7 +79,9 @@ import com.deepshawn.hwcounter.data.Student
 import com.deepshawn.hwcounter.data.signed
 import com.deepshawn.hwcounter.recog.AiRecognizer
 import com.deepshawn.hwcounter.recog.ImageUtils
+import com.deepshawn.hwcounter.recog.MatchSource
 import com.deepshawn.hwcounter.recog.Matcher
+import com.deepshawn.hwcounter.recog.Reconcile
 import com.deepshawn.hwcounter.recog.SpineRecognizer
 import com.deepshawn.hwcounter.recog.TextPiece
 import com.deepshawn.hwcounter.ui.LocalKit
@@ -96,7 +98,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** 一行“书”：来自识别（可被用户改指派/剔除），或用户手动补的 */
-private data class Row2(val key: String, val studentId: String?, val text: String, val fromAi: Boolean = false)
+private data class Row2(val key: String, val studentId: String?, val text: String, val fromAi: Boolean = false, val weak: Boolean = false)
 
 @Composable
 fun SpineScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
@@ -135,7 +137,10 @@ fun SpineScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     SpineRecognizer.analyze(src, c.students, settings.minIdLength, settings.fuzzy) { p -> phase = p }
                 }
                 result = r
-                r.books.forEachIndexed { i, b -> rows += Row2("b$i", b.studentId, b.text) }
+                r.books.forEachIndexed { i, b ->
+                    val weak = b.studentId == null || b.source == MatchSource.FUZZY || b.source == MatchSource.NAME
+                    rows += Row2("b$i", b.studentId, b.text, weak = weak)
+                }
                 val aiReady = settings.ai.apiKey.isNotBlank() || settings.ai.baseUrl.contains("localhost") || settings.ai.baseUrl.contains("192.168.")
                 if (settings.recogMode != RecogMode.LOCAL && settings.ai.vision && !aiReady) {
                     aiNote = "未配置 API Key，已跳过 AI 复核（仅本地识别）"
@@ -146,9 +151,15 @@ fun SpineScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                         val ai = AiRecognizer.recognize(settings.ai, r.bitmap, c.students, "spine")
                         aiCount = ai.count
                         aiNote = ai.note
-                        val m = Matcher(c.students, 2, false, false).match(ai.ids.map { TextPiece(it) })
-                        val have = rows.mapNotNull { it.studentId }.toSet()
-                        m.hits.filter { it.studentId !in have }.forEachIndexed { i, h -> rows += Row2("ai$i", h.studentId, h.raw, fromAi = true) }
+                        // 用 AI 纠正本地不可靠的读数，而不是简单相加（避免重复计数）
+                        val aiStudents = aiIdsToStudents(c.students, ai.ids)
+                        val out = Reconcile.merge(
+                            rows.map { Reconcile.Local(it.studentId, it.text, it.weak) }, aiStudents, ai.count,
+                        ) { id -> byId[id]?.no ?: "" }
+                        out.correctedIdx.forEach { i ->
+                            rows[i] = rows[i].copy(studentId = out.corrected[i], text = rows[i].text + " → AI 纠正", fromAi = true, weak = false)
+                        }
+                        out.extra.forEachIndexed { i, id -> rows += Row2("ai$i", id, byId[id]?.no ?: id, fromAi = true) }
                     } catch (e: Exception) {
                         aiNote = "AI 复核失败：${e.message?.take(80)}"
                     }
@@ -449,4 +460,13 @@ fun RawTextPanel(lines: List<String>) {
             )
         }
     }
+}
+
+/** AI 返回的学号文本 → 名单中的学生 id（保持 AI 给出的顺序，去重） */
+fun aiIdsToStudents(roster: List<Student>, ids: List<String>): List<String> {
+    val byNo = roster.associateBy { Matcher.canon(it.no) }
+    val fallback = Matcher(roster, 1, false, false)
+    return ids.mapNotNull { raw ->
+        byNo[Matcher.canon(Matcher.normalize(raw))]?.id ?: fallback.match(listOf(TextPiece(raw))).hits.firstOrNull()?.studentId
+    }.distinct()
 }
