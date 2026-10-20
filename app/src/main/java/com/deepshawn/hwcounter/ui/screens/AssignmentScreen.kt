@@ -172,7 +172,9 @@ private enum class Filter(val label: String, val match: (HwStatus) -> Boolean) {
 }
 
 @Composable
-fun AssignmentScreen(vm: AppViewModel, data: AppData, assignmentId: String) {
+fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
+    // 刚创建的作业可能比 Compose 状态早一帧到达，回退到 ViewModel 的最新值
+    val data = if (vm.currentClass(dataIn)?.assignments?.any { it.id == assignmentId } == true) dataIn else vm.data.value
     val kit = LocalKit.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()

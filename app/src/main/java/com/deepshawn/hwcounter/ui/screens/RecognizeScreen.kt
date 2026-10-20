@@ -107,7 +107,9 @@ private class ImageResult(
 )
 
 @Composable
-fun RecognizeScreen(vm: AppViewModel, data: AppData, assignmentId: String, uris: List<Uri>) {
+fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uris: List<Uri>) {
+    // 刚创建的作业可能比 Compose 状态早一帧到达，回退到 ViewModel 的最新值
+    val data = if (vm.currentClass(dataIn)?.assignments?.any { it.id == assignmentId } == true) dataIn else vm.data.value
     val kit = LocalKit.current
     val ctx = LocalContext.current
     val c = vm.currentClass(data) ?: return
