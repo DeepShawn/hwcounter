@@ -34,6 +34,15 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk out/HwCounter-arm64-v8a-${GITHUB_SHA::7}.apk
           ls -la out
 
+      - name: Inspect APK (ABI / size)
+        run: |
+          APK=$(ls out/*.apk)
+          echo "== native libs =="; unzip -l "$APK" | grep "lib/" || true
+          echo "== ML Kit models =="; unzip -l "$APK" | grep -i "mlkit\|ocr\|barcode" | head -20 || true
+          AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt | tail -1)
+          $AAPT dump badging "$APK" | grep -E "package:|native-code|sdkVersion|application-label"
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | tail -1)/apksigner verify --print-certs "$APK" | head -3
+
       - uses: actions/upload-artifact@v4
         with:
           name: HwCounter-arm64-v8a
