@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ViewAgenda
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.ViewWeek
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
@@ -349,6 +350,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    ActionChip("语音登记", Icons.Filled.Mic) { kit.nav.push(Route.Voice(a.id)) }
                     ActionChip("拍照识别", Icons.Filled.CameraAlt) { photoSheet = true }
                     ActionChip("实时扫描", Icons.Filled.DocumentScanner) { kit.nav.push(Route.Live(a.id)) }
                     ActionChip("侧面学号", Icons.Filled.ViewWeek) { kit.nav.push(Route.Spine(a.id)) }

@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.deepshawn.hwcounter.ui.screens
 
@@ -9,6 +9,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.ViewWeek
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -210,9 +212,17 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
             }
         }
         item {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                maxItemsInEachRow = 3,
+            ) {
                 QuickAction("新建作业", Icons.Filled.Add, Color(0xFF4C6EF5), Modifier.weight(1f)) { showNew = true }
                 QuickAction("拍照识别", Icons.Filled.CameraAlt, Color(0xFF12B886), Modifier.weight(1f)) { pendingAction = "photo" }
+                QuickAction("语音登记", Icons.Filled.Mic, Color(0xFF1098AD), Modifier.weight(1f)) {
+                    kit.nav.push(Route.Voice(ensureTarget()))
+                }
                 QuickAction("实时扫描", Icons.Filled.DocumentScanner, Color(0xFFF76707), Modifier.weight(1f)) {
                     kit.nav.push(Route.Live(ensureTarget()))
                 }
@@ -327,7 +337,7 @@ fun QuickAction(label: String, icon: ImageVector, color: Color, modifier: Modifi
             Icon(icon, null, tint = Color.White)
         }
         Spacer(Modifier.height(6.dp))
-        Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 

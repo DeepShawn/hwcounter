@@ -77,6 +77,7 @@ import com.deepshawn.hwcounter.ui.screens.StackCountScreen
 import com.deepshawn.hwcounter.ui.screens.StatsScreen
 import com.deepshawn.hwcounter.ui.screens.StudentDetailScreen
 import com.deepshawn.hwcounter.ui.screens.StudentsScreen
+import com.deepshawn.hwcounter.ui.screens.VoiceScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.io.File
@@ -93,6 +94,7 @@ sealed interface Route {
     data class Stack(val assignmentId: String?) : Route
     data class Spine(val assignmentId: String) : Route
     data class Paper(val assignmentId: String?) : Route
+    data class Voice(val assignmentId: String) : Route
     data class StudentDetail(val id: String) : Route
 }
 
@@ -233,6 +235,7 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         is Route.Stack -> StackCountScreen(vm, data, route.assignmentId)
         is Route.Spine -> SpineScreen(vm, data, route.assignmentId)
         is Route.Paper -> PaperCountScreen(vm, data, route.assignmentId)
+        is Route.Voice -> VoiceScreen(vm, data, route.assignmentId)
         is Route.StudentDetail -> StudentDetailScreen(vm, data, route.id)
     }
 }
