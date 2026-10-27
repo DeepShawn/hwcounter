@@ -130,6 +130,8 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
             Text("打造你的专属作业通", color = Color.White.copy(alpha = 0.85f))
         }
 
+        CloudSection(vm)
+
         // ---------------- 外观 ----------------
         SectionTitle("🎨 主题风格", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
         FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

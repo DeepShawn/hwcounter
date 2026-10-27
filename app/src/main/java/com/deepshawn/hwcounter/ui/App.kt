@@ -217,6 +217,7 @@ fun App(vm: AppViewModel, data: AppData) {
                 }
             }
             Confetti(confetti)
+            com.deepshawn.hwcounter.ui.screens.CloudConflictDialog(vm)
         }
     }
 }

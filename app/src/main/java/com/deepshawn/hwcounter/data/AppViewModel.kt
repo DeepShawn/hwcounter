@@ -32,6 +32,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val data: StateFlow<AppData> = _data.asStateFlow()
 
     private val undoStack = ArrayDeque<AppData>()
+
+    /** 云端同步（Supabase）：本地每次改动后防抖上传；回到前台时检查云端 */
+    val sync = com.deepshawn.hwcounter.cloud.SyncManager(app, viewModelScope, json, { _data.value }) { d -> update { d } }
     private var saveJob: Job? = null
 
     private fun load(): AppData {
@@ -68,6 +71,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         _data.value = new
         persist()
+        sync.onLocalChange()
     }
 
     val canUndo: Boolean get() = undoStack.isNotEmpty()
@@ -76,6 +80,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val prev = undoStack.removeLastOrNull() ?: return false
         _data.value = prev
         persist()
+        sync.onLocalChange()
         return true
     }
 
