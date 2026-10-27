@@ -62,11 +62,19 @@ jobs:
           name: 作业通 ${{ inputs.release_tag || github.ref_name }}
           make_latest: true
           body: |
-            ## 📚 作业通 ${{ inputs.release_tag || github.ref_name }}（Android · arm64-v8a）
+            ## 📚 作业通 ${{ inputs.release_tag || github.ref_name }}（Android · iPad · 网页 三端同步）
 
-            老师的收作业神器：拍照识别学号、实时扫描、数本数、积分、统计、一键导出 Excel。
+            老师的收作业神器：拍照识别学号、语音登记、数本数、积分、统计、一键导出 Excel。
 
-            **下载安装**：下方 `HwCounter-arm64-v8a-*.apk`（Android 8.0+，64 位 ARM 手机）
+            **下载安装**
+            - 📱 Android：下方 `HwCounter-arm64-v8a-*.apk`（Android 8.0+，64 位 ARM 手机）
+            - 📲 iPad：下方 `HwCounter-iPad-unsigned-*.ipa`（iPadOS 16+，未签名，需用 AltStore / Sideloadly / 爱思助手 等用自己的 Apple ID 签名安装）
+            - 🌐 网页版：https://deepshawn.github.io/hwcounter/ （可“添加到主屏幕”离线使用）
+
+            ### ☁️ 云端同步 & 预览
+            - 邮箱账号登录后，三端数据自动同步；两边都改过时可合并；云端保留 30 个历史版本
+            - **不登录也能预览（只读），登录后才能修改**；老师可随时关闭“允许未登录预览”
+            - App 内可修改密码
 
             ### ✨ 主要功能
             - 📸 拍照/相册多选识别作业本封面学号、姓名、二维码，自动去重，可手动补录

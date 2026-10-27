@@ -144,7 +144,7 @@ final class VoiceParser {
     private let byNo: [String: Student]
     private let byVal: [Int: [Student]]
     private let noLens: [Int]
-    private var initialsIndex: [String: [Cand]] = [:]
+    private let initialsIndex: [String: [Cand]]
 
     private static let numeralReadings: [(Character, String)] = [("零", "ling"), ("一", "yi"), ("一", "yao"), ("二", "er"), ("二", "liang"), ("三", "san"), ("四", "si"), ("五", "wu"), ("六", "liu"), ("七", "qi"), ("八", "ba"), ("九", "jiu"), ("十", "shi"), ("百", "bai")]
     private static let haoChars = Set("号好浩豪耗毫郝昊皓")
@@ -154,8 +154,10 @@ final class VoiceParser {
     init(roster: [Student], tolerance: Double = 1, initials: Bool = true) {
         self.tolerance = tolerance
         useInitials = initials
-        named = roster.filter { $0.name.count >= 2 }
-        cands = named.map { Cand(s: $0, syl: $0.name.map(Py.readings)) }.filter { $0.syl.allSatisfy { !$0.isEmpty } }
+        let named = roster.filter { $0.name.count >= 2 }
+        let cands = named.map { Cand(s: $0, syl: $0.name.map(Py.readings)) }.filter { $0.syl.allSatisfy { !$0.isEmpty } }
+        self.named = named
+        self.cands = cands
         givenCands = cands.filter { $0.syl.count >= 3 }.map { Cand(s: $0.s, syl: Array($0.syl.dropFirst())) }
         nameLens = Array(Set(cands.map { $0.syl.count })).sorted(by: >)
         var bn: [String: Student] = [:], bv: [Int: [Student]] = [:]
@@ -166,13 +168,15 @@ final class VoiceParser {
         }
         byNo = bn; byVal = bv
         noLens = Array(Set(bn.keys.filter { $0.allSatisfy { $0.isASCII && $0.isNumber } }.map { $0.count }))
+        var idx: [String: [Cand]] = [:]
         for c in cands {
             for k in Self.initialCombos(c.syl) {
-                var l = initialsIndex[k] ?? []
+                var l = idx[k] ?? []
                 if !l.contains(where: { $0.s.id == c.s.id }) { l.append(c) }
-                initialsIndex[k] = l
+                idx[k] = l
             }
         }
+        initialsIndex = idx
     }
 
     private func maxCost(_ len: Int) -> Double { tolerance * (len == 2 ? 0.36 : len == 3 ? 0.62 : 1.05) }

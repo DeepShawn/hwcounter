@@ -244,7 +244,7 @@ enum Exporter {
     static func classCSV(_ c: SchoolClass, _ rules: Rules) -> URL? {
         let asg = c.assignments.sorted { $0.createdAt < $1.createdAt }
         var rows: [[String]] = [["学号", "姓名"] + asg.map { "\($0.title)（\(fmtDate($0.date))）" } + ["已交", "迟交", "未交", "积分"]]
-        let stats = Dictionary(uniqueKeysWithValues: c.stats(rules).map { ($0.student.id, $0) })
+        let stats = Dictionary(c.stats(rules).map { ($0.student.id, $0) }, uniquingKeysWith: { a, _ in a })
         for s in c.students {
             let st = stats[s.id]
             rows.append([s.no, s.name] + asg.map { $0.status(s.id).label } + ["\(st?.submitted ?? 0)", "\(st?.late ?? 0)", "\(st?.missing ?? 0)", fmtNum(st?.score ?? 0)])

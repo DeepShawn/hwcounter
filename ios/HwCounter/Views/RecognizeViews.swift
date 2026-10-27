@@ -86,7 +86,7 @@ struct VoiceSheet: View {
         let tol = [0.6, 1.0, 1.4][max(0, min(2, store.data.voiceFuzzy))]
         let parser = VoiceParser(roster: c.students, tolerance: tol, initials: store.data.voiceInitials)
         let r = parser.parse(text)
-        let nameOf = Dictionary(uniqueKeysWithValues: c.students.map { ($0.id, "\($0.no) \($0.name)") })
+        let nameOf = Dictionary(c.students.map { ($0.id, "\($0.no) \($0.name)") }, uniquingKeysWith: { a, _ in a })
         var newItems: [LogItem] = []
         for m in r.matches {
             // 有歧义（多个候选）时只登记第一个，并提示核对
@@ -167,7 +167,7 @@ struct PhotoRecognizeSheet: View {
     }
 
     private func results(_ r: MatchOutput, _ c: SchoolClass) -> some View {
-        let byId = Dictionary(uniqueKeysWithValues: c.students.map { ($0.id, $0) })
+        let byId = Dictionary(c.students.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         return VStack(alignment: .leading, spacing: 12) {
             Text("认出 \(r.hits.count) 本\(r.loose.isEmpty ? "" : "，另有 \(r.loose.count) 处疑似学号没对上")").font(.headline)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 10)], spacing: 10) {

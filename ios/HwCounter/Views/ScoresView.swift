@@ -78,7 +78,7 @@ struct ScoreSheet: View {
                             ForEach([-2.0, -1, 1, 2, 5], id: \.self) { d in
                                 Button(signed(d)) { delta = d }
                                     .buttonStyle(.bordered)
-                                    .tint(delta == d ? (d > 0 ? .green : .red) : .gray)
+                                    .tint(delta == d ? (d > 0 ? Color.green : Color.red) : Color.gray)
                             }
                         }
                         Stepper("分值：\(signed(delta))", value: $delta, in: -20...20, step: 0.5)

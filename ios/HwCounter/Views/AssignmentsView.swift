@@ -10,7 +10,7 @@ struct AssignmentsView: View {
             if let c = store.data.currentClass {
                 let list = c.assignments
                     .filter { query.isEmpty || $0.title.contains(query) || $0.subject.contains(query) }
-                    .sorted { ($0.pinned ? 1 : 0, $0.createdAt) > ($1.pinned ? 1 : 0, $1.createdAt) }
+                    .sorted { (x: Assignment, y: Assignment) -> Bool in x.pinned != y.pinned ? x.pinned : x.createdAt > y.createdAt }
                 if c.assignments.isEmpty {
                     EmptyHint(emoji: "📝", title: "还没有作业", detail: store.readOnly ? "老师还没有布置作业" : "点右上角 ＋ 布置第一次作业，然后拍照或语音登记谁交了")
                 } else {
