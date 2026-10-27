@@ -73,6 +73,19 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.screenshot({ path: `${OUT}/2-preview-assignment.png` });
   await page.click('.hero .icon-btn');
 
+  // 预览模式：不显示名单页，热力图照常显示
+  check(!(await page.isVisible('.tabs button:has-text("名单")')), '预览模式不显示“名单”页');
+  await page.click('.tabs button:has-text("热力图")');
+  await page.waitForSelector('.heat');
+  const cells = await page.locator('.heat .heat-cell').count();
+  check(cells === 3 && (await page.textContent('.heat tbody tr:first-child')).includes('张锦宇'), `预览模式热力图正常显示（${cells} 格）`);
+  await page.screenshot({ path: `${OUT}/2b-preview-heatmap.png` });
+  await page.click('.heat .heat-cell');
+  await page.waitForSelector('.grid .stu');
+  check(true, '点热力图格子进入该次作业');
+  await page.click('.hero .icon-btn');
+  await page.click('.tabs button:has-text("首页")');
+
   // 2) 登录：密码错误提示中文
   await page.click('.tabs button:has-text("设置")');
   await page.fill('input[type=email]', 'teacher@example.com');
@@ -141,6 +154,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.click('button:has-text("退出登录")');
   await page.waitForSelector('.ro-banner');
   check(true, '退出登录后回到预览模式');
+  check(!(await page.isVisible('.tabs button:has-text("名单")')), '退出后“名单”页隐藏');
 
   // 8) 手机尺寸截图
   await page.setViewportSize({ width: 390, height: 844 });

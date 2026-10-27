@@ -563,6 +563,29 @@ function Conflict({ s }) {
   </${Modal}>`;
 }
 
+// ---------------- 热力图 ----------------
+function Heatmap({ s, open }) {
+  const { data } = s; const c = currentClass(data);
+  if (!c || !c.assignments.length || !c.students.length) return html`<div class="page"><div class="hero"><div class="hero-title">🔥 作业热力图</div></div><div class="empty">📈 布置并登记几次作业后，这里会出现全班热力图</div></div>`;
+  const recent = [...c.assignments].sort((x, y) => x.createdAt - y.createdAt).slice(-30);
+  const md = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
+  const rate = (st) => { let got = 0; let need = 0; for (const a of recent) { const k = a.statuses[st.id] || 'NONE'; if (k === 'LEAVE' || k === 'NONE') continue; need++; if (k === 'SUBMITTED' || k === 'EXCELLENT' || k === 'LATE') got++; } return need ? Math.round((got / need) * 100) : null; };
+  return html`<div class="page">
+    <div class="hero"><div class="hero-title">🔥 作业热力图</div><div class="muted-light">${c.emoji} ${c.name} · 最近 ${recent.length} 次作业</div></div>
+    <div class="card">
+      <div class="heat-legend">${STATUS_KEYS.map((k) => html`<span><i style=${{ background: STATUS[k].color, opacity: k === 'NONE' ? 0.3 : 0.9 }}></i>${STATUS[k].label}</span>`)}</div>
+      <div class="muted tiny">每行一位同学，每格一次作业，点格子进入该次作业</div>
+      <div class="heat-wrap"><table class="heat">
+        <thead><tr><th class="heat-name"></th>${recent.map((a) => html`<th title=${`${fmtDate(a.createdAt)} ${a.subject} ${a.title}`} onClick=${() => open({ view: 'assign', id: a.id })}>${md(a.createdAt)}</th>`)}<th>交齐率</th></tr></thead>
+        <tbody>${c.students.map((st) => { const r = rate(st); return html`<tr>
+          <td class="heat-name">${st.name}</td>
+          ${recent.map((a) => { const k = a.statuses[st.id] || 'NONE'; return html`<td><button class="heat-cell" title=${`${st.name} · ${a.title}：${STATUS[k].label}`} style=${{ background: STATUS[k].color, opacity: k === 'NONE' ? 0.25 : 0.9 }} onClick=${() => open({ view: 'assign', id: a.id })}></button></td>`; })}
+          <td class=${'heat-rate' + (r !== null && r < 80 ? ' low' : '')}>${r === null ? '—' : r + '%'}</td></tr>`; })}</tbody>
+      </table></div>
+    </div>
+  </div>`;
+}
+
 // ---------------- 外壳 ----------------
 function App() {
   const s = useStore();
@@ -576,11 +599,14 @@ function App() {
   let body;
   if (top?.view === 'assign') body = html`<${AssignView} s=${s} id=${top.id} back=${back} open=${open} />`;
   else if (top?.view === 'voice') body = html`<${VoiceView} s=${s} id=${top.id} back=${back} />`;
-  else body = { home: html`<${Home} s=${s} open=${open} />`, roster: html`<${Roster} s=${s} />`, scores: html`<${Scores} s=${s} />`, settings: html`<${Settings} s=${s} />` }[tab];
+  // 预览模式不显示名单页（热力图照常显示）
+  const curTab = s.readOnly && tab === 'roster' ? 'home' : tab;
+  const tabs = [['home', '🏠', '首页'], ...(s.readOnly ? [] : [['roster', '👥', '名单']]), ['heat', '🔥', '热力图'], ['scores', '🏆', '积分'], ['settings', '⚙️', '设置']];
+  if (!top) body = { home: html`<${Home} s=${s} open=${open} />`, roster: html`<${Roster} s=${s} />`, heat: html`<${Heatmap} s=${s} open=${open} />`, scores: html`<${Scores} s=${s} />`, settings: html`<${Settings} s=${s} />` }[curTab];
   return html`<div class="app">
     ${s.readOnly && html`<div class="ro-banner" onClick=${() => { setStack([]); setTab('settings'); }}>👀 预览模式 · 只读　<b>登录后可修改 ›</b></div>`}
     <main>${body}</main>
-    ${!top && html`<nav class="tabs">${[['home', '🏠', '首页'], ['roster', '👥', '名单'], ['scores', '🏆', '积分'], ['settings', '⚙️', '设置']].map(([k, i, l]) => html`<button class=${tab === k ? 'on' : ''} onClick=${() => setTab(k)}><span>${i}</span>${l}</button>`)}</nav>`}
+    ${!top && html`<nav class="tabs">${tabs.map(([k, i, l]) => html`<button class=${curTab === k ? 'on' : ''} onClick=${() => setTab(k)}><span>${i}</span>${l}</button>`)}</nav>`}
     ${s.sync.email && s.sync.busy && html`<div class="sync-pill">☁️ 同步中…</div>`}
     ${s.toast && html`<div class="toast">${s.toast.msg}${s.toast.undoable && html`<button onClick=${s.doUndo}>撤销</button>`}</div>`}
     <${Conflict} s=${s} />

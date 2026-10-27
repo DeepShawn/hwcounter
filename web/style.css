@@ -97,3 +97,15 @@ main { padding-bottom: 90px; }
 textarea.input { resize: vertical; }
 .ro-banner { position: sticky; top: 0; z-index: 7; background: #fff4e5; color: #6b4300; text-align: center; font-size: 13px; padding: calc(6px + env(safe-area-inset-top)) 10px 6px; cursor: pointer; }
 :root[data-theme="dark"] .ro-banner { background: #3a2a10; color: #ffd8a8; }
+
+/* 热力图 */
+.heat-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; margin-bottom: 6px; }
+.heat-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+.heat-wrap { overflow-x: auto; margin-top: 8px; -webkit-overflow-scrolling: touch; }
+.heat { border-collapse: separate; border-spacing: 3px; font-size: 12px; }
+.heat th { font-weight: 600; color: var(--muted); font-size: 10px; cursor: pointer; white-space: nowrap; }
+.heat td { padding: 0; }
+.heat-name { position: sticky; left: 0; background: var(--card); text-align: left; padding-right: 6px !important; max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; z-index: 1; }
+.heat-cell { display: block; width: 20px; height: 20px; border: 0; border-radius: 4px; cursor: pointer; padding: 0; }
+.heat-rate { padding-left: 6px !important; font-weight: 700; white-space: nowrap; }
+.heat-rate.low { color: #f0475a; }
