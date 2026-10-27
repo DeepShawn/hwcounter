@@ -96,8 +96,9 @@ fun VoiceScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
     val a = c.assignments.firstOrNull { it.id == assignmentId } ?: return
     val byId = remember(c.students) { c.students.associateBy { it.id } }
     val fuzzyLevel = data.settings.voiceFuzzy
-    val parser = remember(c.students, fuzzyLevel) {
-        VoiceParser(c.students, { ch -> Pinyin.readings(ch) }, listOf(0.6f, 1f, 1.4f)[fuzzyLevel.coerceIn(0, 2)])
+    val useInitials = data.settings.voiceInitials
+    val parser = remember(c.students, fuzzyLevel, useInitials) {
+        VoiceParser(c.students, { ch -> Pinyin.readings(ch) }, listOf(0.6f, 1f, 1.4f)[fuzzyLevel.coerceIn(0, 2)], useInitials)
     }
 
     var status by remember { mutableStateOf(HwStatus.SUBMITTED) }
@@ -205,6 +206,13 @@ fun VoiceScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                 },
                 fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp),
             )
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("拼音首字母匹配", style = MaterialTheme.typography.labelLarge)
+                    Text("听到的字首字母一致即登记，如 张锦宇 = ZJY（“这几样”“ZJY”都算）；撞首字母时按读音挑最像的或让你点选", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                androidx.compose.material3.Switch(useInitials, { v -> vm.updateSettings { it.copy(voiceInitials = v) } })
+            }
             Spacer(Modifier.height(8.dp))
             Text("念到的同学登记为：", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {

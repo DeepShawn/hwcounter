@@ -120,6 +120,8 @@ data class Settings(
     val onboarded: Boolean = false,
     /** 语音登记的模糊程度：0 严格 1 标准 2 宽松 */
     val voiceFuzzy: Int = 1,
+    /** 语音登记：拼音首字母匹配（如 ZJY = 张锦宇） */
+    val voiceInitials: Boolean = true,
 )
 
 @Serializable

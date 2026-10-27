@@ -18,9 +18,11 @@ class VoiceParser(
     private val readings: (Char) -> List<String>,
     /** 模糊程度：0.6 严格 / 1.0 标准 / 1.4 宽松 */
     private val tolerance: Float = 1f,
+    /** 拼音首字母匹配：听到的字首字母与名字首字母一致即可（如 张锦宇 = ZJY） */
+    private val initials: Boolean = true,
 ) {
     enum class Kind(val label: String) {
-        NAME("原名"), PINYIN("同音"), FUZZY("音近"), GIVEN("叫名"), NUMBER("学号"), NUMBER_SOUND("音近学号")
+        NAME("原名"), PINYIN("同音"), FUZZY("音近"), GIVEN("叫名"), INITIALS("首字母"), NUMBER("学号"), NUMBER_SOUND("音近学号")
     }
 
     data class Match(
@@ -82,15 +84,21 @@ class VoiceParser(
             }
         }
 
+        // 口头禅/连接词不参与任何“音近/首字母”匹配（只有原名精确匹配不受影响）
+        val blocked = fillerMask(t)
+
         // 2) 音近数字 + “号”
         numbersBySound(t, used, matches)
 
         // 3) 拼音模糊匹配全名
-        fuzzyNames(t, used, matches, cands, Kind.FUZZY) { maxCost(it) }
+        fuzzyNames(t, used, blocked, matches, cands, Kind.FUZZY) { maxCost(it) }
         // 4) 只叫名（不带姓），要求很像且班上唯一
-        fuzzyNames(t, used, matches, givenCands, Kind.GIVEN, uniqueOnly = true) { 0.2f * tolerance }
+        fuzzyNames(t, used, blocked, matches, givenCands, Kind.GIVEN, uniqueOnly = true) { 0.2f * tolerance }
 
-        // 5) 数字学号
+        // 5) 拼音首字母（ZJY = 张锦宇）：听到的汉字首字母、或直接说/识别出的字母
+        if (initials) initialsPass(t, used, blocked, matches)
+
+        // 6) 数字学号
         val rest = StringBuilder()
         for (i in t.indices) rest.append(if (used[i]) ' ' else t[i])
         val numText = convertChineseNumbers(rest.toString())
@@ -115,7 +123,7 @@ class VoiceParser(
 
     /** 在未用过的汉字窗口上做拼音对齐匹配，按“平均距离”从小到大贪心选取不重叠的结果 */
     private fun fuzzyNames(
-        t: String, used: BooleanArray, out: MutableList<Match>, pool: List<Cand>, kind: Kind,
+        t: String, used: BooleanArray, blocked: BooleanArray, out: MutableList<Match>, pool: List<Cand>, kind: Kind,
         uniqueOnly: Boolean = false, limit: (Int) -> Float,
     ) {
         if (pool.isEmpty()) return
@@ -129,7 +137,7 @@ class VoiceParser(
             for (len in windowLens) {
                 val end = start + len
                 if (end > t.length) continue
-                if ((start until end).any { used[it] || !isHan(t[it]) || rd(it).isEmpty() }) continue
+                if ((start until end).any { used[it] || blocked[it] || !isHan(t[it]) || rd(it).isEmpty() }) continue
                 val heard = (start until end).map { rd(it) }
                 val scored = pool.filter { kotlin.math.abs(it.syl.size - len) <= 1 }
                     .map { it to PinyinSim.sequence(heard, it.syl) }
@@ -151,6 +159,82 @@ class VoiceParser(
             for (i in w.start until w.end) used[i] = true
         }
     }
+
+    /** 每个学生名字所有可能的首字母串（多音字会有多个） */
+    private val initialsIndex: Map<String, List<Cand>> by lazy {
+        val m = HashMap<String, MutableList<Cand>>()
+        for (c in cands) for (k in initialCombos(c.syl)) m.getOrPut(k) { ArrayList() }.add(c)
+        m.mapValues { e -> e.value.distinctBy { it.student.id } }
+    }
+
+    private fun initialCombos(syl: List<List<String>>): Set<String> {
+        var acc = setOf("")
+        for (alts in syl) {
+            val firsts = alts.mapNotNull { it.firstOrNull()?.uppercaseChar() }.toSet()
+            acc = acc.flatMap { p -> firsts.map { p + it } }.toSet()
+            if (acc.size > 32) acc = acc.take(32).toSet()
+        }
+        return acc
+    }
+
+    private fun fillerMask(t: String): BooleanArray {
+        val blocked = BooleanArray(t.length)
+        for (w in fillers) {
+            var from = 0
+            while (true) {
+                val i = t.indexOf(w, from)
+                if (i < 0) break
+                for (k in i until i + w.length) blocked[k] = true
+                from = i + 1
+            }
+        }
+        return blocked
+    }
+
+    private fun initialsPass(t: String, used: BooleanArray, blocked: BooleanArray, out: MutableList<Match>) {
+        if (initialsIndex.isEmpty()) return
+        fun resolve(heardSyl: List<List<String>>?, list: List<Cand>): List<String> {
+            if (list.size == 1 || heardSyl == null) return list.map { it.student.id }
+            // 首字母相同的多人：用完整拼音距离排序，明显更像的胜出，否则都给老师选
+            val scored = list.map { it to PinyinSim.sequence(heardSyl, it.syl) }.sortedBy { it.second }
+            val best = scored[0].second
+            return scored.filter { it.second <= best + 0.15f }.map { it.first.student.id }
+        }
+        // a) 直接出现的字母：“ZJY”“z j y”
+        val letters = Regex("(?:[A-Za-z]\\s*){2,5}")
+        for (m in letters.findAll(t)) {
+            if ((m.range).any { used[it] }) continue
+            val key = m.value.filter { it.isLetter() }.uppercase()
+            val list = initialsIndex[key] ?: continue
+            out += Match(resolve(null, list), m.value.trim(), Kind.INITIALS, m.range.first)
+            for (k in m.range) used[k] = true
+        }
+        // b) 汉字窗口的首字母（窗口长度 = 名字长度），长名字优先
+        for (len in nameLens.sortedDescending()) {
+            var i = 0
+            while (i + len <= t.length) {
+                // 数字字（零一二三…十百）不参与首字母：避免“零三”(L S) 误配“李四”
+                val ok = (i until i + len).all { !used[it] && !blocked[it] && isHan(t[it]) && t[it] !in numeralChars && readings(t[it]).isNotEmpty() }
+                if (!ok) { i++; continue }
+                val heard = (i until i + len).map { readings(t[it]) }
+                val hit = initialCombos(heard).mapNotNull { initialsIndex[it] }.flatten().distinctBy { it.student.id }
+                    .filter { it.syl.size == len }
+                if (hit.isNotEmpty()) {
+                    out += Match(resolve(heard, hit), t.substring(i, i + len), Kind.INITIALS, i)
+                    for (k in i until i + len) used[k] = true
+                    i += len
+                } else i++
+            }
+        }
+    }
+
+    private val numeralChars = "零〇一幺二两三四五六七八九十百"
+
+    private val fillers = listOf(
+        "然后", "还有", "这个", "那个", "下一个", "接着", "同学", "以及", "好的", "下面", "一下", "一个", "我们", "他们",
+        "还是", "就是", "可以", "什么", "怎么", "这里", "那里", "现在", "已经", "名字", "学号", "作业", "交了", "没交",
+        "请假", "没有", "对的", "是的", "继续", "最后", "第一", "再来", "嗯嗯", "那么", "所以", "但是",
+    )
 
     private val numeralReadings = listOf(
         '零' to "ling", '一' to "yi", '一' to "yao", '二' to "er", '二' to "liang", '三' to "san", '四' to "si",

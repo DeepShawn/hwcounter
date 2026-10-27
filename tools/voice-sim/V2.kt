@@ -50,4 +50,6 @@ fun main() {
     println("names: $ok/${cases.size}")
     println("--- 回归（第一版用例）---")
     mainV1()
+    println("--- 首字母 ---")
+    mainV3()
 }
