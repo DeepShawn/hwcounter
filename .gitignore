@@ -6,3 +6,10 @@ build/
 .DS_Store
 /captures
 .kotlin/
+
+# iOS
+ios/HwCounter.xcodeproj/
+ios/build/
+ios/Payload/
+ios/out/
+node_modules/

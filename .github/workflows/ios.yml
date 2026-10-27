@@ -1,0 +1,65 @@
+name: Build iPad IPA
+
+on:
+  push:
+    branches: [ "**" ]
+    paths: [ "ios/**", ".github/workflows/ios.yml" ]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "把 IPA 附加到这个版本（如 v1.1.0），留空则只构建"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Voice parser / roster / matcher tests
+        working-directory: ios
+        run: |
+          swiftc -O -o "$RUNNER_TEMP/vt" HwCounter/Model/Models.swift HwCounter/Recog/Text.swift HwCounter/Recog/VoiceParser.swift HwCounter/Recog/Matcher.swift HwCounter/Recog/Roster.swift Tests/main.swift
+          "$RUNNER_TEMP/vt"
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild -project HwCounter.xcodeproj -scheme HwCounter -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -200
+
+      - name: Package IPA
+        working-directory: ios
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          mkdir -p Payload out
+          cp -R "$APP" Payload/
+          zip -qry out/HwCounter-iPad-unsigned-${GITHUB_SHA::7}.ipa Payload
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HwCounter-iPad-ipa
+          path: ios/out/*.ipa
+
+      - name: Attach to release
+        if: ${{ inputs.release_tag != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          files: ios/out/*.ipa
