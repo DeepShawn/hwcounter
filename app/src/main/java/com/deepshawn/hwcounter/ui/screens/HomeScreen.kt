@@ -354,7 +354,7 @@ fun AssignmentRow(
     var menu by remember { mutableStateOf(false) }
     val sm = c.summary(a)
     val sc = subjectColor(a.subject)
-    val dateFmt = remember { SimpleDateFormat("M/d HH:mm", Locale.CHINA) }
+    val dateFmt = remember { SimpleDateFormat("yyyy年M月d日", Locale.CHINA) }
     Box(modifier) {
         Surface(
             shape = MaterialTheme.shapes.large,

@@ -31,8 +31,8 @@ import java.util.Date
 import java.util.Locale
 
 object Exporter {
-    private val dateFmt = SimpleDateFormat("MM-dd", Locale.CHINA)
-    private val fullFmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
+    private val dateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
+    private val fullFmt = SimpleDateFormat("yyyy年M月d日", Locale.CHINA)
 
     fun fileStamp(): String = SimpleDateFormat("yyyyMMdd_HHmm", Locale.CHINA).format(Date())
 
@@ -101,7 +101,7 @@ object Exporter {
         }
         x.sheet("积分明细") {
             widths = listOf(18.0, 12.0, 10.0, 8.0, 30.0)
-            row(*listOf("时间", "学号", "姓名", "分值", "原因").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) }.toTypedArray())
+            row(*listOf("日期", "学号", "姓名", "分值", "原因").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) }.toTypedArray())
             val byId = c.students.associateBy { it.id }
             c.scores.sortedByDescending { it.time }.forEach { e ->
                 val s = byId[e.studentId] ?: return@forEach
@@ -118,7 +118,7 @@ object Exporter {
             freezeRows = 0
             widths = listOf(14.0, 10.0)
             row(XlsxWriter.Cell("班级：${c.name}", XlsxWriter.Style.TITLE))
-            row("导出时间", fullFmt.format(Date()))
+            row("导出日期", fullFmt.format(Date()))
             row("初始分", rules.initial)
             row("已交", rules.submitted)
             row("优秀", rules.excellent)

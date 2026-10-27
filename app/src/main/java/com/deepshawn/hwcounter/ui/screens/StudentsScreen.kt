@@ -362,7 +362,7 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
     val rank = stats.indexOfFirst { it.student.id == s.id } + 1
     var scoreDialog by remember { mutableStateOf(false) }
     var edit by remember { mutableStateOf(false) }
-    val fmt = remember { SimpleDateFormat("M/d HH:mm", Locale.CHINA) }
+    val fmt = remember { SimpleDateFormat("yyyy年M月d日", Locale.CHINA) }
     val assigns = c.assignments.sortedByDescending { it.createdAt }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
