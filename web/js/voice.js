@@ -102,6 +102,59 @@ function convertChineseNumbers(s) {
   return { text: out.join(''), origin, originEnd, positional };
 }
 
+// ---------- 念字母（拼音首字母） ----------
+/** 英文字母的中文读音（语音识别有时把念的字母转成这些字） */
+export const LETTER_SOUNDS = {
+  A: ['诶', '欸'], B: ['比', '逼', '必'], C: ['西', '希'], D: ['弟', '迪', '低'], E: ['伊', '衣'],
+  F: ['艾弗', '爱福', '艾夫'], G: ['吉', '鸡', '寄'], H: ['艾尺', '爱吃', '诶曲'], I: ['爱', '艾'], J: ['杰', '街', '姐'],
+  K: ['开', '凯'], L: ['艾勒', '艾路', '爱了', '哎了'], M: ['艾姆', '爱木', '艾母'], N: ['恩'], O: ['欧', '哦'],
+  P: ['屁', '批', '皮'], Q: ['丘', '秋', '球'], R: ['阿尔', '啊儿'], S: ['艾斯', '爱死', '艾死'], T: ['踢', '提', '替'],
+  U: ['优', '由', '悠'], V: ['维', '威', '微'], W: ['达不溜', '达布溜', '打不留', '大不溜'], X: ['艾克斯', '爱克斯'],
+  Y: ['歪', '外'], Z: ['贼', '兹', '仄', '泽德', '则'],
+};
+const SOUND_LIST = Object.entries(LETTER_SOUNDS).flatMap(([l, ws]) => ws.map((w) => [w, l])).sort((a, b) => b[0].length - a[0].length);
+const LETTER_SEP = /[\s、，,.。·\-_/]/;
+
+/** 找出连续的字母（含识别成汉字的字母读音），字母之间可以有空格、顿号等 */
+export function letterSequences(t, used, blocked) {
+  const seqs = []; let cur = [];
+  const flush = () => { if (cur.length >= 2) seqs.push(cur); cur = []; };
+  for (let i = 0; i < t.length;) {
+    if (used[i]) { flush(); i++; continue; }
+    const c = t[i];
+    if (/[A-Za-z]/.test(c)) { cur.push({ letter: c.toUpperCase(), start: i, end: i + 1, han: false }); i++; continue; }
+    let hit = null;
+    for (const [w, l] of SOUND_LIST) {
+      if (t.startsWith(w, i)) {
+        let ok = true; for (let k = i; k < i + w.length; k++) if (used[k] || blocked[k]) ok = false;
+        if (ok) { hit = [w, l]; break; }
+      }
+    }
+    if (hit) { cur.push({ letter: hit[1], start: i, end: i + hit[0].length, han: true }); i += hit[0].length; continue; }
+    if (LETTER_SEP.test(c) && cur.length) { i++; continue; }
+    flush(); i++;
+  }
+  flush();
+  return seqs;
+}
+
+/** 把一串字母拆成若干个名字的首字母（尽量多认出人，认不出的字母跳过） */
+export function splitInitials(seq, index, nameLens) {
+  const n = seq.length; const best = Array(n + 1).fill(null); best[0] = { cost: 0, pieces: [] };
+  for (let i = 0; i < n; i++) {
+    if (!best[i]) continue;
+    const relax = (j, cost, piece) => { const c = best[i].cost + cost; if (!best[j] || c < best[j].cost) best[j] = { cost: c, pieces: piece ? [...best[i].pieces, piece] : best[i].pieces }; };
+    relax(i + 1, 10, null);
+    for (const len of nameLens) {
+      if (i + len > n) continue;
+      const toks = seq.slice(i, i + len);
+      const list = (index.get(toks.map((x) => x.letter).join('')) || []).filter((c) => c.syl.length === len);
+      if (list.length) relax(i + len, 1, { tokens: toks, list });
+    }
+  }
+  return best[n].pieces;
+}
+
 const KIND = { NAME: '原名', PINYIN: '同音', FUZZY: '音近', GIVEN: '叫名', INITIALS: '首字母', NUMBER: '学号', NUMBER_SOUND: '音近学号' };
 const numeralReadings = [['零', 'ling'], ['一', 'yi'], ['一', 'yao'], ['二', 'er'], ['二', 'liang'], ['三', 'san'], ['四', 'si'], ['五', 'wu'], ['六', 'liu'], ['七', 'qi'], ['八', 'ba'], ['九', 'jiu'], ['十', 'shi'], ['百', 'bai']];
 const haoChars = new Set([...'号好浩豪耗毫郝昊皓']);
@@ -255,12 +308,15 @@ export function createVoiceParser(roster, opts = {}) {
         const sc = list.map((c) => [c, sequence(heard, c.syl)]).sort((a, b) => a[1] - b[1]);
         return sc.filter((x) => x[1] <= sc[0][1] + 0.15).map((x) => x[0].s.id);
       };
-      for (const m of t.matchAll(/(?:[A-Za-z]\s*){2,5}/g)) {
-        if (!free(m.index, m.index + m[0].length)) continue;
-        const list = initialsIndex.get(m[0].replace(/[^A-Za-z]/g, '').toUpperCase());
-        if (!list) continue;
-        matches.push({ ids: resolve(null, list), heard: m[0].trim(), kind: KIND.INITIALS, start: m.index, cost: 0 });
-        take(m.index, m.index + m[0].length);
+      // a) 念出来的字母：“ZJY”“z j y”“Z、J、Y”，或识别成汉字的字母读音“贼杰歪”；连着念几个人也能拆开
+      const seqs = letterSequences(t, used, blocked);
+      for (const seq of seqs) {
+        for (const p of splitInitials(seq, initialsIndex, nameLens)) {
+          const a = p.tokens[0].start; const b = p.tokens[p.tokens.length - 1].end;
+          if (!free(a, b)) continue;
+          matches.push({ ids: resolve(null, p.list), heard: t.slice(a, b).trim(), kind: KIND.INITIALS, start: a, cost: 0 });
+          take(a, b);
+        }
       }
       for (const len of nameLens) {
         for (let i = 0; i + len <= t.length;) {

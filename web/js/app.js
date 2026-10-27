@@ -368,7 +368,7 @@ function VoiceView({ s, id, back }) {
     <div class="topbar"><button class="icon-btn" onClick=${() => { stop(); back(); }}>←</button><div class="grow"><b>语音登记</b><div class="muted small">${a.subject} · ${a.title}</div></div></div>
     <div class="pad">
       <div class="row between"><span class="label">模糊程度</span><span class="chips">${['严格', '标准', '宽松'].map((l, i) => html`<button class=${'chip' + (i === fuzzy ? ' on' : '')} onClick=${() => update((d) => ({ ...d, settings: { ...d.settings, voiceFuzzy: i } }), false)}>${l}</button>`)}</span></div>
-      <label class="row between"><span><span class="label">拼音首字母匹配</span><div class="muted tiny">首字母一致即登记，如 张锦宇 = ZJY</div></span><input type="checkbox" checked=${initials} onChange=${(e) => update((d) => ({ ...d, settings: { ...d.settings, voiceInitials: e.target.checked } }), false)} /></label>
+      <label class="row between"><span><span class="label">拼音首字母匹配</span><div class="muted tiny">首字母一致即登记，如 张锦宇 = ZJY；可直接念字母“Z J Y”，连着念几个人也行</div></span><input type="checkbox" checked=${initials} onChange=${(e) => update((d) => ({ ...d, settings: { ...d.settings, voiceInitials: e.target.checked } }), false)} /></label>
       <div class="label">念到的同学登记为：</div>
       <div class="chips">${['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'LEAVE'].map((k) => html`<button class=${'chip' + (k === status ? ' on' : '')} style=${k === status ? { background: STATUS[k].color, borderColor: STATUS[k].color } : {}} onClick=${() => setStatus(k)}>${STATUS[k].emoji} ${STATUS[k].label}</button>`)}</div>
     </div>

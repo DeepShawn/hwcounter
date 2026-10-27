@@ -110,7 +110,7 @@ class Nav(private val stack: MutableList<Route>, private val canOpen: (Route) ->
     fun push(r: Route) { if (canOpen(r)) stack.add(r) }
     fun pop(): Boolean = if (stack.size > 1) { stack.removeAt(stack.lastIndex); true } else false
     fun replace(r: Route) { stack.removeAt(stack.lastIndex); stack.add(r) }
-    fun tab(r: Route) { stack.clear(); stack.add(r) }
+    fun tab(r: Route) { if (canOpen(r)) { stack.clear(); stack.add(r) } }
 }
 
 /** 全局 UI 工具：提示/撤销/彩带/反馈 */
@@ -171,7 +171,12 @@ fun App(vm: AppViewModel, data: AppData) {
     val nav = remember {
         Nav(stack) { r ->
             val editOnly = r is Route.Recognize || r is Route.Live || r is Route.Voice || r is Route.Spine || r is Route.Stack || r is Route.Paper
-            if (editOnly && vm.readOnly.value) { vm.notices.tryEmit("👀 预览模式：登录后才能使用"); false } else true
+            when {
+                editOnly && vm.readOnly.value -> { vm.notices.tryEmit("👀 预览模式：登录后才能使用"); false }
+                // 预览模式不显示名单页（统计/热力图照常显示）
+                r is Route.Students && vm.readOnly.value -> { vm.notices.tryEmit("👀 预览模式：登录后才能查看名单"); false }
+                else -> true
+            }
         }
     }
     val scope = rememberCoroutineScope()
@@ -190,6 +195,9 @@ fun App(vm: AppViewModel, data: AppData) {
     // 回到根后再按返回：若不在首页则先回首页
     BackHandler(enabled = stack.size == 1 && stack[0] != Route.Home) { nav.tab(Route.Home) }
 
+    // 退出登录回到预览时，如果正停在名单页，回首页
+    androidx.compose.runtime.LaunchedEffect(readOnly) { if (readOnly && stack.any { it is Route.Students }) { stack.clear(); stack.add(Route.Home) } }
+
     val current = stack.last()
     val topLevel = current is Route.Home || current is Route.Students || current is Route.Scores || current is Route.Stats || current is Route.Settings
 
@@ -202,7 +210,7 @@ fun App(vm: AppViewModel, data: AppData) {
                     if (readOnly) PreviewBanner { nav.tab(Route.Settings) }
                     if (topLevel) {
                         NavigationBar {
-                            tabs.forEach { t ->
+                            tabs.filter { !(readOnly && it.route == Route.Students) }.forEach { t ->
                                 val sel = current == t.route
                                 NavigationBarItem(
                                     selected = sel,

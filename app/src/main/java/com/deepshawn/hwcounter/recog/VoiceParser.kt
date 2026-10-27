@@ -200,14 +200,15 @@ class VoiceParser(
             val best = scored[0].second
             return scored.filter { it.second <= best + 0.15f }.map { it.first.student.id }
         }
-        // a) 直接出现的字母：“ZJY”“z j y”
-        val letters = Regex("(?:[A-Za-z]\\s*){2,5}")
-        for (m in letters.findAll(t)) {
-            if ((m.range).any { used[it] }) continue
-            val key = m.value.filter { it.isLetter() }.uppercase()
-            val list = initialsIndex[key] ?: continue
-            out += Match(resolve(null, list), m.value.trim(), Kind.INITIALS, m.range.first)
-            for (k in m.range) used[k] = true
+        // a) 念出来的字母：“ZJY”“z j y”“Z、J、Y”，或识别成汉字的字母读音“贼杰歪”；连着念几个人也能拆开
+        for (seq in letterSequences(t, used, blocked)) {
+            for ((toks, list) in splitInitials(seq)) {
+                val a = toks.first().start
+                val b = toks.last().end
+                if ((a until b).any { used[it] }) continue
+                out += Match(resolve(null, list), t.substring(a, b).trim(), Kind.INITIALS, a)
+                for (k in a until b) used[k] = true
+            }
         }
         // b) 汉字窗口的首字母（窗口长度 = 名字长度），长名字优先
         for (len in nameLens.sortedDescending()) {
@@ -227,6 +228,58 @@ class VoiceParser(
             }
         }
     }
+
+    private class LetterTok(val letter: Char, val start: Int, val end: Int)
+
+    /** 找出连续的字母（含识别成汉字的字母读音），字母之间可以有空格、顿号等 */
+    private fun letterSequences(t: String, used: BooleanArray, blocked: BooleanArray): List<List<LetterTok>> {
+        val seqs = ArrayList<List<LetterTok>>()
+        var cur = ArrayList<LetterTok>()
+        fun flush() { if (cur.size >= 2) seqs += cur; cur = ArrayList() }
+        var i = 0
+        while (i < t.length) {
+            if (used[i]) { flush(); i++; continue }
+            val c = t[i]
+            if (c in 'A'..'Z' || c in 'a'..'z') { cur += LetterTok(c.uppercaseChar(), i, i + 1); i++; continue }
+            val hit = soundList.firstOrNull { (w, _) -> t.startsWith(w, i) && (i until i + w.length).none { used[it] || blocked[it] } }
+            if (hit != null) { cur += LetterTok(hit.second, i, i + hit.first.length); i += hit.first.length; continue }
+            if (c in letterSeps && cur.isNotEmpty()) { i++; continue }
+            flush(); i++
+        }
+        flush()
+        return seqs
+    }
+
+    /** 把一串字母拆成若干个名字的首字母（尽量多认出人，认不出的字母跳过） */
+    private fun splitInitials(seq: List<LetterTok>): List<Pair<List<LetterTok>, List<Cand>>> {
+        val n = seq.size
+        val cost = IntArray(n + 1) { Int.MAX_VALUE }
+        val pieces = arrayOfNulls<List<Pair<List<LetterTok>, List<Cand>>>>(n + 1)
+        cost[0] = 0; pieces[0] = emptyList()
+        for (i in 0 until n) {
+            val base = pieces[i] ?: continue
+            if (cost[i] + 10 < cost[i + 1]) { cost[i + 1] = cost[i] + 10; pieces[i + 1] = base }
+            for (len in nameLens) {
+                if (i + len > n) continue
+                val toks = seq.subList(i, i + len)
+                val list = initialsIndex[toks.joinToString("") { it.letter.toString() }]?.filter { it.syl.size == len }.orEmpty()
+                if (list.isNotEmpty() && cost[i] + 1 < cost[i + len]) { cost[i + len] = cost[i] + 1; pieces[i + len] = base + (toks to list) }
+            }
+        }
+        return pieces[n].orEmpty()
+    }
+
+    private val letterSeps = " \t\n、，,.。·-_/"
+
+    /** 英文字母的中文读音（语音识别有时把念的字母转成这些字） */
+    private val soundList: List<Pair<String, Char>> = mapOf(
+        'A' to listOf("诶", "欸"), 'B' to listOf("比", "逼", "必"), 'C' to listOf("西", "希"), 'D' to listOf("弟", "迪", "低"), 'E' to listOf("伊", "衣"),
+        'F' to listOf("艾弗", "爱福", "艾夫"), 'G' to listOf("吉", "鸡", "寄"), 'H' to listOf("艾尺", "爱吃", "诶曲"), 'I' to listOf("爱", "艾"), 'J' to listOf("杰", "街", "姐"),
+        'K' to listOf("开", "凯"), 'L' to listOf("艾勒", "艾路", "爱了", "哎了"), 'M' to listOf("艾姆", "爱木", "艾母"), 'N' to listOf("恩"), 'O' to listOf("欧", "哦"),
+        'P' to listOf("屁", "批", "皮"), 'Q' to listOf("丘", "秋", "球"), 'R' to listOf("阿尔", "啊儿"), 'S' to listOf("艾斯", "爱死", "艾死"), 'T' to listOf("踢", "提", "替"),
+        'U' to listOf("优", "由", "悠"), 'V' to listOf("维", "威", "微"), 'W' to listOf("达不溜", "达布溜", "打不留", "大不溜"), 'X' to listOf("艾克斯", "爱克斯"),
+        'Y' to listOf("歪", "外"), 'Z' to listOf("贼", "兹", "仄", "泽德", "则"),
+    ).flatMap { (l, ws) -> ws.map { it to l } }.sortedByDescending { it.first.length }
 
     private val numeralChars = "零〇一幺二两三四五六七八九十百"
 

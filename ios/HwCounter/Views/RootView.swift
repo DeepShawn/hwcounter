@@ -16,10 +16,10 @@ struct HwCounterApp: App {
 }
 
 enum Pane: String, CaseIterable, Identifiable {
-    case homework, scores, roster, settings
+    case homework, heatmap, scores, roster, settings
     var id: String { rawValue }
-    var title: String { ["作业", "积分", "名单", "设置"][Pane.allCases.firstIndex(of: self)!] }
-    var icon: String { ["checklist", "star.circle", "person.3", "gearshape"][Pane.allCases.firstIndex(of: self)!] }
+    var title: String { ["作业", "热力图", "积分", "名单", "设置"][Pane.allCases.firstIndex(of: self)!] }
+    var icon: String { ["checklist", "square.grid.3x3.fill", "star.circle", "person.3", "gearshape"][Pane.allCases.firstIndex(of: self)!] }
 }
 
 struct RootView: View {
@@ -35,7 +35,8 @@ struct RootView: View {
                         .buttonStyle(.plain)
                 }
                 Section {
-                    ForEach(Pane.allCases) { s in
+                    // 预览模式不显示名单（热力图照常显示）
+                    ForEach(Pane.allCases.filter { !(store.readOnly && $0 == .roster) }) { s in
                         NavigationLink(value: s) { Label(s.title, systemImage: s.icon) }
                     }
                 }
@@ -47,8 +48,9 @@ struct RootView: View {
             .safeAreaInset(edge: .bottom) { syncFooter }
         } detail: {
             NavigationStack {
-                switch section ?? .homework {
+                switch (store.readOnly && section == .roster) ? Pane.homework : (section ?? Pane.homework) {
                 case .homework: AssignmentsView()
+                case .heatmap: HeatmapView()
                 case .scores: ScoresView()
                 case .roster: RosterView()
                 case .settings: SettingsView()

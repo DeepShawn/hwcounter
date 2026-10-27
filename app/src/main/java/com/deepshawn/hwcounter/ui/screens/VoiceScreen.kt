@@ -209,7 +209,7 @@ fun VoiceScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("拼音首字母匹配", style = MaterialTheme.typography.labelLarge)
-                    Text("听到的字首字母一致即登记，如 张锦宇 = ZJY（“这几样”“ZJY”都算）；撞首字母时按读音挑最像的或让你点选", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("首字母一致即登记，如 张锦宇 = ZJY：可以直接念字母“Z J Y”，连着念几个人也行（“ZJY LZH”），说“这几样”也算；撞首字母时按读音挑最像的或让你点选", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 androidx.compose.material3.Switch(useInitials, { v -> vm.updateSettings { it.copy(voiceInitials = v) } })
             }

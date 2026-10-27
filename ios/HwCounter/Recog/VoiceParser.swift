@@ -179,6 +179,60 @@ final class VoiceParser {
         initialsIndex = idx
     }
 
+    // ---------- 念字母（拼音首字母） ----------
+    private struct LetterTok { let letter: Character; let start: Int; let end: Int }
+
+    /// 英文字母的中文读音（语音识别有时把念的字母转成这些字）
+    static let letterSounds: [Character: [String]] = [
+        "A": ["诶", "欸"], "B": ["比", "逼", "必"], "C": ["西", "希"], "D": ["弟", "迪", "低"], "E": ["伊", "衣"],
+        "F": ["艾弗", "爱福", "艾夫"], "G": ["吉", "鸡", "寄"], "H": ["艾尺", "爱吃", "诶曲"], "I": ["爱", "艾"], "J": ["杰", "街", "姐"],
+        "K": ["开", "凯"], "L": ["艾勒", "艾路", "爱了", "哎了"], "M": ["艾姆", "爱木", "艾母"], "N": ["恩"], "O": ["欧", "哦"],
+        "P": ["屁", "批", "皮"], "Q": ["丘", "秋", "球"], "R": ["阿尔", "啊儿"], "S": ["艾斯", "爱死", "艾死"], "T": ["踢", "提", "替"],
+        "U": ["优", "由", "悠"], "V": ["维", "威", "微"], "W": ["达不溜", "达布溜", "打不留", "大不溜"], "X": ["艾克斯", "爱克斯"],
+        "Y": ["歪", "外"], "Z": ["贼", "兹", "仄", "泽德", "则"],
+    ]
+    private static let soundList: [([Character], Character)] = letterSounds.flatMap { l, ws in ws.map { (Array($0), l) } }.sorted { $0.0.count > $1.0.count }
+    private static let letterSeps = Set(" \t\n、，,.。·-_/")
+
+    /// 找出连续的字母（含识别成汉字的字母读音），字母之间可以有空格、顿号等
+    private static func letterSequences(_ t: [Character], _ used: [Bool], _ blocked: [Bool]) -> [[LetterTok]] {
+        var seqs: [[LetterTok]] = [], cur: [LetterTok] = []
+        func flush() { if cur.count >= 2 { seqs.append(cur) }; cur = [] }
+        var i = 0
+        while i < t.count {
+            if used[i] { flush(); i += 1; continue }
+            let c = t[i]
+            if c.isASCII && c.isLetter { cur.append(LetterTok(letter: Character(c.uppercased()), start: i, end: i + 1)); i += 1; continue }
+            if let hit = soundList.first(where: { w, _ in
+                i + w.count <= t.count && Array(t[i..<(i + w.count)]) == w && (i..<(i + w.count)).allSatisfy { !used[$0] && !blocked[$0] }
+            }) {
+                cur.append(LetterTok(letter: hit.1, start: i, end: i + hit.0.count)); i += hit.0.count; continue
+            }
+            if letterSeps.contains(c) && !cur.isEmpty { i += 1; continue }
+            flush(); i += 1
+        }
+        flush()
+        return seqs
+    }
+
+    /// 把一串字母拆成若干个名字的首字母（尽量多认出人，认不出的字母跳过）
+    private func splitInitials(_ seq: [LetterTok]) -> [([LetterTok], [Cand])] {
+        let n = seq.count
+        var cost = [Int](repeating: Int.max, count: n + 1)
+        var pieces = [[([LetterTok], [Cand])]?](repeating: nil, count: n + 1)
+        cost[0] = 0; pieces[0] = []
+        for i in 0..<n {
+            guard let base = pieces[i] else { continue }
+            if cost[i] + 10 < cost[i + 1] { cost[i + 1] = cost[i] + 10; pieces[i + 1] = base }
+            for len in nameLens where i + len <= n {
+                let toks = Array(seq[i..<(i + len)])
+                let list = (initialsIndex[String(toks.map(\.letter))] ?? []).filter { $0.syl.count == len }
+                if !list.isEmpty && cost[i] + 1 < cost[i + len] { cost[i + len] = cost[i] + 1; pieces[i + len] = base + [(toks, list)] }
+            }
+        }
+        return pieces[n] ?? []
+    }
+
     private func maxCost(_ len: Int) -> Double { tolerance * (len == 2 ? 0.36 : len == 3 ? 0.62 : 1.05) }
 
     private func lookupNo(_ n: String) -> [Student] {
@@ -345,11 +399,14 @@ final class VoiceParser {
                 let sc = list.map { ($0, Py.sequence(heard, $0.syl)) }.sorted { $0.1 < $1.1 }
                 return sc.filter { $0.1 <= sc[0].1 + 0.15 }.map(\.0.s.id)
             }
-            for m in Rx.matches(String(t), "(?:[A-Za-z]\\s*){2,5}") where free(m.start, m.end) {
-                let key = m.text.filter { $0.isLetter }.uppercased()
-                guard let list = initialsIndex[key] else { continue }
-                matches.append(VoiceMatch(ids: resolve(nil, list), heard: m.text.trimmingCharacters(in: .whitespaces), kind: .initials, start: m.start, cost: 0))
-                take(m.start, m.end)
+            // a) 念出来的字母：“ZJY”“z j y”“Z、J、Y”，或识别成汉字的字母读音“贼杰歪”；连着念几个人也能拆开
+            for seq in Self.letterSequences(t, used, blocked) {
+                for (toks, list) in splitInitials(seq) {
+                    let a = toks.first!.start, b = toks.last!.end
+                    if !free(a, b) { continue }
+                    matches.append(VoiceMatch(ids: resolve(nil, list), heard: String(t[a..<b]).trimmingCharacters(in: .whitespaces), kind: .initials, start: a, cost: 0))
+                    take(a, b)
+                }
             }
             for len in nameLens {
                 var i = 0

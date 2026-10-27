@@ -45,5 +45,12 @@ fun mainV3() {
         "这几样" to "张锦宇/朱嘉怡",    // 都不像 → 让老师点选
         "ZJY" to "张锦宇/朱嘉怡",
     ))
+    run("念字母（拼音首字母）", roster(emptyList()), listOf(
+        "ZJY" to "张锦宇", "Z J Y" to "张锦宇", "Z、J、Y" to "张锦宇", "Z.J.Y." to "张锦宇",
+        "ZJY LZH" to "张锦宇|李子涵", "ZJYLZH" to "张锦宇|李子涵", "ZJY，LJ，WF" to "张锦宇|林静|王芳",
+        "贼杰歪" to "张锦宇", "贼 杰 歪" to "张锦宇", "艾勒兹艾尺" to "李子涵", "达不溜艾弗" to "王芳",
+        "ZJY 然后 LJ" to "张锦宇|林静", "XQZJY" to "张锦宇", "CHHHC" to "陈浩宏|胡晨",
+        "我爱你" to "", "提交作业" to "", "比较" to "",
+    ))
     run("关闭首字母匹配", roster(emptyList()), listOf("这几样" to "", "ZJY" to "", "章金雨" to "张锦宇"), initials = false)
 }

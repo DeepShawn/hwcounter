@@ -44,7 +44,7 @@ struct SettingsView: View {
                 Toggle(isOn: Binding(get: { store.data.voiceInitials }, set: { v in store.setSetting { $0.voiceInitials = v } })) {
                     VStack(alignment: .leading) {
                         Text("拼音首字母匹配")
-                        Text("首字母一致即登记，如 张锦宇 = ZJY").font(.caption).foregroundStyle(.secondary)
+                        Text("首字母一致即登记，如 张锦宇 = ZJY；可直接念字母“Z J Y”，连着念几个人也行").font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
