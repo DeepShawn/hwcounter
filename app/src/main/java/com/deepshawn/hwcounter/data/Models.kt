@@ -118,6 +118,8 @@ data class Settings(
     val subjects: List<String> = listOf("语文", "数学", "英语", "物理", "化学", "生物", "历史", "地理", "政治"),
     val quickReasons: List<String> = listOf("课堂表现好", "主动回答", "作业优秀", "进步明显", "迟到", "违反纪律", "未带作业"),
     val onboarded: Boolean = false,
+    /** 语音登记的模糊程度：0 严格 1 标准 2 宽松 */
+    val voiceFuzzy: Int = 1,
 )
 
 @Serializable

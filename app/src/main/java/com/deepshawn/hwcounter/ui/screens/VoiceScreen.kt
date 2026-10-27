@@ -82,7 +82,7 @@ import com.deepshawn.hwcounter.ui.components.statusColor
 import kotlinx.coroutines.delay
 
 /** 本次语音会话里登记过的一条（用于撤销） */
-private data class VoiceEntry(val key: Long, val studentId: String, val heard: String, val prev: HwStatus, val status: HwStatus)
+private data class VoiceEntry(val key: Long, val studentId: String, val heard: String, val prev: HwStatus, val status: HwStatus, val how: String = "")
 
 /** 有歧义（同音/同名）待老师点选 */
 private data class Pending(val key: Long, val heard: String, val candidates: List<String>)
@@ -95,7 +95,10 @@ fun VoiceScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
     val c = vm.currentClass(data) ?: return
     val a = c.assignments.firstOrNull { it.id == assignmentId } ?: return
     val byId = remember(c.students) { c.students.associateBy { it.id } }
-    val parser = remember(c.students) { VoiceParser(c.students) { ch -> Pinyin.of(ch) } }
+    val fuzzyLevel = data.settings.voiceFuzzy
+    val parser = remember(c.students, fuzzyLevel) {
+        VoiceParser(c.students, { ch -> Pinyin.readings(ch) }, listOf(0.6f, 1f, 1.4f)[fuzzyLevel.coerceIn(0, 2)])
+    }
 
     var status by remember { mutableStateOf(HwStatus.SUBMITTED) }
     val entries = remember { mutableStateListOf<VoiceEntry>() }
@@ -113,11 +116,11 @@ fun VoiceScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
     val latestA by rememberUpdatedState(a)
     val latestStatus by rememberUpdatedState(status)
 
-    fun register(id: String, heard: String) {
+    fun register(id: String, heard: String, how: String = "") {
         if (entries.any { it.studentId == id } || id in dismissed) return
         val prev = latestA.statuses[id] ?: HwStatus.NONE
         vm.setStatus(latestA.id, listOf(id), latestStatus)
-        entries.add(0, VoiceEntry(seq++, id, heard, prev, latestStatus))
+        entries.add(0, VoiceEntry(seq++, id, heard, prev, latestStatus, how))
         kit.beep()
         kit.haptic()
     }
@@ -125,7 +128,7 @@ fun VoiceScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
     fun handle(text: String) {
         val r = parser.parse(text)
         for (m in r.matches) {
-            if (m.studentIds.size == 1) register(m.studentIds[0], m.heard)
+            if (m.studentIds.size == 1) register(m.studentIds[0], m.heard, m.kind.label)
             else if (pendings.none { it.heard == m.heard } && m.studentIds.none { id -> entries.any { it.studentId == id } }) {
                 pendings.add(0, Pending(seq++, m.heard, m.studentIds))
                 kit.beep(false)
@@ -188,6 +191,21 @@ fun VoiceScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
             )
         }
         item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("模糊程度", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                listOf("严格", "标准", "宽松").forEachIndexed { i, label ->
+                    Chip2(label, fuzzyLevel == i, { vm.updateSettings { it.copy(voiceFuzzy = i) } }, Modifier.padding(start = 6.dp))
+                }
+            }
+            Text(
+                when (fuzzyLevel) {
+                    0 -> "只认同音字和轻微口音，宁可漏也不认错"
+                    2 -> "前后鼻音、平翘舌、n/l、f/h 都能认，漏字多字也认；同音多人时让你点选"
+                    else -> "认同音字、常见口音（z/zh、n/l、in/ing…）和多音字姓氏"
+                },
+                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            Spacer(Modifier.height(8.dp))
             Text("念到的同学登记为：", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE, HwStatus.MISSING, HwStatus.LEAVE).forEach { s ->
@@ -268,7 +286,7 @@ fun VoiceScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(s.name, fontWeight = FontWeight.Bold)
-                    Text("${s.no} · 听到：${e.heard}", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${s.no} · 听到：${e.heard}" + if (e.how.isNotEmpty()) " · ${e.how}" else "", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(e.status.label, color = statusColor(e.status), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 IconButton(onClick = {

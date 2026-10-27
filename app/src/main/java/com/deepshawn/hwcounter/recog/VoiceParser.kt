@@ -5,17 +5,23 @@ import com.deepshawn.hwcounter.data.Student
 /**
  * 把语音识别出的一段话解析成“依次说出的学生”。
  *
+ * 顺序：
  * 1. 名字原文精确匹配（最长优先）；
- * 2. 拼音匹配：识别器常把名字写成同音字（张伟→章维），按拼音比对；再放宽 z/zh、c/ch、s/sh、n/l、in/ing、en/eng、an/ang；
- * 3. 学号：支持“三十四号”“三四”“幺零三”“34”；几个学号连着说被并成一串（“3449”）时按名单拆开。
- * 同音/同名对应多人时返回多个候选，交给老师点选。
+ * 2. “音近数字 + 号”：识别器把“四十四号”写成“是十四号”时，按读音枚举 四/十 等可能，取名单里存在且符合数字语法的解释；
+ * 3. 拼音模糊匹配名字：声母/韵母混淆矩阵 + 编辑距离对齐（容忍多字/漏字），阈值随名字长度变化，接近的候选交给老师点选；
+ * 4. 只叫名不带姓（“子涵”→李子涵，班上唯一时）；
+ * 5. 阿拉伯数字/中文数字学号，连读学号按名单拆分。
  */
 class VoiceParser(
     private val roster: List<Student>,
-    /** 单个汉字 → 无声调拼音（如 '张' → "zhang"），非汉字返回 null */
-    private val pinyin: (Char) -> String?,
+    /** 单个汉字的所有可能读音（无声调），非汉字返回空 */
+    private val readings: (Char) -> List<String>,
+    /** 模糊程度：0.6 严格 / 1.0 标准 / 1.4 宽松 */
+    private val tolerance: Float = 1f,
 ) {
-    enum class Kind { NAME, PINYIN, FUZZY, NUMBER }
+    enum class Kind(val label: String) {
+        NAME("原名"), PINYIN("同音"), FUZZY("音近"), GIVEN("叫名"), NUMBER("学号"), NUMBER_SOUND("音近学号")
+    }
 
     data class Match(
         /** 多于一个表示有歧义 */
@@ -23,39 +29,45 @@ class VoiceParser(
         val heard: String,
         val kind: Kind,
         val start: Int,
+        /** 拼音距离（越小越像） */
+        val cost: Float = 0f,
     )
 
     data class Result(val matches: List<Match>, val leftover: String)
 
+    private class Cand(val student: Student, val syl: List<List<String>>)
+
     private val named = roster.filter { it.name.length >= 2 }
-    private val nameLens = named.map { it.name.length }.distinct().sortedDescending()
+    private val cands: List<Cand> = named.mapNotNull { s ->
+        val syl = s.name.map { readings(it) }
+        if (syl.any { it.isEmpty() }) null else Cand(s, syl)
+    }
+    private val givenCands: List<Cand> = cands.filter { it.syl.size >= 3 }.map { Cand(it.student, it.syl.drop(1)) }
+    private val nameLens = cands.map { it.syl.size }.toSet()
+
     private val byNo: Map<String, Student> = roster.filter { it.no.isNotBlank() }.associateBy { Matcher.canon(it.no) }
     private val byNoValue: Map<Long, List<Student>> = roster.mapNotNull { s -> s.no.trim().toLongOrNull()?.let { it to s } }
         .groupBy({ it.first }, { it.second })
     private val noLens = byNo.keys.filter { k -> k.all { it.isDigit() } }.map { it.length }.toSet()
 
-    private fun syllables(s: String): List<String>? {
-        val out = ArrayList<String>(s.length)
-        for (c in s) out += (pinyin(c) ?: return null)
-        return out
+    /** 名字长度 → 允许的拼音距离上限（2 字名只容忍轻微混淆；长名字容忍多一点） */
+    private fun maxCost(len: Int) = tolerance * when (len) {
+        2 -> 0.36f
+        3 -> 0.62f
+        // 4 字及以上（如复姓“欧阳娜娜”）允许识别器多/漏一个字
+        else -> 1.05f
     }
 
-    private val exactKey: Map<String, List<Student>> by lazy {
-        named.mapNotNull { s -> syllables(s.name)?.let { it.joinToString(" ") to s } }.groupBy({ it.first }, { it.second })
-    }
-    private val fuzzyKey: Map<String, List<Student>> by lazy {
-        named.mapNotNull { s -> syllables(s.name)?.let { sy -> sy.joinToString(" ") { fuzzy(it) } to s } }.groupBy({ it.first }, { it.second })
-    }
+    private fun isHan(c: Char) = c.code in 0x3400..0x9FFF
 
     fun parse(text: String): Result {
-        val t = Matcher.halfWidth(text)
+        val t = Matcher.halfWidth(text).replace(Regex("(?<=[\\u3400-\\u9fff])\\s+(?=[\\u3400-\\u9fff])"), "")
         val used = BooleanArray(t.length)
         val matches = ArrayList<Match>()
-
-        fun free(a: Int, b: Int) = (a until b).none { used[it] }
+        fun free(a: Int, b: Int) = a >= 0 && b <= t.length && (a until b).none { used[it] }
         fun take(a: Int, b: Int) { for (i in a until b) used[i] = true }
 
-        // 1) 原文精确匹配（长名字优先，避免“张三丰”被拆成“张三”）
+        // 1) 原文精确匹配
         val sameName = named.groupBy { it.name }
         for (name in sameName.keys.sortedByDescending { it.length }) {
             var from = 0
@@ -70,28 +82,15 @@ class VoiceParser(
             }
         }
 
-        // 2) 拼音匹配（同音字），先严格后放宽
-        for ((keys, kind) in listOf(exactKey to Kind.PINYIN, fuzzyKey to Kind.FUZZY)) {
-            if (keys.isEmpty()) continue
-            for (len in nameLens) {
-                var i = 0
-                while (i + len <= t.length) {
-                    if (!free(i, i + len)) { i++; continue }
-                    val seg = t.substring(i, i + len)
-                    val sy = syllables(seg)
-                    if (sy == null) { i++; continue }
-                    val key = if (kind == Kind.PINYIN) sy.joinToString(" ") else sy.joinToString(" ") { fuzzy(it) }
-                    val hit = keys[key]
-                    if (hit != null) {
-                        matches += Match(hit.map { it.id }, seg, kind, i)
-                        take(i, i + len)
-                        i += len
-                    } else i++
-                }
-            }
-        }
+        // 2) 音近数字 + “号”
+        numbersBySound(t, used, matches)
 
-        // 3) 学号：剩余文字里的中文数字 → 阿拉伯数字
+        // 3) 拼音模糊匹配全名
+        fuzzyNames(t, used, matches, cands, Kind.FUZZY) { maxCost(it) }
+        // 4) 只叫名（不带姓），要求很像且班上唯一
+        fuzzyNames(t, used, matches, givenCands, Kind.GIVEN, uniqueOnly = true) { 0.2f * tolerance }
+
+        // 5) 数字学号
         val rest = StringBuilder()
         for (i in t.indices) rest.append(if (used[i]) ' ' else t[i])
         val numText = convertChineseNumbers(rest.toString())
@@ -110,8 +109,114 @@ class VoiceParser(
         }
         val leftover = buildString {
             for (i in t.indices) if (!used[i]) append(t[i])
-        }.replace(Regex("[\\s，。、,.!?！？号和还有跟以及]+"), " ").trim()
+        }.replace(Regex("[\\s，。、,.!?！？号和还有跟以及然后]+"), " ").trim()
         return Result(matches.sortedBy { it.start }, leftover)
+    }
+
+    /** 在未用过的汉字窗口上做拼音对齐匹配，按“平均距离”从小到大贪心选取不重叠的结果 */
+    private fun fuzzyNames(
+        t: String, used: BooleanArray, out: MutableList<Match>, pool: List<Cand>, kind: Kind,
+        uniqueOnly: Boolean = false, limit: (Int) -> Float,
+    ) {
+        if (pool.isEmpty()) return
+        val lens = pool.map { it.syl.size }.toSet()
+        data class W(val start: Int, val end: Int, val ids: List<String>, val cost: Float)
+        val found = ArrayList<W>()
+        val readCache = HashMap<Int, List<String>>()
+        fun rd(i: Int) = readCache.getOrPut(i) { readings(t[i]) }
+        val windowLens = lens.flatMap { listOf(it - 1, it, it + 1) }.filter { it >= 2 }.toSet()
+        for (start in t.indices) {
+            for (len in windowLens) {
+                val end = start + len
+                if (end > t.length) continue
+                if ((start until end).any { used[it] || !isHan(t[it]) || rd(it).isEmpty() }) continue
+                val heard = (start until end).map { rd(it) }
+                val scored = pool.filter { kotlin.math.abs(it.syl.size - len) <= 1 }
+                    .map { it to PinyinSim.sequence(heard, it.syl) }
+                    .filter { (c, d) -> d <= limit(c.syl.size) }
+                    .sortedBy { it.second }
+                if (scored.isEmpty()) continue
+                val best = scored[0].second
+                // 与最优几乎一样像的都算候选（同音/近音的不同学生）
+                val close = scored.filter { it.second <= best + 0.12f }.map { it.first.student.id }.distinct()
+                if (uniqueOnly && close.size > 1) continue
+                found += W(start, end, close, best)
+            }
+        }
+        found.sortWith(compareBy<W>({ it.cost / (it.end - it.start) }, { -(it.end - it.start) }))
+        for (w in found) {
+            if ((w.start until w.end).any { used[it] }) continue
+            val k = if (w.cost == 0f && kind == Kind.FUZZY) Kind.PINYIN else kind
+            out += Match(w.ids, t.substring(w.start, w.end), k, w.start, w.cost)
+            for (i in w.start until w.end) used[i] = true
+        }
+    }
+
+    private val numeralReadings = listOf(
+        '零' to "ling", '一' to "yi", '一' to "yao", '二' to "er", '二' to "liang", '三' to "san", '四' to "si",
+        '五' to "wu", '六' to "liu", '七' to "qi", '八' to "ba", '九' to "jiu", '十' to "shi", '百' to "bai",
+    )
+    private val haoChars = setOf('号', '好', '浩', '豪', '耗', '毫', '郝', '昊', '皓')
+
+    /** 识别器把数字写成同音/近音字（是→四/十，留→六，林→零），以“号”结尾时按读音还原 */
+    private fun numbersBySound(t: String, used: BooleanArray, out: MutableList<Match>) {
+        var i = 0
+        while (i < t.length) {
+            if (used[i] || !isHan(t[i])) { i++; continue }
+            // 找到以“号”结尾、前面全是“可能是数字”的字的片段
+            var j = i
+            val options = ArrayList<List<Pair<Char, Int>>>() // 每个字的候选数字及代价（0=本来就是该数字/读音完全一致）
+            while (j < t.length && !used[j] && t[j] !in haoChars && j - i < 6) {
+                val c = t[j]
+                val opts = numeralOptions(c)
+                if (opts.isEmpty()) break
+                options += opts
+                j++
+            }
+            val endsWithHao = j < t.length && t[j] in haoChars && options.isNotEmpty()
+            val allRealNumerals = (i until j).all { t[it] in "零〇一幺二两三四五六七八九十百" }
+            if (!endsWithHao || allRealNumerals) { i++; continue }
+            // 枚举组合（最多 64 种），取“符合数字语法、名单里存在、替换最少”的解释
+            var best: Pair<List<String>, Int>? = null
+            fun dfs(k: Int, acc: StringBuilder, cost: Int) {
+                if (best != null && cost >= best!!.second) return
+                if (k == options.size) {
+                    val s = acc.toString()
+                    val segs = cnNumber.findAll(s).toList()
+                    if (segs.joinToString("") { it.value } != s) return
+                    val pieces = segs.map { cnToNumber(it.value) }
+                    // “…号”前面通常只是一个学号：拆成多个数要额外付出代价
+                    val total = cost + 3 * (pieces.size - 1)
+                    if (pieces.all { lookupNo(it).isNotEmpty() } && (best == null || total < best!!.second)) best = pieces to total
+                    return
+                }
+                for ((ch, c) in options[k]) { acc.append(ch); dfs(k + 1, acc, cost + c); acc.setLength(acc.length - 1) }
+            }
+            dfs(0, StringBuilder(), 0)
+            val b = best
+            if (b != null) {
+                for (p in b.first) out += Match(lookupNo(p).map { it.id }, t.substring(i, j + 1) + "→" + p, Kind.NUMBER_SOUND, i)
+                for (k in i..j) used[k] = true
+                i = j + 1
+            } else i++
+        }
+    }
+
+    private fun numeralOptions(c: Char): List<Pair<Char, Int>> {
+        val rd = readings(c)
+        if (rd.isEmpty()) return emptyList()
+        val res = LinkedHashMap<Char, Int>()
+        for ((n, r) in numeralReadings) {
+            val d = rd.minOf { PinyinSim.syllable(it, r) }
+            val cost = when {
+                c == n -> 0
+                d == 0f -> 1
+                d <= 0.3f -> 2
+                else -> continue
+            }
+            if ((res[n] ?: Int.MAX_VALUE) > cost) res[n] = cost
+        }
+        return res.map { it.key to it.value }
     }
 
     private fun lookupNo(n: String): List<Student> {
@@ -196,22 +301,6 @@ class VoiceParser(
             }
             for (i in last until s.length) put(s[i], i, i + 1, false)
             return Converted(sb.toString(), origin.toIntArray(), originEnd.toIntArray(), positional.toBooleanArray())
-        }
-
-        /** 南北口音/识别常见混淆的拼音归一 */
-        fun fuzzy(sy: String): String {
-            var s = sy
-            s = when {
-                s.startsWith("zh") -> "z" + s.substring(2)
-                s.startsWith("ch") -> "c" + s.substring(2)
-                s.startsWith("sh") -> "s" + s.substring(2)
-                s.startsWith("n") && !s.startsWith("ng") -> "l" + s.substring(1)
-                else -> s
-            }
-            if (s.endsWith("ing")) s = s.dropLast(1)
-            else if (s.endsWith("eng")) s = s.dropLast(1)
-            else if (s.endsWith("ang")) s = s.dropLast(1)
-            return s
         }
     }
 }
