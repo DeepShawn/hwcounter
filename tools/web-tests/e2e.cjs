@@ -28,6 +28,7 @@ function mock(route) {
     const b = JSON.parse(req.postData()); if (b.password !== 'right-password') return json(400, { error: 'invalid_grant', error_description: 'Invalid login credentials' });
     return json(200, { access_token: 'tok', refresh_token: 'ref', expires_in: 3600, user: { id: UID, email: b.email } });
   }
+  if (p.startsWith('/auth/v1/user') && req.method() === 'PUT') { db.newPassword = JSON.parse(req.postData()).password; return json(200, { id: UID }); }
   if (p.startsWith('/rest/v1/hw_snapshots') && req.method() === 'GET') {
     if (url.searchParams.get('public_read') === 'eq.true') return json(200, db.row.public_read && !auth ? [{ data: db.row.data, version: db.row.version, updated_at: db.row.updated_at }] : db.row.public_read ? [db.row] : []);
     if (!auth) return json(401, { message: 'JWT required' });
@@ -122,13 +123,26 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check(merged.students.some((s) => s.id === 's9') && merged.assignments[0].statuses.s1 === 'LEAVE' && db.pushes.slice(pushesBefore).length === 1, '合并后上传：云端同时保留“其它设备”加的新同学和本机的语音登记');
   await page.click('.hero .icon-btn');
 
-  // 6) 退出 → 回到预览
+  // 6) 修改密码（旧密码校验 + 两次新密码一致）
   await page.click('.tabs button:has-text("设置")');
+  await page.click('button:has-text("修改密码")');
+  await page.fill('.modal input[placeholder="旧密码"]', 'wrong');
+  await page.fill('.modal input[placeholder^="新密码"]', 'new-pass-1');
+  await page.fill('.modal input[placeholder="再输一次新密码"]', 'new-pass-1');
+  await page.click('.modal button:has-text("确认修改")');
+  await page.waitForSelector('.modal .err:has-text("旧密码不对")');
+  check(!db.newPassword, '旧密码错误 → 提示且不提交新密码');
+  await page.fill('.modal input[placeholder="旧密码"]', 'right-password');
+  await page.click('.modal button:has-text("确认修改")');
+  await page.waitForSelector('text=密码已修改');
+  check(db.newPassword === 'new-pass-1', '旧密码正确 → 新密码提交到 Supabase');
+
+  // 7) 退出 → 回到预览
   await page.click('button:has-text("退出登录")');
   await page.waitForSelector('.ro-banner');
   check(true, '退出登录后回到预览模式');
 
-  // 7) 手机尺寸截图
+  // 8) 手机尺寸截图
   await page.setViewportSize({ width: 390, height: 844 });
   await page.click('.tabs button:has-text("首页")');
   await page.screenshot({ path: `${OUT}/6-phone-preview.png` });

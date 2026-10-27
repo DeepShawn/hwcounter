@@ -73,6 +73,7 @@ fun CloudSection(vm: AppViewModel) {
     var showPw by remember { mutableStateOf(false) }
     var history by remember { mutableStateOf<List<HistoryItem>?>(null) }
     var confirmRestore by remember { mutableStateOf<HistoryItem?>(null) }
+    var changingPw by remember { mutableStateOf(false) }
     val fmt = remember { SimpleDateFormat("yyyy年M月d日", Locale.CHINA) }
 
     SectionTitle("☁️ 云端同步", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
@@ -147,13 +148,18 @@ fun CloudSection(vm: AppViewModel) {
                     modifier = Modifier.weight(1f),
                 ) { Text("历史版本") }
             }
-            TextButton(onClick = { scope.launch { vm.sync.signOut() } }) { Text("退出登录（本机数据保留）", color = MaterialTheme.colorScheme.error) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { changingPw = true }) { Text("修改密码") }
+                TextButton(onClick = { scope.launch { vm.sync.signOut() } }) { Text("退出登录（本机数据保留）", color = MaterialTheme.colorScheme.error) }
+            }
         }
         if (st.message.isNotBlank()) {
             Text(st.message, fontSize = 12.sp, color = if (st.error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
         }
         Text("API Key 只保存在本机，不会上传。", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
     }
+
+    if (changingPw) ChangePasswordDialog(vm) { changingPw = false }
 
     history?.let { list ->
         AlertDialog(
@@ -217,3 +223,49 @@ fun CloudConflictDialog(vm: AppViewModel) {
     )
 }
 
+
+/** 修改密码：旧密码 + 两次新密码，直接提交到 Supabase */
+@Composable
+private fun ChangePasswordDialog(vm: AppViewModel, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val kit = LocalKit.current
+    var old by remember { mutableStateOf("") }
+    var new1 by remember { mutableStateOf("") }
+    var new2 by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf<String?>(null) }
+    val pwOpts = KeyboardOptions(keyboardType = KeyboardType.Password)
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text("🔑 修改密码") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(old, { old = it }, label = { Text("旧密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = pwOpts, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(new1, { new1 = it }, label = { Text("新密码（至少 6 位）") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = pwOpts, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(new2, { new2 = it }, label = { Text("再输一次新密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = pwOpts, modifier = Modifier.fillMaxWidth())
+                Text("这个账号和你的游戏共用，改完后游戏里也用新密码登录。", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                err?.let { Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            Button(enabled = !busy && old.isNotEmpty() && new1.isNotEmpty(), onClick = {
+                err = when {
+                    new1.length < 6 -> "新密码至少 6 位"
+                    new1 != new2 -> "两次输入的新密码不一样"
+                    new1 == old -> "新密码不能和旧密码一样"
+                    else -> null
+                }
+                if (err == null) {
+                    busy = true
+                    scope.launch {
+                        runCatching { vm.sync.changePassword(old, new1) }
+                            .onSuccess { kit.toast("✅ 密码已修改"); onDismiss() }
+                            .onFailure { err = it.message ?: "修改失败" }
+                        busy = false
+                    }
+                }
+            }) { Text(if (busy) "提交中…" else "确认修改") }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("取消") } },
+    )
+}

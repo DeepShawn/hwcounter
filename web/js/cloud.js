@@ -15,6 +15,7 @@ function friendly(status, body) {
   if (l.includes('email not confirmed')) return '邮箱还没验证：请到邮箱里点确认链接后再登录';
   if (l.includes('already registered')) return '这个邮箱已经注册过了，直接登录即可';
   if (l.includes('password should be at least') || l.includes('weak_password')) return '密码太短或太简单（至少 6 位）';
+  if (l.includes('same_password') || l.includes('should be different')) return '新密码不能和旧密码一样';
   if (l.includes('rate limit') || status === 429) return '操作太频繁，请稍后再试';
   if (l.includes('invalid email') || l.includes('unable to validate email')) return '邮箱格式不正确';
   return `出错了（${status}）：${raw || '未知错误'}`;
@@ -67,6 +68,16 @@ export const api = {
   },
   async recover(email) {
     const r = await http('POST', '/auth/v1/recover', { email: email.trim() });
+    if (!r.ok) throw new Error(friendly(r.status, r.json));
+  },
+  /** 修改密码：先用旧密码验证身份，再提交新密码 */
+  async changePassword(oldPw, newPw) {
+    const s = session();
+    if (!s) throw new Error('请先登录云端账号');
+    const c = await http('POST', '/auth/v1/token?grant_type=password', { email: s.email, password: oldPw });
+    if (!c.ok) throw new Error(c.status === 400 ? '旧密码不对' : friendly(c.status, c.json));
+    const ns = toSession(c.json, s.email) || s; save(SESSION_KEY, ns);
+    const r = await http('PUT', '/auth/v1/user', { password: newPw }, ns.accessToken);
     if (!r.ok) throw new Error(friendly(r.status, r.json));
   },
   async signOut() {

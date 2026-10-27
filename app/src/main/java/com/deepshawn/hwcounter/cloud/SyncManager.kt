@@ -156,6 +156,11 @@ class SyncManager(
         post("重置密码邮件已发送到 $email")
     }
 
+    suspend fun changePassword(old: String, new: String) {
+        client.changePassword(old, new)
+        post("密码已修改，其它设备下次需要用新密码登录")
+    }
+
     suspend fun signOut() {
         client.signOut()
         setMeta(SyncMeta(auto = meta.auto))

@@ -90,6 +90,8 @@ class CloudClient(
             "rate limit" in l || r.code == 429 -> "操作太频繁，请稍后再试"
             "invalid email" in l || "unable to validate email" in l -> "邮箱格式不正确"
             "jwt expired" in l -> "登录已过期，请重新登录"
+            "same_password" in l || "should be different" in l -> "新密码不能和旧密码一样"
+            "reauthentication" in l -> "需要重新验证身份：请退出后重新登录再改密码"
             else -> "出错了（${r.code}）：$raw"
         }
     }
@@ -129,6 +131,17 @@ class CloudClient(
 
     suspend fun recover(email: String) = withContext(Dispatchers.IO) {
         val r = http("POST", "/auth/v1/recover", buildJsonObject { put("email", email.trim()) }.toString())
+        if (r.code !in 200..299) throw CloudException(friendly(r), r.code)
+    }
+
+    /** 修改密码：先用旧密码验证身份，再提交新密码（新密码只发给 Supabase，不在本机保存） */
+    suspend fun changePassword(oldPassword: String, newPassword: String) = withContext(Dispatchers.IO) {
+        val s = loadSession() ?: throw CloudException("请先登录云端账号", 401)
+        val check = http("POST", "/auth/v1/token?grant_type=password", buildJsonObject { put("email", s.email); put("password", oldPassword) }.toString())
+        if (check.code !in 200..299) throw CloudException(if (check.code == 400) "旧密码不对" else friendly(check), check.code)
+        val fresh = parseSession(check.body, s.email)?.let { if (it.userId.isEmpty()) it.copy(userId = s.userId) else it } ?: s
+        saveSession(fresh)
+        val r = http("PUT", "/auth/v1/user", buildJsonObject { put("password", newPassword) }.toString(), fresh.accessToken)
         if (r.code !in 200..299) throw CloudException(friendly(r), r.code)
     }
 

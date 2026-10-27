@@ -487,6 +487,7 @@ function Scores({ s }) {
 function Settings({ s }) {
   const { data, update, say, sync, setSync, runSync, onLogin, onLogout } = s;
   const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [hist, setHist] = useState(null);
+  const [pwBox, setPwBox] = useState(null);
   const m = meta(); const set = (fn) => update((d) => ({ ...d, settings: fn(d.settings) }), false);
   const doAuth = async (kind) => {
     setSync((x) => ({ ...x, busy: true, msg: kind === 'in' ? '正在登录…' : '正在注册…', error: false }));
@@ -514,7 +515,8 @@ function Settings({ s }) {
         <div class="actions"><button class="btn" disabled=${sync.busy} onClick=${runSync}>立即同步</button><button class="btn ghost" onClick=${async () => { try { setHist(await api.history()); } catch (e) { say(e.message); } }}>历史版本</button></div>
         <label class="row between"><span><b>允许未登录预览</b><div class="muted tiny">打开后，任何人不登录也能只读查看你的班级数据（学生姓名、作业、积分）；关闭即恢复私密</div></span>
           <input type="checkbox" checked=${sync.publicRead !== false} disabled=${sync.publicRead == null} onChange=${async (e) => { const v = e.target.checked; try { await api.setPublic(v); setMeta({ ...meta(), previewInit: true }); setSync((x) => ({ ...x, publicRead: v })); say(v ? '已开放未登录预览' : '已关闭预览，数据恢复私密'); } catch (err) { say(err.message); } }} /></label>
-        <button class="link danger" onClick=${async () => { await api.signOut(); onLogout(); }}>退出登录</button>`}
+        <div class="actions"><button class="link" onClick=${() => setPwBox({ old: '', n1: '', n2: '', err: '', busy: false })}>修改密码</button>
+        <button class="link danger" onClick=${async () => { await api.signOut(); onLogout(); }}>退出登录</button></div>`}
       ${sync.msg && html`<div class=${'small ' + (sync.error ? 'err' : 'muted')}>${sync.msg}</div>`}
     </div>
     <div class="section">🎨 主题</div>
@@ -530,6 +532,19 @@ function Settings({ s }) {
       <input type="file" accept=".json,application/json" ref=${fileRef} style="display:none" onChange=${async (e) => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; try { const d = normalizeData(JSON.parse(await f.text())); update(() => withLocalKey(d, data)); say('已从备份恢复', true); } catch { say('文件格式不正确'); } }} />
     </div><div class="muted tiny">备份文件与安卓版通用。</div></div>
     <div class="muted tiny center pad">作业通 网页版 · 数据保存在本浏览器${sync.email ? '并同步到云端' : ''}</div>
+    ${pwBox && html`<${Modal} title="🔑 修改密码" onClose=${() => !pwBox.busy && setPwBox(null)}>
+      <input class="input" type="password" placeholder="旧密码" value=${pwBox.old} onInput=${(e) => setPwBox({ ...pwBox, old: e.target.value })} />
+      <input class="input" type="password" placeholder="新密码（至少 6 位）" value=${pwBox.n1} onInput=${(e) => setPwBox({ ...pwBox, n1: e.target.value })} />
+      <input class="input" type="password" placeholder="再输一次新密码" value=${pwBox.n2} onInput=${(e) => setPwBox({ ...pwBox, n2: e.target.value })} />
+      <div class="muted tiny">这个账号和你的游戏共用，改完后游戏里也用新密码登录。</div>
+      ${pwBox.err && html`<div class="small err">${pwBox.err}</div>`}
+      <div class="actions"><button class="btn" disabled=${pwBox.busy || !pwBox.old || !pwBox.n1} onClick=${async () => {
+        const err = pwBox.n1.length < 6 ? '新密码至少 6 位' : pwBox.n1 !== pwBox.n2 ? '两次输入的新密码不一样' : pwBox.n1 === pwBox.old ? '新密码不能和旧密码一样' : '';
+        if (err) { setPwBox({ ...pwBox, err }); return; }
+        setPwBox({ ...pwBox, busy: true, err: '' });
+        try { await api.changePassword(pwBox.old, pwBox.n1); setPwBox(null); say('✅ 密码已修改'); } catch (e) { setPwBox((x) => ({ ...x, busy: false, err: e.message })); }
+      }}>${pwBox.busy ? '提交中…' : '确认修改'}</button></div>
+    </${Modal}>`}
     ${hist && html`<${Modal} title="☁️ 云端历史版本" onClose=${() => setHist(null)}>
       ${!hist.length && html`<div class="muted">还没有历史版本（每次云端被覆盖前自动保存一份，最多 30 份）</div>`}
       ${hist.map((h0) => html`<div class="card row" onClick=${async () => { if (!confirm(`恢复 v${h0.version}？本机数据会替换为这个版本并上传为最新版`)) return; try { const d = withLocalKey(normalizeData(await api.historyData(h0.id)), data); update(() => d); await pushAs(d, -1); setHist(null); say('已恢复该历史版本'); } catch (e) { say(e.message); } }}>
