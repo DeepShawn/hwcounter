@@ -33,15 +33,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 云端同步（Supabase）：本地每次改动后防抖上传；回到前台时检查云端 */
     // 登录/退出时同步切换数据（必须在首次同步开始前完成，避免把预览数据当成本机数据上传）
-    val sync = com.deepshawn.hwcounter.cloud.SyncManager(app, viewModelScope, json, { _data.value }, { d -> update { d } }) { loggedIn ->
+    val sync: com.deepshawn.hwcounter.cloud.SyncManager = com.deepshawn.hwcounter.cloud.SyncManager(app, viewModelScope, json, { _data.value }, { d: AppData -> update { d } }) { loggedIn: Boolean ->
         if (loggedIn) enterEditMode() else enterPreviewMode()
     }
 
-    private val _readOnly = MutableStateFlow(!sync.loggedIn)
+    private val _readOnly: MutableStateFlow<Boolean> = MutableStateFlow(!sync.loggedIn)
     /** 未登录 = 预览模式（只读）；登录后才能修改 */
     val readOnly: StateFlow<Boolean> = _readOnly.asStateFlow()
 
-    private val _data = MutableStateFlow(if (sync.loggedIn) load() else loadPreview())
+    private val _data: MutableStateFlow<AppData> = MutableStateFlow(if (sync.loggedIn) load() else loadPreview())
     val data: StateFlow<AppData> = _data.asStateFlow()
 
     /** 给界面的提示（如“预览模式：登录后才能修改”） */

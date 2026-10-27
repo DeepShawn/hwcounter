@@ -98,7 +98,7 @@ class SyncManager(
         _state.value = stateFromMeta(msg, error, busy, c.conflict, c.conflictVersion).copy(publicRead = c.publicRead)
     }
 
-    val loggedIn get() = meta.session != null
+    val loggedIn: Boolean get() = meta.session != null
 
     /** 上传前去掉只属于本机的东西（AI API Key） */
     private fun strip(d: AppData) = d.copy(settings = d.settings.copy(ai = d.settings.ai.copy(apiKey = "")))
