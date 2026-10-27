@@ -28,14 +28,68 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private val file = File(app.filesDir, "hwcounter.json")
-    private val _data = MutableStateFlow(load())
-    val data: StateFlow<AppData> = _data.asStateFlow()
-
-    private val undoStack = ArrayDeque<AppData>()
+    /** 未登录预览时缓存的云端公开数据（与本机自己的数据分开存放，互不覆盖） */
+    private val previewFile = File(app.filesDir, "preview_cache.json")
 
     /** 云端同步（Supabase）：本地每次改动后防抖上传；回到前台时检查云端 */
-    val sync = com.deepshawn.hwcounter.cloud.SyncManager(app, viewModelScope, json, { _data.value }) { d -> update { d } }
+    // 登录/退出时同步切换数据（必须在首次同步开始前完成，避免把预览数据当成本机数据上传）
+    val sync = com.deepshawn.hwcounter.cloud.SyncManager(app, viewModelScope, json, { _data.value }, { d -> update { d } }) { loggedIn ->
+        if (loggedIn) enterEditMode() else enterPreviewMode()
+    }
+
+    private val _readOnly = MutableStateFlow(!sync.loggedIn)
+    /** 未登录 = 预览模式（只读）；登录后才能修改 */
+    val readOnly: StateFlow<Boolean> = _readOnly.asStateFlow()
+
+    private val _data = MutableStateFlow(if (sync.loggedIn) load() else loadPreview())
+    val data: StateFlow<AppData> = _data.asStateFlow()
+
+    /** 给界面的提示（如“预览模式：登录后才能修改”） */
+    val notices = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    private val undoStack = ArrayDeque<AppData>()
     private var saveJob: Job? = null
+
+    init {
+        if (!sync.loggedIn) viewModelScope.launch { refreshPreview() }
+    }
+
+    private fun loadPreview(): AppData {
+        val local = load()
+        val cached = runCatching { json.decodeFromString<AppData>(previewFile.readText()) }.getOrNull()
+        return (cached ?: AppData()).copy(settings = local.settings)
+    }
+
+    /** 拉取老师公开的预览数据（未登录时） */
+    suspend fun refreshPreview() {
+        if (sync.loggedIn) return
+        val remote = runCatching { sync.pullPublic() }.getOrNull() ?: return
+        withContext(Dispatchers.IO) { runCatching { previewFile.writeText(json.encodeToString(remote)) } }
+        if (sync.loggedIn) return
+        val cur = _data.value
+        _data.value = remote.copy(
+            settings = cur.settings,
+            currentClassId = cur.currentClassId?.takeIf { id -> remote.classes.any { it.id == id } } ?: remote.currentClassId,
+        )
+    }
+
+    private suspend fun enterEditMode() {
+        val d = withContext(Dispatchers.IO) { load() }
+        undoStack.clear()
+        _data.value = d
+        _readOnly.value = false
+    }
+
+    private suspend fun enterPreviewMode() {
+        undoStack.clear()
+        _readOnly.value = true
+        _data.value = withContext(Dispatchers.IO) { loadPreview() }
+        refreshPreview()
+    }
+
+    fun onResume() {
+        if (sync.loggedIn) sync.onResume() else viewModelScope.launch { refreshPreview() }
+    }
 
     private fun load(): AppData {
         return try {
@@ -65,6 +119,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val old = _data.value
         val new = f(old)
         if (new == old) return
+        if (_readOnly.value) {
+            // 预览模式：班级数据只读；只允许切换班级、改主题等本机显示设置
+            if (new.classes != old.classes) {
+                notices.tryEmit("👀 预览模式：登录后才能修改")
+                return
+            }
+            _data.value = new
+            viewModelScope.launch(Dispatchers.IO) {
+                val main = load()
+                runCatching { file.writeText(json.encodeToString(main.copy(settings = new.settings))) }
+            }
+            return
+        }
         if (undoable) {
             undoStack.addLast(old)
             while (undoStack.size > 30) undoStack.removeFirst()
@@ -77,6 +144,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val canUndo: Boolean get() = undoStack.isNotEmpty()
 
     fun undo(): Boolean {
+        if (_readOnly.value) return false
         val prev = undoStack.removeLastOrNull() ?: return false
         _data.value = prev
         persist()
@@ -204,6 +272,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun exportBackup(): String = Json { prettyPrint = true; encodeDefaults = true }.encodeToString(_data.value)
 
     suspend fun restoreBackup(text: String): Boolean = withContext(Dispatchers.Default) {
+        if (_readOnly.value) {
+            notices.tryEmit("👀 预览模式：登录后才能恢复备份")
+            return@withContext false
+        }
         try {
             val d = json.decodeFromString<AppData>(text)
             withContext(Dispatchers.Main) { update { d } }

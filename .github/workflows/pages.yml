@@ -1,0 +1,45 @@
+name: Deploy Web (GitHub Pages)
+
+on:
+  push:
+    branches: [ "ccr-2f1ebcc5-13bb2h", "main" ]
+    paths: [ "web/**", "tools/web-tests/**", ".github/workflows/pages.yml" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test voice parser (real pinyin data)
+        run: node tools/web-tests/voice.test.mjs
+
+      - name: End-to-end test (Chromium, mocked Supabase)
+        run: |
+          npm i --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+          PW=$PWD/node_modules/playwright OUT=$RUNNER_TEMP/e2e node tools/web-tests/e2e.cjs
+
+      - name: Stamp build version
+        run: sed -i "s/hwcounter-v1/hwcounter-${GITHUB_SHA::7}/" web/sw.js
+
+      - name: Publish to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "deploy web ${{ github.sha }}"

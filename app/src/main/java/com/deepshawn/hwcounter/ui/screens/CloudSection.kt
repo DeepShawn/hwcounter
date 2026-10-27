@@ -78,7 +78,7 @@ fun CloudSection(vm: AppViewModel) {
     SectionTitle("☁️ 云端同步", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
     AppCard(Modifier.padding(horizontal = 16.dp)) {
         if (st.email == null) {
-            Text("登录后数据自动备份到云端，并在安卓、iPad、网页版之间同步。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("现在是预览模式（只读）。登录后才能修改，数据自动在安卓、iPad、网页版之间同步。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 email, { email = it.trim() }, label = { Text("邮箱") }, singleLine = true,
@@ -128,6 +128,16 @@ fun CloudSection(vm: AppViewModel) {
                     Text("改动后几秒自动上传；回到 App 时检查其它设备的更新", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Switch(st.auto, { vm.sync.setAuto(it) })
+            }
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("允许未登录预览")
+                    Text("打开后，任何人不登录也能只读查看你的班级数据（学生姓名、作业、积分）；关闭即恢复私密", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(
+                    st.publicRead != false, enabled = st.publicRead != null && !st.busy,
+                    onCheckedChange = { v -> scope.launch { runCatching { vm.sync.setPublic(v) }.onFailure { kit.toast(it.message ?: "设置失败") } } },
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(enabled = !st.busy, onClick = { scope.launch { vm.sync.syncNow() } }, modifier = Modifier.weight(1f)) { Text("立即同步") }

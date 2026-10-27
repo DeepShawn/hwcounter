@@ -34,6 +34,8 @@ data class SyncState(
     /** 两边都改过：等待老师选择 */
     val conflict: AppData? = null,
     val conflictVersion: Long = 0,
+    /** 云端是否开放了“未登录预览”（null = 未知） */
+    val publicRead: Boolean? = null,
 )
 
 @Serializable
@@ -45,6 +47,8 @@ private data class SyncMeta(
     val syncedHash: String = "",
     val lastSyncAt: Long = 0,
     val auto: Boolean = true,
+    /** 是否已按默认值开启过“未登录预览” */
+    val previewInit: Boolean = false,
 )
 
 /**
@@ -59,6 +63,8 @@ class SyncManager(
     private val json: Json,
     private val current: () -> AppData,
     private val apply: (AppData) -> Unit,
+    /** 登录（true）/ 退出（false）时通知：切换可编辑数据与预览数据 */
+    private val onAuthChanged: suspend (Boolean) -> Unit,
 ) {
     private val file = File(ctx.filesDir, "cloud_sync.json")
     private val metaJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -86,10 +92,10 @@ class SyncManager(
         runCatching { file.writeText(metaJson.encodeToString(m)) }
     }
 
-    /** 更新提示文字，保留尚未处理的冲突 */
+    /** 更新提示文字，保留尚未处理的冲突与预览开关状态 */
     private fun post(msg: String, error: Boolean = false, busy: Boolean = false) {
         val c = _state.value
-        _state.value = stateFromMeta(msg, error, busy, c.conflict, c.conflictVersion)
+        _state.value = stateFromMeta(msg, error, busy, c.conflict, c.conflictVersion).copy(publicRead = c.publicRead)
     }
 
     val loggedIn get() = meta.session != null
@@ -115,6 +121,7 @@ class SyncManager(
             client.signIn(email, password)
             // 新账号/新设备：基于版本 0 开始，第一次同步会判断要不要合并
             setMeta(meta.copy(baseVersion = 0, syncedHash = "", lastSyncAt = 0))
+            onAuthChanged(true)
             post("登录成功")
             syncNow()
         } catch (e: Exception) {
@@ -130,6 +137,7 @@ class SyncManager(
             val s = client.signUp(email, password)
             return if (s != null) {
                 setMeta(meta.copy(baseVersion = 0, syncedHash = "", lastSyncAt = 0))
+                onAuthChanged(true)
                 post("注册成功")
                 syncNow()
                 true
@@ -151,7 +159,8 @@ class SyncManager(
     suspend fun signOut() {
         client.signOut()
         setMeta(SyncMeta(auto = meta.auto))
-        _state.value = SyncState(auto = meta.auto, message = "已退出登录（本机数据保留）")
+        _state.value = SyncState(auto = meta.auto, message = "已退出登录，回到预览模式（本机数据保留）")
+        onAuthChanged(false)
     }
 
     fun setAuto(on: Boolean) {
@@ -187,6 +196,7 @@ class SyncManager(
             val localChanged = localHash != meta.syncedHash
             val localEmpty = local.classes.isEmpty()
             val remote = client.pull()
+            if (remote?.publicRead != null) _state.value = _state.value.copy(publicRead = remote.publicRead)
             when {
                 remote == null -> {
                     if (localEmpty) { post("云端还没有数据"); return }
@@ -207,6 +217,7 @@ class SyncManager(
                     _state.value = stateFromMeta("本机和云端都有改动，请选择怎么处理", conflict = r, conflictVersion = remote.version)
                 }
             }
+            ensurePreviewDefault()
         } catch (e: ConflictException) {
             // 上传瞬间被其它设备抢先：下一轮会走冲突/下载逻辑
             post("云端刚被其它设备更新，正在重新比对…", busy = true)
@@ -257,6 +268,25 @@ class SyncManager(
             post(e.message ?: "处理失败", error = true)
         }
     }
+
+    /** 按老师的要求：账号第一次同步后默认开放“未登录预览”（之后以老师的开关为准） */
+    private suspend fun ensurePreviewDefault() {
+        if (meta.previewInit || _state.value.conflict != null) return
+        runCatching { client.setPublic(true) }.onSuccess {
+            setMeta(meta.copy(previewInit = true))
+            _state.value = _state.value.copy(publicRead = true)
+        }
+    }
+
+    suspend fun setPublic(flag: Boolean) {
+        client.setPublic(flag)
+        setMeta(meta.copy(previewInit = true))
+        _state.value = _state.value.copy(publicRead = flag)
+        post(if (flag) "已开放未登录预览" else "已关闭预览，数据恢复私密")
+    }
+
+    /** 未登录时读取公开预览 */
+    suspend fun pullPublic(): AppData? = client.pullPublic()?.let { decode(it.data) }
 
     suspend fun history() = client.history()
 

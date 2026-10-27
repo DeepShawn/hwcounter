@@ -23,6 +23,11 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -49,6 +54,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -98,10 +104,10 @@ sealed interface Route {
     data class StudentDetail(val id: String) : Route
 }
 
-class Nav(private val stack: MutableList<Route>) {
+class Nav(private val stack: MutableList<Route>, private val canOpen: (Route) -> Boolean = { true }) {
     val current: Route get() = stack.last()
     val depth: Int get() = stack.size
-    fun push(r: Route) { stack.add(r) }
+    fun push(r: Route) { if (canOpen(r)) stack.add(r) }
     fun pop(): Boolean = if (stack.size > 1) { stack.removeAt(stack.lastIndex); true } else false
     fun replace(r: Route) { stack.removeAt(stack.lastIndex); stack.add(r) }
     fun tab(r: Route) { stack.clear(); stack.add(r) }
@@ -159,8 +165,15 @@ val LocalKit = staticCompositionLocalOf<UiKit> { error("no kit") }
 @Composable
 fun App(vm: AppViewModel, data: AppData) {
     val stack = remember { mutableStateListOf<Route>(Route.Home) }
-    val nav = remember { Nav(stack) }
     val snack = remember { SnackbarHostState() }
+    val readOnly by vm.readOnly.collectAsStateWithLifecycle()
+    // 预览模式下，只用于登记/计数的页面不让进
+    val nav = remember {
+        Nav(stack) { r ->
+            val editOnly = r is Route.Recognize || r is Route.Live || r is Route.Voice || r is Route.Spine || r is Route.Stack || r is Route.Paper
+            if (editOnly && vm.readOnly.value) { vm.notices.tryEmit("👀 预览模式：登录后才能使用"); false } else true
+        }
+    }
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     var confetti by remember { mutableIntStateOf(0) }
@@ -170,6 +183,8 @@ fun App(vm: AppViewModel, data: AppData) {
             if (latestData.settings.confetti) confetti++
         }
     }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) { vm.notices.collect { kit.toast(it) } }
 
     BackHandler(enabled = stack.size > 1) { nav.pop() }
     // 回到根后再按返回：若不在首页则先回首页
@@ -183,6 +198,8 @@ fun App(vm: AppViewModel, data: AppData) {
             Scaffold(
                 snackbarHost = { SnackbarHost(snack) },
                 bottomBar = {
+                  androidx.compose.foundation.layout.Column {
+                    if (readOnly) PreviewBanner { nav.tab(Route.Settings) }
                     if (topLevel) {
                         NavigationBar {
                             tabs.forEach { t ->
@@ -196,6 +213,7 @@ fun App(vm: AppViewModel, data: AppData) {
                             }
                         }
                     }
+                  }
                 },
             ) { pad ->
                 Box(Modifier.fillMaxSize().padding(bottom = pad.calculateBottomPadding())) {
@@ -290,5 +308,20 @@ fun rememberPhotoLauncher(onPhotos: (List<Uri>) -> Unit): PhotoLauncher {
                 gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             },
         )
+    }
+}
+
+/** 预览模式横幅：未登录时只读 */
+@Composable
+private fun PreviewBanner(onLogin: () -> Unit) {
+    androidx.compose.foundation.layout.Row(
+        Modifier.fillMaxWidth()
+            .background(androidx.compose.ui.graphics.Color(0xFFFFF4E5))
+            .clickable { onLogin() }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+    ) {
+        Text("👀 预览模式 · 只读　", color = androidx.compose.ui.graphics.Color(0xFF6B4300), fontSize = 13.sp)
+        Text("登录后可修改 ›", color = androidx.compose.ui.graphics.Color(0xFF6B4300), fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
     }
 }

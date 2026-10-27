@@ -16,7 +16,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        vm.sync.onResume()
+        vm.onResume()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

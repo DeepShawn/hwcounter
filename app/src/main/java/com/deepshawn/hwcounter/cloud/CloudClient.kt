@@ -34,7 +34,7 @@ data class Session(
     val email: String,
 )
 
-data class Remote(val data: JsonElement, val version: Long, val updatedAt: String, val device: String?)
+data class Remote(val data: JsonElement, val version: Long, val updatedAt: String, val device: String?, val publicRead: Boolean? = null)
 
 data class HistoryItem(val id: Long, val version: Long, val device: String?, val savedAt: String)
 
@@ -154,7 +154,13 @@ class CloudClient(
     }
 
     suspend fun pull(): Remote? = withContext(Dispatchers.IO) {
-        val r = http("GET", "/rest/v1/hw_snapshots?select=data,version,updated_at,device&limit=1", bearer = token())
+        val tk = token()
+        // 有公开预览策略后，登录用户也能读到别人公开的快照，所以必须按自己的 user_id 过滤
+        val uid = loadSession()?.userId.orEmpty()
+        val filter = if (uid.isNotEmpty()) "&user_id=eq.${URLEncoder.encode(uid, "UTF-8")}" else ""
+        var r = http("GET", "/rest/v1/hw_snapshots?select=data,version,updated_at,device,public_read$filter&limit=1", bearer = tk)
+        // 还没运行 002 迁移（没有 public_read 列）时退回旧查询
+        if (r.code == 400 && "public_read" in r.body) r = http("GET", "/rest/v1/hw_snapshots?select=data,version,updated_at,device$filter&limit=1", bearer = tk)
         if (r.code !in 200..299) throw CloudException(friendly(r), r.code)
         val arr = json.parseToJsonElement(r.body) as? JsonArray ?: return@withContext null
         val o = arr.firstOrNull()?.jsonObject ?: return@withContext null
@@ -163,7 +169,24 @@ class CloudClient(
             version = o["version"]?.jsonPrimitive?.longOrNull ?: 0,
             updatedAt = (o["updated_at"] as? JsonPrimitive)?.contentOrNull ?: "",
             device = (o["device"] as? JsonPrimitive)?.contentOrNull,
+            publicRead = (o["public_read"] as? JsonPrimitive)?.contentOrNull?.toBooleanStrictOrNull(),
         )
+    }
+
+    /** 未登录预览：读取老师公开的那份数据（只读，不需要登录） */
+    suspend fun pullPublic(): Remote? = withContext(Dispatchers.IO) {
+        val r = http("GET", "/rest/v1/hw_snapshots?select=data,version,updated_at&public_read=eq.true&order=updated_at.desc&limit=1")
+        if (r.code !in 200..299) throw CloudException(friendly(r), r.code)
+        val o = (json.parseToJsonElement(r.body) as? JsonArray)?.firstOrNull()?.jsonObject ?: return@withContext null
+        Remote(o["data"] ?: return@withContext null, o["version"]?.jsonPrimitive?.longOrNull ?: 0, (o["updated_at"] as? JsonPrimitive)?.contentOrNull ?: "", null, true)
+    }
+
+    /** 开关“允许未登录预览” */
+    suspend fun setPublic(flag: Boolean) = withContext(Dispatchers.IO) {
+        val uid = loadSession()?.userId ?: throw CloudException("请先登录", 401)
+        val r = http("PATCH", "/rest/v1/hw_snapshots?user_id=eq.${URLEncoder.encode(uid, "UTF-8")}",
+            buildJsonObject { put("public_read", flag) }.toString(), token(), mapOf("Prefer" to "return=minimal"))
+        if (r.code !in 200..299) throw CloudException(if ("public_read" in r.body) "需要先在 Supabase 运行 002_public_preview.sql" else friendly(r), r.code)
     }
 
     /** 上传；baseVersion 与云端不一致时抛 ConflictException。-1 表示强制覆盖 */
