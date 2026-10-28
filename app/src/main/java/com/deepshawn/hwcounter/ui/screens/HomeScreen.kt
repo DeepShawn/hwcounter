@@ -140,11 +140,16 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
     val hero = sorted.firstOrNull()
     val todayTarget = c.assignments.filter { isToday(it.createdAt) }.maxByOrNull { it.createdAt }
 
-    fun ensureTarget(): String = todayTarget?.id ?: vm.createAssignment(
-        SimpleDateFormat("M月d日", Locale.CHINA).format(Date()) + " 作业", data.settings.subjects.firstOrNull() ?: "",
-    )
+    // 快捷登记：有今天的作业就直接用；没有就先弹出“新建作业”让老师确认，不再自动添加作业
+    var afterCreate by remember { mutableStateOf<((String) -> Unit)?>(null) }
+    var photoTarget by remember { mutableStateOf<String?>(null) }
+    fun withTarget(go: (String) -> Unit) {
+        if (vm.readOnly.value) { kit.toast("👀 预览模式：登录后才能使用"); return }
+        val t = todayTarget
+        if (t != null) go(t.id) else { afterCreate = go; showNew = true }
+    }
 
-    val photo = rememberPhotoLauncher { uris -> kit.nav.push(Route.Recognize(ensureTarget(), uris)) }
+    val photo = rememberPhotoLauncher { uris -> photoTarget?.let { kit.nav.push(Route.Recognize(it, uris)) } }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
@@ -219,15 +224,15 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
                 maxItemsInEachRow = 3,
             ) {
                 QuickAction("新建作业", Icons.Filled.Add, Color(0xFF4C6EF5), Modifier.weight(1f)) { showNew = true }
-                QuickAction("拍照识别", Icons.Filled.CameraAlt, Color(0xFF12B886), Modifier.weight(1f)) { pendingAction = "photo" }
+                QuickAction("拍照识别", Icons.Filled.CameraAlt, Color(0xFF12B886), Modifier.weight(1f)) { withTarget { id -> photoTarget = id; pendingAction = "photo" } }
                 QuickAction("语音登记", Icons.Filled.Mic, Color(0xFF1098AD), Modifier.weight(1f)) {
-                    kit.nav.push(Route.Voice(ensureTarget()))
+                    withTarget { kit.nav.push(Route.Voice(it)) }
                 }
                 QuickAction("实时扫描", Icons.Filled.DocumentScanner, Color(0xFFF76707), Modifier.weight(1f)) {
-                    kit.nav.push(Route.Live(ensureTarget()))
+                    withTarget { kit.nav.push(Route.Live(it)) }
                 }
                 QuickAction("侧面学号", Icons.Filled.ViewWeek, Color(0xFFE64980), Modifier.weight(1f)) {
-                    kit.nav.push(Route.Spine(ensureTarget()))
+                    withTarget { kit.nav.push(Route.Spine(it)) }
                 }
                 QuickAction("数本数", Icons.Filled.Layers, Color(0xFFAE3EC9), Modifier.weight(1f)) {
                     kit.nav.push(Route.Stack(todayTarget?.id))
@@ -273,7 +278,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
             SectionTitle("全部作业 · ${c.assignments.size}", Modifier.padding(start = 12.dp, end = 12.dp, top = 16.dp))
         }
         if (sorted.isEmpty()) {
-            item { EmptyState("📭", "还没有作业", "点击“新建作业”，或直接“拍照识别”自动创建今天的作业") }
+            item { EmptyState("📭", "还没有作业", "点击“新建作业”开始；用拍照、语音等快捷登记时也会先让你确认新建") }
         }
         items(sorted, key = { it.id }) { a ->
             AssignmentRow(
@@ -291,10 +296,12 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
         PhotoSourceSheet(onDismiss = { pendingAction = null }, onCamera = { pendingAction = null; photo.takePhoto() }, onGallery = { pendingAction = null; photo.pickGallery() })
     }
     if (showNew) {
-        NewAssignmentDialog(data.settings.subjects, onDismiss = { showNew = false }) { t, s ->
+        NewAssignmentDialog(data.settings.subjects, onDismiss = { showNew = false; afterCreate = null }) { t, s ->
             val id = vm.createAssignment(t, s)
             showNew = false
-            kit.nav.push(Route.Assign(id))
+            val next = afterCreate
+            afterCreate = null
+            if (next != null) next(id) else kit.nav.push(Route.Assign(id))
         }
     }
     editA?.let { a ->

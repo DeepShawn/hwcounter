@@ -73,6 +73,9 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.screenshot({ path: `${OUT}/2-preview-assignment.png` });
   await page.click('.hero .icon-btn');
 
+  // 预览模式：快捷“语音登记”不添加作业
+  check((await page.locator('.qa').count()) === 0, '预览模式不显示快捷登记/新建作业按钮');
+
   // 预览模式：不显示名单页，热力图照常显示
   check(!(await page.isVisible('.tabs button:has-text("名单")')), '预览模式不显示“名单”页');
   await page.click('.tabs button:has-text("热力图")');
@@ -103,6 +106,13 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
 
   // 3) 登录后可编辑 + 自动上传
   await page.click('.tabs button:has-text("首页")');
+  // 快捷“语音登记”：没有今天的作业时先弹出新建框，不自动添加作业
+  const n0 = await page.locator('.card.assign').count();
+  await page.click('.qa:has-text("语音登记")');
+  await page.waitForSelector('.modal-title:has-text("新建作业")');
+  await page.click('.modal .icon-btn');
+  await page.waitForTimeout(300);
+  check((await page.locator('.card.assign').count()) === n0, '快捷语音登记不再自动添加作业（取消后作业数不变）');
   await page.click('text=练习册 P32');
   await page.click('.grid .stu:nth-child(2)');
   await page.waitForTimeout(300);

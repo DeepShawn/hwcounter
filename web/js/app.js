@@ -164,7 +164,7 @@ function Modal({ onClose, title, children, wide }) {
 function Home({ s, open }) {
   const { data, update, say } = s;
   const c = currentClass(data);
-  const [newAssign, setNewAssign] = useState(false);
+  const [newAssign, setNewAssign] = useState(false); const [afterNew, setAfterNew] = useState(null);
   const [newClass, setNewClass] = useState(false);
   if (!c && s.readOnly) return html`<div class="page">
     <div class="hero"><div class="hero-big">📚 作业通</div><div>预览模式 · 只读</div></div>
@@ -190,7 +190,12 @@ function Home({ s, open }) {
     </div>
     ${!s.readOnly && html`<div class="quick">
       <button class="qa" onClick=${() => setNewAssign(true)}><span>📝</span>新建作业</button>
-      <button class="qa" onClick=${() => { const t = c.assignments.find((a) => isToday(a.createdAt)); if (t) open({ view: 'voice', id: t.id }); else { const a = mkAssignment(`${today()} 作业`, data.settings.subjects[0] || '', c); update((d) => mapClass(d, c.id, (k) => ({ ...k, assignments: [...k.assignments, a] }))); open({ view: 'voice', id: a.id }); } }}><span>🎙️</span>语音登记</button>
+      <button class="qa" onClick=${() => {
+        // 有今天的作业就直接用；没有就先弹出“新建作业”让老师确认，不再自动添加作业
+        if (s.readOnly) { say('👀 预览模式：登录后才能登记'); return; }
+        const t = c.assignments.find((a) => isToday(a.createdAt));
+        if (t) open({ view: 'voice', id: t.id }); else { setAfterNew('voice'); setNewAssign(true); }
+      }}><span>🎙️</span>语音登记</button>
     </div>`}
     ${!sorted.length && html`<div class="empty">📭 还没有作业，点“新建作业”开始</div>`}
     ${sorted.map((a) => { const sm = summary(c, a); return html`
@@ -203,7 +208,7 @@ function Home({ s, open }) {
         </div>
         <div class="right"><b>${sm.handedIn}/${sm.expected}</b><div class="muted small">${Math.round(sm.rate * 100)}%</div></div>
       </div>`; })}
-    ${newAssign && html`<${AssignDialog} subjects=${data.settings.subjects} onClose=${() => setNewAssign(false)} onSave=${(title, subject) => { const a = mkAssignment(title, subject, c); update((d) => mapClass(d, c.id, (k) => ({ ...k, assignments: [...k.assignments, a] }))); setNewAssign(false); open({ view: 'assign', id: a.id }); }} />`}
+    ${newAssign && html`<${AssignDialog} subjects=${data.settings.subjects} onClose=${() => { setNewAssign(false); setAfterNew(null); }} onSave=${(title, subject) => { const a = mkAssignment(title, subject, c); update((d) => mapClass(d, c.id, (k) => ({ ...k, assignments: [...k.assignments, a] }))); setNewAssign(false); open({ view: afterNew || 'assign', id: a.id }); setAfterNew(null); }} />`}
     ${newClass && html`<${ClassDialog} onClose=${() => setNewClass(false)} onSave=${(name, emoji) => { const nc = { id: newId(), name, emoji, students: [], assignments: [], scores: [] }; update((d) => ({ ...d, classes: [...d.classes, nc], currentClassId: nc.id })); setNewClass(false); say(`已新建 ${name}`); }} />`}
   </div>`;
 }
