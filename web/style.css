@@ -109,3 +109,19 @@ textarea.input { resize: vertical; }
 .heat-cell { display: block; width: 20px; height: 20px; border: 0; border-radius: 4px; cursor: pointer; padding: 0; }
 .heat-rate { padding-left: 6px !important; font-weight: 700; white-space: nowrap; }
 .heat-rate.low { color: #f0475a; }
+
+/* 座位表 */
+.seat-wrap { margin: 6px 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.seat-front { text-align: center; font-weight: 800; letter-spacing: 6px; color: var(--muted); background: var(--card); border: 1px dashed var(--line); border-radius: 12px; padding: 6px; margin: 6px auto; max-width: 260px; }
+.seat-grid { display: grid; gap: 6px; min-width: max-content; justify-content: center; }
+.seat-head { border: 0; background: none; color: var(--muted); font-size: 11px; cursor: pointer; padding: 2px; }
+.seat { min-height: 56px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); color: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px 2px; cursor: pointer; font-size: 13px; }
+.seat b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.seat.empty { background: transparent; border-style: dashed; opacity: 0.6; }
+.seat.sel { outline: 3px solid var(--g1); outline-offset: 1px; }
+.typed { display: flex; gap: 6px; margin: 6px 14px; }
+.typed .input { margin: 0; }
+.typed input.input { flex: 1; min-width: 0; }
+.typed select.input { width: auto; }
+.pickbar { position: sticky; bottom: 70px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 10px; margin: 8px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.15); z-index: 4; }
+.chip.danger { color: #f0475a; }

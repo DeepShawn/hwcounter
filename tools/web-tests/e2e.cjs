@@ -146,6 +146,42 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check(merged.students.some((s) => s.id === 's9') && merged.assignments[0].statuses.s1 === 'LEAVE' && db.pushes.slice(pushesBefore).length === 1, '合并后上传：云端同时保留“其它设备”加的新同学和本机的语音登记');
   await page.click('.hero .icon-btn');
 
+  // 5b) 座位表：粘贴导入 → 交换座位 → 作业里按排登记；输入拼音首字母登记
+  await page.click('.tabs button:has-text("名单")');
+  await page.click('button:has-text("座位表")');
+  await page.fill('.modal textarea', '讲台\n张锦宇\t李子涵\n王芳\t空');
+  await page.click('.modal button:has-text("解析并排座")');
+  await page.waitForSelector('.modal .seat-grid');
+  const seatNames = async () => (await page.locator('.modal .seat-grid .seat').allTextContents()).map((x) => x.replace(/\d+/g, '').trim() || '空');
+  check((await seatNames()).join(' ') === '张锦宇 李子涵 王芳 空', `粘贴导入座位表：${(await seatNames()).join(' ')}`);
+  await page.screenshot({ path: `${OUT}/5b-seating-editor.png` });
+  await page.locator('.modal .seat-grid .seat').nth(2).click();
+  await page.locator('.modal .seat-grid .seat').nth(3).click();
+  check((await seatNames()).join(' ') === '张锦宇 李子涵 空 王芳', '点两个座位互换（含空位）');
+  await page.click('.modal .icon-btn');
+  await page.click('.tabs button:has-text("首页")');
+  await page.click('text=练习册 P32');
+  await page.waitForSelector('.seat-grid');
+  check(true, '有座位表时作业默认按座位表显示');
+  await page.click('.seat-head:has-text("1排")');
+  await page.waitForSelector('.pickbar');
+  check((await page.textContent('.pickbar')).includes('已选 2 人'), '点“1排”选中整排 2 人');
+  await page.click('.pickbar button:has-text("优秀")');
+  await page.waitForTimeout(200);
+  check((await page.locator('.seat-grid .seat').nth(0).textContent()).includes('优秀') && (await page.locator('.seat-grid .seat').nth(1).textContent()).includes('优秀'), '整排登记为优秀');
+  await page.screenshot({ path: `${OUT}/5c-seat-assign.png` });
+  await page.fill('.typed input', 'wf');
+  await page.selectOption('.typed select', 'LATE');
+  await page.click('.typed button');
+  await page.waitForTimeout(200);
+  check((await page.locator('.seat-grid .seat').nth(3).textContent()).includes('迟交'), '输入拼音首字母 wf → 王芳 迟交');
+  await page.fill('.typed input', 'zjy lzh');
+  await page.selectOption('.typed select', 'MISSING');
+  await page.click('.typed button');
+  await page.waitForTimeout(200);
+  check((await page.locator('.seat-grid .seat').nth(0).textContent()).includes('未交') && (await page.locator('.seat-grid .seat').nth(1).textContent()).includes('未交'), '空格连续输入 zjy lzh → 两人都登记');
+  await page.click('.hero .icon-btn');
+
   // 6) 修改密码（旧密码校验 + 两次新密码一致）
   await page.click('.tabs button:has-text("设置")');
   await page.click('button:has-text("修改密码")');

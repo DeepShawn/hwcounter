@@ -5,6 +5,7 @@ import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentS
 import { api, session, meta, setMeta, syncOnce, pushAs, merge, hashData, withLocalKey } from './cloud.js';
 import { createVoiceParser } from './voice.js';
 import { xlsx, ST } from './xlsx.js';
+import { parseSeatingText, seatingFromBoxes, seatingToGrid, autoArrange, rotateSeating, swapSeats, resizeSeating } from './seating.js';
 
 const html = htm.bind(h);
 const DATA_KEY = 'hw.data';
@@ -241,6 +242,8 @@ function AssignView({ s, id, back, open }) {
   const { data, update, say } = s;
   const c = currentClass(data); const a = c?.assignments.find((x) => x.id === id);
   const [filter, setFilter] = useState('ALL'); const [q, setQ] = useState(''); const [sheet, setSheet] = useState(null); const [edit, setEdit] = useState(false);
+  const [view, setView] = useState(c?.seating ? 'seat' : 'card'); const [pick, setPick] = useState(new Set()); const [multi, setMulti] = useState(false);
+  const [typed, setTyped] = useState(''); const [typedAs, setTypedAs] = useState('SUBMITTED'); const [typedRes, setTypedRes] = useState(null);
   const lastRate = useRef(null);
   const rate = a ? summary(c, a).rate : 0; const expected = a ? summary(c, a).expected : 0;
   useEffect(() => { if (!a) back(); }, [a]);
@@ -249,6 +252,19 @@ function AssignView({ s, id, back, open }) {
   if (!a) return null;
   const sm = summary(c, a); const rules = data.settings.rules;
   const setStatus = (ids, st) => update((d) => mapClass(d, c.id, (k) => ({ ...k, assignments: k.assignments.map((x) => { if (x.id !== a.id) return x; const m = { ...x.statuses }; ids.forEach((i) => { if (st === 'NONE') delete m[i]; else m[i] = st; }); return { ...x, statuses: m }; }) })));
+  // 输入拼音首字母 / 学号 / 姓名（空格隔开或连着写都行）登记
+  const submitTyped = () => {
+    const t = typed.trim(); if (!t) return;
+    const parse = createVoiceParser(c.students, { tolerance: [0.6, 1, 1.4][data.settings.voiceFuzzy ?? 1], initials: true });
+    const r = parse(t); const sure = []; const amb = [];
+    for (const m of r.matches) { if (m.ids.length === 1) { if (!sure.includes(m.ids[0])) sure.push(m.ids[0]); } else amb.push(m); }
+    if (sure.length) setStatus(sure, typedAs);
+    const nm = (id) => c.students.find((x) => x.id === id)?.name || '?';
+    setTypedRes({ ok: sure.map(nm), amb, left: r.leftover });
+    if (sure.length) say(`已登记 ${sure.length} 人为“${STATUS[typedAs].label}”：${sure.map(nm).join('、')}`, true); else if (!amb.length) say('没有认出名单里的同学');
+    setTyped('');
+  };
+  const togglePick = (ids) => setPick((p) => { const n = new Set(p); const all = ids.every((i) => n.has(i)); ids.forEach((i) => (all ? n.delete(i) : n.add(i))); return n; });
   const filters = { ALL: ['全部', () => true], NONE: ['未登记', (x) => x === 'NONE'], MISSING: ['未交', (x) => x === 'MISSING' || x === 'NONE'], DONE: ['已交', (x) => ['SUBMITTED', 'EXCELLENT', 'LATE'].includes(x)], LEAVE: ['请假', (x) => x === 'LEAVE'] };
   const list = c.students.filter((st) => filters[filter][1](a.statuses[st.id] || 'NONE') && (!q || st.name.includes(q) || st.no.includes(q)));
   let pressTimer = 0;
@@ -279,11 +295,33 @@ function AssignView({ s, id, back, open }) {
       <button class="chip" onClick=${exportX}>📊 导出 Excel</button>
       <button class="chip" onClick=${shareText}>💬 通报文字</button>
     </div>
+    ${!s.readOnly && html`<form class="typed" onSubmit=${(e) => { e.preventDefault(); submitTyped(); }}>
+      <input class="input" placeholder="⌨️ 输入拼音首字母登记：zjy lzh wf（也可写学号、姓名）" value=${typed} onInput=${(e) => setTyped(e.target.value)} autocapitalize="off" autocomplete="off" />
+      <select class="input" value=${typedAs} onChange=${(e) => setTypedAs(e.target.value)}>${['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'LEAVE'].map((k) => html`<option value=${k}>${STATUS[k].label}</option>`)}</select>
+      <button class="btn" type="submit">登记</button>
+    </form>`}
+    ${typedRes && (typedRes.amb.length > 0 || typedRes.left) && html`<div class="card small">
+      ${typedRes.amb.map((m) => html`<div class="row gap">“${m.heard}”有多位同学：${m.ids.map((id) => { const st = c.students.find((x) => x.id === id); return html`<button class="chip" onClick=${() => { setStatus([id], typedAs); setTypedRes({ ...typedRes, amb: typedRes.amb.filter((x) => x !== m) }); say(`已登记 ${st.name}`, true); }}>${st.name} ${st.no}</button>`; })}</div>`)}
+      ${typedRes.left && html`<div class="muted">没认出：${typedRes.left}</div>`}
+    </div>`}
     <div class="toolbar">
+      ${c.seating && html`<button class=${'chip' + (view === 'seat' ? ' on' : '')} onClick=${() => { setView(view === 'seat' ? 'card' : 'seat'); setPick(new Set()); }}>🪑 座位表</button>`}
       ${Object.entries(filters).map(([k, [l, f]]) => html`<button class=${'chip' + (k === filter ? ' on' : '')} onClick=${() => setFilter(k)}>${l} ${c.students.filter((st) => f(a.statuses[st.id] || 'NONE')).length}</button>`)}
       <input class="input small-input" placeholder="搜索" value=${q} onInput=${(e) => setQ(e.target.value)} />
     </div>
-    <div class="muted small pad">${s.readOnly ? '预览模式：只能查看，登录后可登记' : '点一下切换 已交/未登记 · 长按（或右键）设置状态、加减分、备注'}</div>
+    ${!(view === 'seat' && c.seating) && html`<div class="muted small pad">${s.readOnly ? '预览模式：只能查看，登录后可登记' : '点一下切换 已交/未登记 · 长按（或右键）设置状态、加减分、备注'}</div>`}
+    ${view === 'seat' && c.seating ? html`
+      <div class="muted tiny pad">${s.readOnly ? '' : '点座位切换 已交/未登记；点“排”“列”或开启多选，可整排/整列一起登记'}${!s.readOnly && html` <button class=${'chip' + (multi ? ' on' : '')} onClick=${() => { setMulti(!multi); setPick(new Set()); }}>☑️ 多选</button>`}</div>
+      <${SeatChart} seating=${c.seating} students=${c.students} sel=${(k, st) => st && pick.has(st.id)}
+        cell=${(st) => { if (!st) return { body: '' }; const x = a.statuses[st.id] || 'NONE'; return { style: x === 'NONE' ? {} : { background: STATUS[x].color + '33', borderColor: STATUS[x].color }, body: html`<b>${st.name}</b><span class="tiny" style=${{ color: STATUS[x].color }}>${STATUS[x].label}</span>`, onMenu: () => setSheet(st) }; }}
+        onCell=${(k, st) => { if (!st) return; if (multi || pick.size) { togglePick([st.id]); return; } const x = a.statuses[st.id] || 'NONE'; setStatus([st.id], x === 'NONE' || x === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}
+        onRow=${(r) => { if (s.readOnly) return; const g = seatingToGrid(c.seating, c.students); togglePick(g[r].filter(Boolean)); }}
+        onCol=${(col) => { if (s.readOnly) return; const g = seatingToGrid(c.seating, c.students); togglePick(g.map((row) => row[col]).filter(Boolean)); }} />
+      ${(() => { const un = c.students.filter((x) => c.seating.seats[x.id] == null); return un.length ? html`<div class="muted tiny pad">未入座：${un.map((x) => html`<button class="chip" onClick=${() => { const v = a.statuses[x.id] || 'NONE'; setStatus([x.id], v === 'NONE' || v === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}>${x.name} · ${STATUS[a.statuses[x.id] || 'NONE'].label}</button>`)}</div>` : ''; })()}
+      ${pick.size > 0 && !s.readOnly && html`<div class="pickbar"><b>已选 ${pick.size} 人</b>
+        ${['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'LEAVE', 'NONE'].map((k) => html`<button class="chip" style=${{ borderColor: STATUS[k].color, color: STATUS[k].color }} onClick=${() => { setStatus([...pick], k); say(`已将 ${pick.size} 人设为“${STATUS[k].label}”`, true); setPick(new Set()); }}>${STATUS[k].label}</button>`)}
+        <button class="chip" onClick=${() => setPick(new Set())}>取消</button></div>`}
+    ` : html`
     <div class="grid">${list.map((st) => { const x = a.statuses[st.id] || 'NONE'; const d = ruleOf(rules, x); return html`
       <div class="stu" style=${x === 'NONE' ? {} : { background: STATUS[x].color + '26', borderColor: STATUS[x].color + '66' }}
         onClick=${() => { if (pressTimer === -1) { pressTimer = 0; return; } setStatus([st.id], x === 'NONE' || x === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}
@@ -295,6 +333,7 @@ function AssignView({ s, id, back, open }) {
         <div class="tiny" style=${{ color: STATUS[x].color, fontWeight: 700 }}>${STATUS[x].label}${d ? ` ${signed(d)}` : ''}</div>
         ${a.comments[st.id] && html`<div class="tiny muted">💬 ${a.comments[st.id]}</div>`}
       </div>`; })}</div>
+    `}
     ${!c.students.length && html`<div class="empty">👥 名单为空，去“名单”页导入</div>`}
     ${sheet && html`<${StudentSheet} s=${s} c=${c} a=${a} st=${sheet} onClose=${() => setSheet(null)} setStatus=${setStatus} />`}
     ${edit && html`<${AssignDialog} initial=${a} subjects=${data.settings.subjects} onClose=${() => setEdit(false)} onSave=${(title, subject) => { update((d) => mapClass(d, c.id, (k) => ({ ...k, assignments: k.assignments.map((x) => (x.id === a.id ? { ...x, title, subject } : x)) }))); setEdit(false); }} />`}
@@ -399,10 +438,101 @@ function VoiceView({ s, id, back }) {
   </div>`;
 }
 
+// ---------------- 座位表 ----------------
+/** 座位表格子图：讲台位置、排号（从讲台数起）、列号；cell(id, k) 返回 { style, body } */
+function SeatChart({ seating, students, cell, onCell, onRow, onCol, sel }) {
+  const byId = Object.fromEntries(students.map((x) => [x.id, x]));
+  const grid = seatingToGrid(seating, students); const { rows, cols, frontAtTop } = seating;
+  const front = html`<div class="seat-front">讲 台</div>`;
+  return html`<div class="seat-wrap">
+    ${frontAtTop && front}
+    <div class="seat-grid" style=${{ gridTemplateColumns: `34px repeat(${cols}, minmax(58px, 96px))` }}>
+      <div></div>
+      ${Array.from({ length: cols }, (_, c) => html`<button class="seat-head" onClick=${() => onCol && onCol(c)}>${c + 1}列</button>`)}
+      ${grid.map((row, r) => html`
+        <button class="seat-head" onClick=${() => onRow && onRow(r)}>${frontAtTop ? r + 1 : rows - r}排</button>
+        ${row.map((id, c) => { const k = r * cols + c; const st = id && byId[id]; const v = cell(st, k); return html`
+          <button class=${'seat' + (st ? '' : ' empty') + (sel && sel(k, st) ? ' sel' : '')} style=${v.style || {}} onClick=${() => onCell(k, st)}
+            onContextMenu=${v.onMenu ? (e) => { e.preventDefault(); v.onMenu(); } : undefined}>${v.body}</button>`; })}`)}
+    </div>
+    ${!frontAtTop && front}
+  </div>`;
+}
+
+function SeatingEditor({ s, c, onClose }) {
+  const { update, say } = s;
+  const [sel, setSel] = useState(null); const [pick, setPick] = useState(null); const [text, setText] = useState(''); const [mode, setMode] = useState(c.seating ? '' : 'import');
+  const [cols, setCols] = useState(c.seating?.cols || 8); const [busy, setBusy] = useState(''); const [report, setReport] = useState(null);
+  const fileRef = useRef(); const imgRef = useRef();
+  const seating = c.seating;
+  const save = (fn, msg) => { update((d) => mapClass(d, c.id, (k) => ({ ...k, seating: fn(k.seating) }))); if (msg) say(msg, true); };
+  const applyResult = (r, how) => {
+    const n = Object.keys(r.seating.seats).length;
+    if (!n) { say('没有认出名单里的学生，请检查内容'); return; }
+    save(() => r.seating, `已按${how}排好 ${n} 人`);
+    setReport({ n, unmatched: r.unmatched, unseated: r.unseated.length }); setMode(''); setSel(null);
+  };
+  const doText = (t) => { try { applyResult(parseSeatingText(t, c.students), '座位表'); } catch (e) { say(`解析失败：${e.message}`); } };
+  const doImage = async (f) => {
+    setBusy('准备识别…');
+    try {
+      const { recognizeLines } = await import('./ocr.js');
+      const lines = await recognizeLines(f, (p, m) => setBusy(`${m} ${Math.round(p * 100)}%`));
+      applyResult(seatingFromBoxes(lines, c.students), '照片');
+    } catch (e) { say(e.message || '识别失败'); } finally { setBusy(''); }
+  };
+  const tapSeat = (k, st) => {
+    if (pick) { // 把未入座的同学放到这个座位（原来的人变成未入座）
+      save((x) => { const seats = { ...x.seats }; for (const [id, v] of Object.entries(seats)) if (v === k) delete seats[id]; seats[pick] = k; return { ...x, seats }; });
+      setPick(null); return;
+    }
+    if (sel == null) { setSel(k); return; }
+    if (sel === k) { setSel(null); return; }
+    save((x) => swapSeats(x, sel, k)); setSel(null);
+  };
+  const unseated = seating ? c.students.filter((x) => seating.seats[x.id] == null) : c.students;
+  const selId = seating && sel != null ? Object.keys(seating.seats).find((id) => seating.seats[id] === sel) : null;
+  return html`<${Modal} title="🪑 座位表" wide onClose=${onClose}>
+    <div class="chips">
+      <button class=${'chip' + (mode === 'import' ? ' on' : '')} onClick=${() => setMode(mode === 'import' ? '' : 'import')}>📥 导入座位表</button>
+      <button class="chip" onClick=${() => imgRef.current.click()}>📷 照片识别</button>
+      <button class=${'chip' + (mode === 'auto' ? ' on' : '')} onClick=${() => setMode(mode === 'auto' ? '' : 'auto')}>⚡ 按学号自动排列</button>
+      ${seating && html`<button class="chip" onClick=${() => save((x) => rotateSeating(x), '讲台已换边')}>🔄 讲台换边</button>
+        <button class="chip danger" onClick=${() => { if (confirm('清空座位表？（名单不受影响）')) { save(() => null, '已清空座位表'); setMode('import'); } }}>🗑️ 清空</button>`}
+      <input type="file" ref=${fileRef} accept=".txt,.csv,.json,text/*,application/json" style="display:none" onChange=${async (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) doText(await f.text()); }} />
+      <input type="file" ref=${imgRef} accept="image/*" style="display:none" onChange=${(e) => { const f = e.target.files[0]; e.target.value = ''; if (f) doImage(f); }} />
+    </div>
+    ${busy && html`<div class="card warn small">⏳ ${busy}</div>`}
+    ${mode === 'import' && html`<div class="card">
+      <div class="muted small">每行一排、从讲台那边写起；单元格写<b>姓名或学号</b>，用 Tab（从 Excel 直接复制）、逗号或空格隔开，空位写“空”。可以加一行“讲台”表示讲台位置。也可以拍一张座位表照片，自动识别排列。</div>
+      <textarea class="input" rows="6" value=${text} onInput=${(e) => setText(e.target.value)} placeholder=${'讲台\n张三\t李四\t空\t王五\n赵六\t孙七\t周八\t吴九'}></textarea>
+      <div class="actions"><button class="btn" disabled=${!text.trim()} onClick=${() => doText(text)}>解析并排座</button><button class="btn ghost" onClick=${() => fileRef.current.click()}>从文件导入</button></div>
+    </div>`}
+    ${mode === 'auto' && html`<div class="card row gap">
+      <span>每排</span><input class="input num" type="number" min="1" max="20" value=${cols} onInput=${(e) => setCols(parseInt(e.target.value, 10) || 1)} /><span>人</span>
+      <button class="btn" onClick=${() => { const a = autoArrange(c.students, cols, seating ? seating.frontAtTop : true); save(() => a, `已按学号排成 ${a.rows} 排 × ${a.cols} 列`); setMode(''); setReport(null); }}>排列</button>
+    </div>`}
+    ${report && html`<div class="small ${report.unmatched.length || report.unseated ? 'err' : 'muted'}">已入座 ${report.n} 人${report.unseated ? `，未入座 ${report.unseated} 人` : ''}${report.unmatched.length ? `；没认出：${report.unmatched.slice(0, 12).join('、')}` : ''}</div>`}
+    ${seating && html`
+      <div class="row gap small">
+        <span class="muted">排数</span><button class="chip" onClick=${() => save((x) => resizeSeating(x, x.rows - 1, x.cols))}>－</button><b>${seating.rows}</b><button class="chip" onClick=${() => save((x) => resizeSeating(x, x.rows + 1, x.cols))}>＋</button>
+        <span class="muted">列数</span><button class="chip" onClick=${() => save((x) => resizeSeating(x, x.rows, x.cols - 1))}>－</button><b>${seating.cols}</b><button class="chip" onClick=${() => save((x) => resizeSeating(x, x.rows, x.cols + 1))}>＋</button>
+      </div>
+      <div class="muted tiny">${pick ? '点一个座位，把这位同学放进去' : sel != null ? '再点另一个座位交换（空位也可以）' : '点两个座位互换位置；下方未入座的同学点一下再点座位即可入座'}</div>
+      <${SeatChart} seating=${seating} students=${c.students} sel=${(k) => k === sel}
+        cell=${(st) => ({ body: st ? html`<b>${st.name}</b><span class="tiny muted">${st.no}</span>` : html`<span class="muted tiny">空</span>` })}
+        onCell=${tapSeat} />
+      ${selId && html`<div class="actions"><button class="btn ghost" onClick=${() => { save((x) => { const seats = { ...x.seats }; delete seats[selId]; return { ...x, seats }; }); setSel(null); }}>把这位同学移出座位</button></div>`}
+    `}
+    ${unseated.length > 0 && html`<div class="section small">未入座 ${unseated.length} 人</div>
+      <div class="chips">${unseated.map((x) => html`<button class=${'chip' + (pick === x.id ? ' on' : '')} onClick=${() => { setPick(pick === x.id ? null : x.id); setSel(null); }}>${x.name}</button>`)}</div>`}
+  </${Modal}>`;
+}
+
 // ---------------- 名单 ----------------
 function Roster({ s }) {
   const { data, update, say } = s; const c = currentClass(data);
-  const [paste, setPaste] = useState(false); const [text, setText] = useState(''); const [pending, setPending] = useState(null); const [edit, setEdit] = useState(null); const [q, setQ] = useState('');
+  const [paste, setPaste] = useState(false); const [text, setText] = useState(''); const [pending, setPending] = useState(null); const [edit, setEdit] = useState(null); const [q, setQ] = useState(''); const [seat, setSeat] = useState(false);
   const fileRef = useRef();
   const tryParse = (t) => { try { const r = parseRoster(t); if (!r.students.length) say('没有解析到学生，请检查格式'); else setPending(r); } catch (e) { say(`解析失败：${e.message}`); } };
   const doImport = (mode) => {
@@ -418,6 +548,7 @@ function Roster({ s }) {
     <div class="toolbar">
       <button class="chip" onClick=${() => fileRef.current.click()}>📥 导入 JSON/CSV</button>
       <button class="chip" onClick=${() => setPaste(true)}>📋 粘贴名单</button>
+      ${c && html`<button class="chip" onClick=${() => setSeat(true)}>🪑 座位表${c.seating ? ` (${Object.keys(c.seating.seats).length}人)` : ''}</button>`}
       ${c && html`<button class="chip" onClick=${() => setEdit({ id: newId(), no: '', name: '', group: '', gender: '', note: '', longLeave: false, _new: true })}>＋ 添加学生</button>`}
       ${c && html`<button class="chip" onClick=${() => download(new Blob([JSON.stringify({ className: c.name, students: c.students.map(({ no, name, group, gender }) => ({ no, name, group, gender })) }, null, 2)], { type: 'application/json' }), `${c.name}_名单.json`)}>📤 导出名单</button>`}
       <input type="file" ref=${fileRef} accept=".json,.csv,.txt,application/json,text/*" style="display:none" onChange=${async (e) => { const f = e.target.files[0]; if (f) tryParse(await f.text()); e.target.value = ''; }} />
@@ -426,6 +557,7 @@ function Roster({ s }) {
     ${list.map((x) => html`<div class="card row" onClick=${() => setEdit(x)}>
       <${Avatar} name=${x.name} size=${38} /><div class="grow"><b>${x.name}</b>${x.longLeave ? html` <span class="tag blue">长期请假</span>` : ''}<div class="muted tiny">${[x.no, x.group, x.note].filter(Boolean).join(' · ')}</div></div><span class="muted">›</span></div>`)}
     ${c && !c.students.length && html`<div class="empty">👥 名单为空。JSON 示例：<code>{"className":"高一3班","students":[{"no":"202401","name":"张三"}]}</code></div>`}
+    ${seat && c && html`<${SeatingEditor} s=${s} c=${c} onClose=${() => setSeat(false)} />`}
     ${paste && html`<${Modal} title="📋 粘贴名单" onClose=${() => setPaste(false)}>
       <div class="muted small">从 Excel 复制“学号 姓名”两列直接粘贴，或粘贴 JSON</div>
       <textarea class="input" rows="8" value=${text} onInput=${(e) => setText(e.target.value)} placeholder=${'202401\t张三\n202402\t李四'}></textarea>
