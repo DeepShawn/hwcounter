@@ -167,6 +167,8 @@ struct SchoolClass: Codable, Identifiable, Equatable {
     var assignments: [Assignment] = []
     var scores: [ScoreEntry] = []
     var emoji: String = "🎒"
+    /// 座位表（可选），与安卓版、网页版同一格式
+    var seating: Seating? = nil
 
     init(name: String, emoji: String = "🎒", students: [Student] = []) {
         self.name = name; self.emoji = emoji; self.students = students
@@ -179,6 +181,26 @@ struct SchoolClass: Codable, Identifiable, Equatable {
         assignments = try c.decodeIfPresent([Assignment].self, forKey: .assignments) ?? []
         scores = try c.decodeIfPresent([ScoreEntry].self, forKey: .scores) ?? []
         emoji = try c.decodeIfPresent(String.self, forKey: .emoji) ?? "🎒"
+        seating = try? c.decodeIfPresent(Seating.self, forKey: .seating)
+    }
+}
+
+/// 座位表：seats 为 学生id → 下标(行*cols+列)；frontAtTop 讲台是否在上方
+struct Seating: Codable, Equatable {
+    var rows: Int = 1
+    var cols: Int = 1
+    var seats: [String: Int] = [:]
+    var frontAtTop: Bool = true
+
+    init(rows: Int, cols: Int, seats: [String: Int], frontAtTop: Bool) {
+        self.rows = rows; self.cols = cols; self.seats = seats; self.frontAtTop = frontAtTop
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        rows = try c.decodeIfPresent(Int.self, forKey: .rows) ?? 1
+        cols = try c.decodeIfPresent(Int.self, forKey: .cols) ?? 1
+        seats = try c.decodeIfPresent([String: Int].self, forKey: .seats) ?? [:]
+        frontAtTop = try c.decodeIfPresent(Bool.self, forKey: .frontAtTop) ?? true
     }
 }
 

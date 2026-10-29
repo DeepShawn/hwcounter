@@ -180,6 +180,7 @@ final class Store: ObservableObject {
         updateClass { c in
             c.students.removeAll { $0.id == id }
             c.scores.removeAll { $0.studentId == id }
+            c.seating?.seats.removeValue(forKey: id)
             for i in c.assignments.indices {
                 c.assignments[i].statuses.removeValue(forKey: id)
                 c.assignments[i].comments.removeValue(forKey: id)
@@ -210,6 +211,9 @@ final class Store: ObservableObject {
             }
         }
     }
+
+    /// 修改当前班级的座位表（nil = 清空）
+    func setSeating(_ f: @escaping (Seating?) -> Seating?) { updateClass { $0.seating = f($0.seating) } }
 
     func setSetting(_ f: (inout AppData) -> Void) { update(undoable: false, f) }
 

@@ -8,6 +8,7 @@ struct RosterView: View {
     @State private var pasting = false
     @State private var pending: (String?, [Student])? = nil
     @State private var query = ""
+    @State private var seatingOpen = false
 
     var body: some View {
         Group {
@@ -47,12 +48,15 @@ struct RosterView: View {
                         Button { importing = true } label: { Label("导入文件（JSON / CSV / TXT）", systemImage: "doc") }
                         Button { pasting = true } label: { Label("粘贴名单", systemImage: "doc.on.clipboard") }
                     } label: { Label("导入", systemImage: "square.and.arrow.down") }
+                    Button { seatingOpen = true } label: { Label("座位表", systemImage: "rectangle.grid.3x2") }
+                        .disabled(store.data.currentClass == nil)
                     Button { editing = Student(no: "", name: "") } label: { Label("添加学生", systemImage: "person.badge.plus") }
                         .disabled(store.data.currentClass == nil)
                 }
             }
         }
         .sheet(item: $editing) { s in StudentEditSheet(student: s) }
+        .sheet(isPresented: $seatingOpen) { SeatingSheet() }
         .sheet(isPresented: $pasting) { PasteRosterSheet { text in parse(text) } }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json, .commaSeparatedText, .plainText, .text]) { r in
             guard case .success(let url) = r else { return }

@@ -1,5 +1,5 @@
 // iPad 版语音解析测试（与网页版 tools/web-tests/voice.test.mjs 同样的用例）
-// 在 macOS 上运行：swiftc -o /tmp/vt HwCounter/Model/Models.swift HwCounter/Recog/Text.swift HwCounter/Recog/VoiceParser.swift HwCounter/Recog/Matcher.swift HwCounter/Recog/Roster.swift Tests/main.swift && /tmp/vt
+// 在 macOS 上运行：swiftc -o /tmp/vt HwCounter/Model/Models.swift HwCounter/Recog/Text.swift HwCounter/Recog/VoiceParser.swift HwCounter/Recog/Matcher.swift HwCounter/Recog/Roster.swift HwCounter/Recog/SeatingLogic.swift Tests/main.swift && /tmp/vt
 import Foundation
 
 var pass = 0, total = 0
@@ -113,5 +113,39 @@ total += 1; if cn == "三年二班" && list.count == 2 && list[1].no == "2" && l
 let mroster = (1...45).map { Student(id: "m\($0)", no: String(format: "2024%04d", $0), name: "学生\($0)") }
 let mo = Matcher(roster: mroster).match(["学号:2024 0O12", "20240O45班", "学生7"])
 total += 1; if mo.hits.map(\.studentId) == ["m12", "m45", "m7"] { pass += 1; print("✓ 学号匹配") } else { print("✗ 学号匹配 \(mo.hits.map(\.studentId))") }
+
+// 座位表（与网页版 seating.test.mjs 相同用例）
+do {
+    let names = ["张锦宇", "李子涵", "林静", "王芳", "冉浩", "周杰", "陈浩宏", "胡晨", "赵敏", "孙悦", "吴磊", "郑怡"]
+    let st = names.enumerated().map { Student(id: "s\($0.offset + 1)", no: String(format: "%02d", $0.offset + 1), name: $0.element) }
+    let nameOf = Dictionary(uniqueKeysWithValues: st.map { ($0.id, $0.name) })
+    func show(_ s: Seating) -> String { SeatingLogic.toGrid(s, st).map { $0.map { $0.flatMap { nameOf[$0] } ?? "空" }.joined(separator: " ") }.joined(separator: " / ") }
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    var r = try! SeatingLogic.parseText("讲台\n张锦宇\t李子涵\t\t林静\n王芳\t冉浩\t周杰\t空\n陈浩宏\t08\t\t", st)
+    check(show(r.seating) == "张锦宇 李子涵 空 林静 / 王芳 冉浩 周杰 空 / 陈浩宏 胡晨 空 空" && r.seating.frontAtTop, "座位表 Tab 分隔：\(show(r.seating))")
+    r = try! SeatingLogic.parseText("张锦宇 李子涵 林静\n王芳 冉浩 周杰\n   讲  台   ", st)
+    check(!r.seating.frontAtTop && show(r.seating) == "张锦宇 李子涵 林静 / 王芳 冉浩 周杰", "讲台在下：\(show(r.seating))")
+    r = try! SeatingLogic.parseText("{\"frontAtTop\":false,\"seats\":[[\"01\",\"02\"],[null,\"王芳\"]]}", st)
+    check(show(r.seating) == "张锦宇 李子涵 / 空 王芳" && !r.seating.frontAtTop, "JSON：\(show(r.seating))")
+    typealias P = SeatingLogic.Piece
+    r = SeatingLogic.fromBoxes([
+        P(text: "高一(3)班座位表", x: 764, y: 65, w: 292, h: 45),
+        P(text: "张锦宇李子涵", x: 284, y: 194, w: 376, h: 63, charX: [295, 330, 365, 545, 590, 635]),
+        P(text: "林静", x: 1173, y: 216, w: 84, h: 42), P(text: "王芬", x: 1425, y: 222, w: 84, h: 42),
+        P(text: "冉洗", x: 301, y: 332, w: 84, h: 42), P(text: "周杰", x: 555, y: 338, w: 82, h: 42),
+        P(text: "陈浩宏", x: 898, y: 345, w: 125, h: 43), P(text: "一", x: 682, y: 411, w: 13, h: 1),
+        P(text: "胡晨", x: 1423, y: 355, w: 82, h: 42), P(text: "赵敏", x: 299, y: 466, w: 83, h: 42),
+        P(text: "ES", x: 917, y: 481, w: 82, h: 40), P(text: "郑怡", x: 1168, y: 485, w: 84, h: 42),
+        P(text: "孙悦", x: 551, y: 473, w: 84, h: 40), P(text: "讲台", x: 846, y: 658, w: 99, h: 46),
+    ], st)
+    check(show(r.seating) == "张锦宇 李子涵 空 林静 王芳 / 冉浩 周杰 陈浩宏 空 胡晨 / 赵敏 孙悦 空 郑怡 空" && !r.seating.frontAtTop, "照片识别结果排座：\(show(r.seating))")
+    var s = SeatingLogic.autoArrange(st, cols: 5)
+    check(s.rows == 3 && show(s).hasPrefix("张锦宇 李子涵 林静 王芳 冉浩 / 周杰"), "按学号自动排列")
+    check(show(SeatingLogic.rotate(s)).hasPrefix("空 空 空 郑怡 吴磊"), "讲台换边")
+    s = SeatingLogic.swap(s, 0, 14)
+    check(show(s).hasPrefix("空 李子涵") && show(s).hasSuffix("张锦宇"), "交换座位")
+    s = SeatingLogic.resize(s, rows: 2, cols: 4)
+    check(s.seats.count == 7, "缩小到 2×4")
+}
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

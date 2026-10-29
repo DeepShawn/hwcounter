@@ -9,6 +9,11 @@ struct AssignmentDetailView: View {
     @State private var showVoice = false
     @State private var showPhoto = false
     @State private var exportURL: URL? = nil
+    @State private var seatMode: Bool? = nil
+    @State private var pick: Set<String> = []
+    @State private var typed = ""
+    @State private var typedAs: HwStatus = .SUBMITTED
+    @State private var ambiguous: [VoiceMatch] = []
 
     var body: some View {
         if let c = store.data.currentClass, let a = c.assignments.first(where: { $0.id == assignmentId }) {
@@ -24,13 +29,23 @@ struct AssignmentDetailView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header(c, a, s)
-                if !store.readOnly { actions(a) }
-                filterBar(s)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12)], spacing: 12) {
-                    ForEach(students) { st in
-                        StudentTile(st: st, status: a.status(st.id), comment: a.comments[st.id])
-                            .onTapGesture { tap(a, st) }
-                            .contextMenu { if !store.readOnly { statusMenu(a, st) } }
+                if !store.readOnly { actions(a); typedBar(c, a) }
+                HStack {
+                    if c.seating != nil {
+                        Toggle(isOn: Binding(get: { seatMode ?? true }, set: { seatMode = $0; pick = [] })) { Label("座位表", systemImage: "rectangle.grid.3x2") }
+                            .toggleStyle(.button)
+                    }
+                    filterBar(s)
+                }
+                if let seating = c.seating, seatMode ?? true {
+                    seatView(c, a, seating)
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12)], spacing: 12) {
+                        ForEach(students) { st in
+                            StudentTile(st: st, status: a.status(st.id), comment: a.comments[st.id])
+                                .onTapGesture { tap(a, st) }
+                                .contextMenu { if !store.readOnly { statusMenu(a, st) } }
+                        }
                     }
                 }
                 if c.students.isEmpty {
@@ -82,6 +97,114 @@ struct AssignmentDetailView: View {
                 ActionButton(icon: "checkmark.circle", title: "其余记已交") { store.fillRemaining(a.id, .SUBMITTED); store.say("其余学生已记为已交") }
             }
         }
+    }
+
+    // ---------- 按座位表登记 ----------
+    private func seatView(_ c: SchoolClass, _ a: Assignment, _ seating: Seating) -> some View {
+        let grid = SeatingLogic.toGrid(seating, c.students)
+        let unseated = c.students.filter { seating.seats[$0.id] == nil }
+        func toggle(_ ids: [String]) {
+            if store.readOnly { return }
+            if ids.allSatisfy({ pick.contains($0) }) { pick.subtract(ids) } else { pick.formUnion(ids) }
+        }
+        return VStack(alignment: .leading, spacing: 10) {
+            if !store.readOnly { Text("点座位切换 已交/未登记；点“排”“列”可整排/整列选中后一起登记；长按看详情").font(.caption).foregroundStyle(.secondary) }
+            SeatChart(seating: seating, students: c.students, selected: { _, st in st.map { pick.contains($0.id) } ?? false },
+                      onCell: { _, st in
+                          guard let st else { return }
+                          if !pick.isEmpty { toggle([st.id]) } else { tap(a, st) }
+                      },
+                      onLong: { st in picked = st },
+                      onRow: { r in toggle(grid[r].compactMap { $0 }) },
+                      onCol: { col in toggle(grid.compactMap { $0.indices.contains(col) ? $0[col] : nil }) }) { st in
+                let x = st.map { a.status($0.id) } ?? .NONE
+                VStack(spacing: 2) {
+                    if let st {
+                        Text(st.name).font(.subheadline.bold()).lineLimit(1).minimumScaleFactor(0.7)
+                        Text("\(x.emoji) \(x.label)").font(.caption2.weight(.semibold)).foregroundStyle(x.color)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(st == nil ? Color.clear : (x == .NONE ? Color(.secondarySystemGroupedBackground) : x.color.opacity(0.16)), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(st == nil ? Color.secondary.opacity(0.2) : (x == .NONE ? Color.primary.opacity(0.08) : x.color.opacity(0.6)), lineWidth: 1.5))
+            }
+            if !unseated.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        Text("未入座").font(.caption).foregroundStyle(.secondary)
+                        ForEach(unseated) { st in
+                            let x = a.status(st.id)
+                            Button("\(st.name) · \(x.label)") { tap(a, st) }.buttonStyle(.bordered).tint(x == .NONE ? Color.gray : x.color)
+                        }
+                    }
+                }
+            }
+            if !pick.isEmpty && !store.readOnly {
+                HStack(spacing: 8) {
+                    Text("已选 \(pick.count) 人").font(.headline)
+                    ForEach([HwStatus.SUBMITTED, .EXCELLENT, .LATE, .MISSING, .LEAVE, .NONE]) { st in
+                        Button(st.label) {
+                            store.setStatus(a.id, Array(pick), st); store.say("已将 \(pick.count) 人设为“\(st.label)”"); pick = []
+                        }
+                        .buttonStyle(.bordered).tint(st.color)
+                    }
+                    Button("取消") { pick = [] }
+                }
+                .padding(12)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+            }
+        }
+    }
+
+    // ---------- 输入拼音首字母登记 ----------
+    private func typedBar(_ c: SchoolClass, _ a: Assignment) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "keyboard").foregroundStyle(.secondary)
+                TextField("输入拼音首字母登记：zjy lzh wf（也可写学号、姓名）", text: $typed)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .onSubmit { submitTyped(c, a) }
+                Picker("登记为", selection: $typedAs) {
+                    ForEach([HwStatus.SUBMITTED, .EXCELLENT, .LATE, .MISSING, .LEAVE]) { st in Text(st.label).tag(st) }
+                }
+                .pickerStyle(.menu)
+                Button("登记") { submitTyped(c, a) }.buttonStyle(.borderedProminent).disabled(typed.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(10)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+            ForEach(ambiguous) { m in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        Text("“\(m.heard)”是谁？").font(.caption)
+                        ForEach(m.ids, id: \.self) { id in
+                            if let st = c.students.first(where: { $0.id == id }) {
+                                Button("\(st.name) \(st.no)") {
+                                    store.setStatus(a.id, [id], typedAs); ambiguous.removeAll { $0.id == m.id }; store.say("已登记 \(st.name)")
+                                }.buttonStyle(.bordered)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func submitTyped(_ c: SchoolClass, _ a: Assignment) {
+        let t = typed.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return }
+        let tol = [0.6, 1.0, 1.4][max(0, min(2, store.data.voiceFuzzy))]
+        let r = VoiceParser(roster: c.students, tolerance: tol, initials: true).parse(t)
+        var sure: [String] = []
+        for m in r.matches where m.ids.count == 1 && !sure.contains(m.ids[0]) { sure.append(m.ids[0]) }
+        ambiguous = r.matches.filter { $0.ids.count > 1 }
+        if !sure.isEmpty {
+            store.setStatus(a.id, sure, typedAs)
+            let names = sure.compactMap { id in c.students.first { $0.id == id }?.name }
+            store.say("已登记 \(sure.count) 人为“\(typedAs.label)”：" + names.joined(separator: "、") + (r.leftover.isEmpty ? "" : "；没认出：\(r.leftover)"))
+        } else if ambiguous.isEmpty {
+            store.say("没有认出名单里的同学" + (r.leftover.isEmpty ? "" : "：\(r.leftover)"))
+        }
+        typed = ""
     }
 
     private func filterBar(_ s: Summary) -> some View {

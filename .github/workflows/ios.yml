@@ -26,7 +26,7 @@ jobs:
       - name: Voice parser / roster / matcher tests
         working-directory: ios
         run: |
-          swiftc -O -o "$RUNNER_TEMP/vt" HwCounter/Model/Models.swift HwCounter/Recog/Text.swift HwCounter/Recog/VoiceParser.swift HwCounter/Recog/Matcher.swift HwCounter/Recog/Roster.swift Tests/main.swift
+          swiftc -O -o "$RUNNER_TEMP/vt" HwCounter/Model/Models.swift HwCounter/Recog/Text.swift HwCounter/Recog/VoiceParser.swift HwCounter/Recog/Matcher.swift HwCounter/Recog/Roster.swift HwCounter/Recog/SeatingLogic.swift Tests/main.swift
           "$RUNNER_TEMP/vt"
 
       - name: Generate Xcode project
