@@ -58,6 +58,17 @@ data class SchoolClass(
     val assignments: List<Assignment> = emptyList(),
     val scores: List<ScoreEntry> = emptyList(),
     val emoji: String = "🎒",
+    /** 座位表（可选） */
+    val seating: Seating? = null,
+)
+
+/** 座位表：seats 为 学生id → 下标(行*cols+列)；frontAtTop 讲台是否在上方。三端同一格式 */
+@Serializable
+data class Seating(
+    val rows: Int = 1,
+    val cols: Int = 1,
+    val seats: Map<String, Int> = emptyMap(),
+    val frontAtTop: Boolean = true,
 )
 
 @Serializable

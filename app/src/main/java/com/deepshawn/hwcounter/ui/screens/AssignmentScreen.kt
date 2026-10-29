@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Search
@@ -200,6 +201,11 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
     var edit by remember { mutableStateOf(false) }
     var random by remember { mutableStateOf(false) }
     var confirmFill by remember { mutableStateOf(false) }
+    // 输入拼音首字母登记
+    var typing by remember { mutableStateOf(false) }
+    var typed by remember { mutableStateOf("") }
+    var typedAs by remember { mutableStateOf(HwStatus.SUBMITTED) }
+    var ambiguous by remember { mutableStateOf<List<com.deepshawn.hwcounter.recog.VoiceParser.Match>>(emptyList()) }
     val speak = rememberTts()
     val photo = rememberPhotoLauncher { uris -> kit.nav.push(Route.Recognize(a.id, uris)) }
 
@@ -225,6 +231,24 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
     val students = c.students.filter { s ->
         val st = a.statuses[s.id] ?: HwStatus.NONE
         filter.match(st) && (query.isBlank() || s.name.contains(query) || s.no.contains(query))
+    }
+
+    fun submitTyped() {
+        val t = typed.trim()
+        if (t.isEmpty()) return
+        val parser = com.deepshawn.hwcounter.recog.VoiceParser(
+            c.students, { ch -> com.deepshawn.hwcounter.recog.Pinyin.readings(ch) }, listOf(0.6f, 1f, 1.4f)[settings.voiceFuzzy.coerceIn(0, 2)], true,
+        )
+        val r = parser.parse(t)
+        val sure = r.matches.filter { it.studentIds.size == 1 }.map { it.studentIds[0] }.distinct()
+        val amb = r.matches.filter { it.studentIds.size > 1 }
+        if (sure.isNotEmpty()) {
+            vm.setStatus(a.id, sure, typedAs)
+            val names = sure.mapNotNull { id -> c.students.firstOrNull { it.id == id }?.name }
+            kit.undoable("已登记 ${sure.size} 人为“${typedAs.label}”：" + names.joinToString("、") + if (r.leftover.isNotBlank()) "；没认出：${r.leftover}" else "")
+        } else if (amb.isEmpty()) kit.toast("没有认出名单里的同学" + if (r.leftover.isNotBlank()) "：${r.leftover}" else "")
+        ambiguous = amb
+        typed = ""
     }
 
     fun tap(s: Student) {
@@ -351,6 +375,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     ActionChip("语音登记", Icons.Filled.Mic) { kit.nav.push(Route.Voice(a.id)) }
+                    ActionChip(if (typing) "收起首字母" else "首字母登记", Icons.Filled.Keyboard) { typing = !typing }
                     ActionChip("拍照识别", Icons.Filled.CameraAlt) { photoSheet = true }
                     ActionChip("实时扫描", Icons.Filled.DocumentScanner) { kit.nav.push(Route.Live(a.id)) }
                     ActionChip("侧面学号", Icons.Filled.ViewWeek) { kit.nav.push(Route.Spine(a.id)) }
@@ -363,6 +388,44 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     }
                     ActionChip(if (batch) "退出批量" else "批量操作", Icons.Filled.Checklist) {
                         batch = !batch; selected.value = emptySet()
+                    }
+                }
+            }
+            if (typing) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        TextField(
+                            typed, { typed = it },
+                            placeholder = { Text("输入拼音首字母：zjy lzh wf（也可写学号、姓名）") },
+                            leadingIcon = { Icon(Icons.Filled.Keyboard, null) },
+                            trailingIcon = { IconButton(onClick = { submitTyped() }) { Icon(Icons.Filled.Check, "登记") } },
+                            singleLine = true, shape = CircleShape,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii,
+                                imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                                autoCorrectEnabled = false,
+                            ),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { submitTyped() }),
+                            colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("登记为", style = MaterialTheme.typography.labelSmall)
+                            listOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE, HwStatus.MISSING, HwStatus.LEAVE).forEach { st ->
+                                com.deepshawn.hwcounter.ui.components.Chip2(st.label, typedAs == st, { typedAs = st }, color = statusColor(st))
+                            }
+                        }
+                        ambiguous.forEach { m ->
+                            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("“${m.heard}”是谁？", style = MaterialTheme.typography.labelMedium)
+                                m.studentIds.forEach { id ->
+                                    val st = c.students.firstOrNull { it.id == id }
+                                    if (st != null) com.deepshawn.hwcounter.ui.components.Chip2("${st.name} ${st.no}", false, {
+                                        vm.setStatus(a.id, listOf(id), typedAs); ambiguous = ambiguous - m; kit.undoable("已登记 ${st.name}")
+                                    })
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -398,7 +461,57 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     }
                 }
             }
-            if (settings.layout == "group") {
+            val seating = c.seating
+            if (settings.layout == "seat" && seating != null) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    fun selectIds(ids: List<String>) {
+                        batch = true
+                        val all = ids.all { it in selected.value }
+                        selected.value = if (all) selected.value - ids.toSet() else selected.value + ids
+                        kit.haptic()
+                    }
+                    Column {
+                        Text(
+                            "点“排”“列”可整排/整列选中后批量登记",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        SeatChart(
+                            seating, c.students,
+                            cell = { st, _ ->
+                                if (st == null) SeatCellUi(Color.Transparent, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)) {}
+                                else {
+                                    val x = a.statuses[st.id] ?: HwStatus.NONE
+                                    val col = statusColor(x)
+                                    SeatCellUi(
+                                        if (x == HwStatus.NONE) MaterialTheme.colorScheme.surfaceContainerLowest else col.copy(alpha = 0.18f),
+                                        if (x == HwStatus.NONE) MaterialTheme.colorScheme.outlineVariant else col,
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(st.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(x.label, fontSize = 10.sp, color = col)
+                                        }
+                                    }
+                                }
+                            },
+                            selected = { _, st -> st != null && st.id in selected.value },
+                            onCell = { _, st -> if (st != null) tap(st) },
+                            onLong = { st -> sheetFor = st },
+                            onRow = { r -> selectIds(com.deepshawn.hwcounter.recog.SeatingLogic.toGrid(seating, c.students)[r].filterNotNull()) },
+                            onCol = { col -> selectIds(com.deepshawn.hwcounter.recog.SeatingLogic.toGrid(seating, c.students).mapNotNull { it.getOrNull(col) }) },
+                        )
+                        val un = c.students.filter { it.id !in seating.seats }
+                        if (un.isNotEmpty()) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("未入座", style = MaterialTheme.typography.labelSmall)
+                                un.forEach { st ->
+                                    val x = a.statuses[st.id] ?: HwStatus.NONE
+                                    com.deepshawn.hwcounter.ui.components.Chip2("${st.name} · ${x.label}", st.id in selected.value, { tap(st) }, color = statusColor(x))
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (settings.layout == "group") {
                 val groups = students.groupBy { it.group.ifBlank { "未分组" } }
                 groups.forEach { (g, list) ->
                     item(span = { GridItemSpan(maxLineSpan) }, key = "g_$g") {
@@ -428,7 +541,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     }
                 }
             }
-            if (students.isEmpty()) {
+            if (students.isEmpty() && !(settings.layout == "seat" && seating != null)) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     com.deepshawn.hwcounter.ui.components.EmptyState(if (c.students.isEmpty()) "👥" else "🔍", if (c.students.isEmpty()) "名单为空" else "没有符合条件的同学", if (c.students.isEmpty()) "去“名单”页导入 JSON 或手动添加" else "换个筛选条件试试")
                 }

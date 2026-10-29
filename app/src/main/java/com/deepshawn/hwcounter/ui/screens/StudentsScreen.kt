@@ -171,6 +171,7 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip({ openJson.launch(arrayOf("application/json", "text/*", "*/*")) }, { Text("导入 JSON/CSV") }, leadingIcon = { Icon(Icons.Filled.FileUpload, null, Modifier.size(18.dp)) })
                 AssistChip({ paste = true }, { Text("粘贴名单") }, leadingIcon = { Text("📋") })
+                AssistChip({ kit.nav.push(Route.Seating) }, { Text(if (c.seating == null) "座位表" else "座位表（${c.seating.seats.size}人）") }, leadingIcon = { Text("🪑") })
                 AssistChip({ adding = true }, { Text("添加学生") }, leadingIcon = { Icon(Icons.Filled.PersonAdd, null, Modifier.size(18.dp)) })
                 AssistChip({
                     if (c.students.isEmpty()) kit.toast("名单为空") else scope.launch {

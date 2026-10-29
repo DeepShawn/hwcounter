@@ -74,6 +74,7 @@ import com.deepshawn.hwcounter.ui.components.Confetti
 import com.deepshawn.hwcounter.ui.screens.AssignmentScreen
 import com.deepshawn.hwcounter.ui.screens.HomeScreen
 import com.deepshawn.hwcounter.ui.screens.LiveScanScreen
+import com.deepshawn.hwcounter.ui.screens.SeatingScreen
 import com.deepshawn.hwcounter.ui.screens.RecognizeScreen
 import com.deepshawn.hwcounter.ui.screens.ScoresScreen
 import com.deepshawn.hwcounter.ui.screens.SettingsScreen
@@ -102,6 +103,7 @@ sealed interface Route {
     data class Paper(val assignmentId: String?) : Route
     data class Voice(val assignmentId: String) : Route
     data class StudentDetail(val id: String) : Route
+    data object Seating : Route
 }
 
 class Nav(private val stack: MutableList<Route>, private val canOpen: (Route) -> Boolean = { true }) {
@@ -170,7 +172,7 @@ fun App(vm: AppViewModel, data: AppData) {
     // 预览模式下，只用于登记/计数的页面不让进
     val nav = remember {
         Nav(stack) { r ->
-            val editOnly = r is Route.Recognize || r is Route.Live || r is Route.Voice || r is Route.Spine || r is Route.Stack || r is Route.Paper
+            val editOnly = r is Route.Recognize || r is Route.Live || r is Route.Voice || r is Route.Spine || r is Route.Stack || r is Route.Paper || r is Route.Seating
             when {
                 editOnly && vm.readOnly.value -> { vm.notices.tryEmit("👀 预览模式：登录后才能使用"); false }
                 // 预览模式不显示名单页（统计/热力图照常显示）
@@ -264,6 +266,7 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         is Route.Paper -> PaperCountScreen(vm, data, route.assignmentId)
         is Route.Voice -> VoiceScreen(vm, data, route.assignmentId)
         is Route.StudentDetail -> StudentDetailScreen(vm, data, route.id)
+        Route.Seating -> SeatingScreen(vm, data)
     }
 }
 

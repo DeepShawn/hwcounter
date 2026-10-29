@@ -239,8 +239,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             students = c.students.filterNot { it.id == id },
             scores = c.scores.filterNot { it.studentId == id },
             assignments = c.assignments.map { it.copy(statuses = it.statuses - id) },
+            seating = c.seating?.let { it.copy(seats = it.seats - id) },
         )
     }
+
+    /** 修改当前班级的座位表（null = 清空） */
+    fun setSeating(classId: String? = null, f: (Seating?) -> Seating?) = updateClass(classId) { it.copy(seating = f(it.seating)) }
 
     fun sortStudents() = updateClass { c -> c.copy(students = c.students.sortedWith(compareBy({ it.no.length }, { it.no }))) }
 
