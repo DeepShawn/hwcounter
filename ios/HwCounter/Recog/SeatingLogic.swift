@@ -24,9 +24,9 @@ enum SeatingLogic {
     }
     private static func stripZeros(_ s: String) -> String { let t = String(s.drop { $0 == "0" }); return t.isEmpty ? "0" : t }
 
-    private struct Hit { let s: Student; let at: Int; let len: Int }
+    struct Hit { let s: Student; let at: Int; let len: Int }
 
-    private struct SeatMatcher {
+    struct SeatMatcher {
         var byNo: [String: Student] = [:]
         var byName: [String: Student] = [:]
         var names: [String] = []

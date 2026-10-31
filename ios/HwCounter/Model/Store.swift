@@ -19,6 +19,9 @@ final class Store: ObservableObject {
     @Published var sync = SyncState()
     @Published var toast: String? = nil
     @Published private(set) var canUndo = false
+    /// 草稿：只保存在本机（drafts.json），不进云端快照
+    @Published private(set) var drafts: [Draft] = Store.loadDrafts()
+    private var draftTimer: Timer? = nil
 
     var readOnly: Bool { sync.email == nil }
 
@@ -30,12 +33,68 @@ final class Store: ObservableObject {
     private static let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     private static let file = dir.appendingPathComponent("hwcounter.json")
     private static let previewFile = dir.appendingPathComponent("preview_cache.json")
+    private static let draftFile = dir.appendingPathComponent("drafts.json")
 
     init() {
         let logged = CloudClient.shared.session != nil
         data = logged ? Store.loadMain() : Store.loadPreview()
         sync.email = CloudClient.shared.session?.email
         Task { await self.start() }
+        // 定时上传草稿：每 15 秒检查一次（App 在前台时）；错过的回到前台时立即补传
+        draftTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.uploadDueDrafts() }
+        }
+    }
+
+    // ---------- 草稿 ----------
+    private static func loadDrafts() -> [Draft] {
+        guard let d = try? Data(contentsOf: draftFile) else { return [] }
+        return (try? JSONDecoder().decode([Draft].self, from: d)) ?? []
+    }
+    private func setDrafts(_ list: [Draft]) {
+        drafts = list
+        if let bytes = try? JSONEncoder().encode(list) { try? bytes.write(to: Store.draftFile, options: .atomic) }
+    }
+    func addDraft(_ d: Draft) { setDrafts([d] + drafts) }
+    func addDrafts(_ ds: [Draft]) { setDrafts(ds + drafts) }
+    func deleteDraft(_ id: String) { setDrafts(drafts.filter { $0.id != id }) }
+    func editDraft(_ id: String, _ f: (inout Draft) -> Void) {
+        var list = drafts
+        guard let i = list.firstIndex(where: { $0.id == id }) else { return }
+        f(&list[i]); list[i].updatedAt = nowMillis()
+        setDrafts(list)
+    }
+    func setDraftStatus(_ id: String, _ ids: [String], _ st: HwStatus) {
+        editDraft(id) { d in for s in ids { if st == .NONE { d.statuses.removeValue(forKey: s) } else { d.statuses[s] = st.rawValue } } }
+    }
+    func setDraftComment(_ id: String, _ sid: String, _ text: String) {
+        editDraft(id) { d in if text.trimmingCharacters(in: .whitespaces).isEmpty { d.comments.removeValue(forKey: sid) } else { d.comments[sid] = text } }
+    }
+
+    /// 上传草稿：写进作业 → 立即同步到云端。返回成功上传的份数
+    @discardableResult
+    func uploadDrafts(_ ids: [String], why: String = "") -> Int {
+        if readOnly { say("请先在“设置”里登录，才能上传到云端"); return 0 }
+        var d = data, done: [String] = [], errs: [String] = []
+        for dr in drafts where ids.contains(dr.id) {
+            do { d = try StatTable.apply(d, dr); done.append(dr.id) } catch { errs.append("\(dr.title.isEmpty ? "草稿" : dr.title)：\(error.localizedDescription)") }
+        }
+        if !done.isEmpty {
+            let next = d
+            update { $0 = next }
+            setDrafts(drafts.filter { !done.contains($0.id) })
+            syncTask?.cancel()
+            Task { await runSync() }
+            say("\(why)☁️ 已上传 \(done.count) 份草稿" + (errs.isEmpty ? "" : "；" + errs.joined(separator: "；")))
+        } else if !errs.isEmpty { say(errs.joined(separator: "；")) }
+        return done.count
+    }
+
+    func uploadDueDrafts() {
+        guard !readOnly else { return }
+        let now = nowMillis()
+        let due = drafts.filter { ($0.scheduledAt ?? Int64.max) <= now }.map(\.id)
+        if !due.isEmpty { uploadDrafts(due, why: "⏰ 定时") }
     }
 
     private func start() async {
@@ -302,6 +361,7 @@ final class Store: ObservableObject {
 
     func onActive() {
         if cloud.session != nil { scheduleSync(300) } else { Task { await refreshPreview() } }
+        uploadDueDrafts()
     }
 
     func runSync(retry: Int = 0) async {
