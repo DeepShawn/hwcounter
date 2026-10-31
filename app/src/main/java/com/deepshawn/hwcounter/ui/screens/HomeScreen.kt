@@ -24,6 +24,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material.icons.filled.Drafts
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
@@ -126,6 +129,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
     var pendingAction by remember { mutableStateOf<String?>(null) }
     var editA by remember { mutableStateOf<Assignment?>(null) }
     var deleteA by remember { mutableStateOf<Assignment?>(null) }
+    val drafts by vm.drafts.collectAsStateWithLifecycle()
 
     if (c == null) {
         WelcomeScreen(onNewClass = { newClass = true }, onImported = { r ->
@@ -237,6 +241,13 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
                 QuickAction("数本数", Icons.Filled.Layers, Color(0xFFAE3EC9), Modifier.weight(1f)) {
                     kit.nav.push(Route.Stack(todayTarget?.id))
                 }
+                QuickAction(if (drafts.isNotEmpty()) "草稿箱 · ${drafts.size}" else "草稿箱", Icons.Filled.Drafts, Color(0xFF8A6CFF), Modifier.weight(1f)) {
+                    kit.nav.push(Route.Drafts)
+                }
+                QuickAction("统计表识别", Icons.Filled.TableChart, Color(0xFF0CA678), Modifier.weight(1f)) {
+                    kit.nav.push(Route.StatTable(null))
+                }
+                Spacer(Modifier.weight(1f))
             }
         }
         item {
@@ -296,7 +307,15 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
         PhotoSourceSheet(onDismiss = { pendingAction = null }, onCamera = { pendingAction = null; photo.takePhoto() }, onGallery = { pendingAction = null; photo.pickGallery() })
     }
     if (showNew) {
-        NewAssignmentDialog(data.settings.subjects, onDismiss = { showNew = false; afterCreate = null }) { t, s ->
+        NewAssignmentDialog(
+            data.settings.subjects,
+            onDraft = if (afterCreate == null) { t, s ->
+                showNew = false
+                val d = com.deepshawn.hwcounter.recog.StatTable.newDraft(c, null, t, s)
+                vm.addDraft(d); kit.toast("📝 已建草稿：只保存在本机，登记完再上传"); kit.nav.push(Route.Draft(d.id))
+            } else null,
+            onDismiss = { showNew = false; afterCreate = null },
+        ) { t, s ->
             val id = vm.createAssignment(t, s)
             showNew = false
             val next = afterCreate

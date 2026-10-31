@@ -72,7 +72,7 @@ const blob = xlsx([{ name: '表', rows: [['学号', '姓名', '交'], ['01', '�
 let xr = await readXlsx(await blob.arrayBuffer());
 check(JSON.stringify(xr) === JSON.stringify([['学号', '姓名', '交'], ['01', '张锦宇', '✓'], ['02', '李子涵', '×'], ['3', '林静']]), `读取自己导出的 xlsx：${JSON.stringify(xr)}`);
 xr = await readXlsx(deflatedXlsx());
-check(JSON.stringify(xr) === JSON.stringify([['姓名', '', '作业'], ['张锦宇', '', '√'], ['李子涵', '', '未交 & 补']]), `读取压缩 + 共享字符串 xlsx：${JSON.stringify(xr)}`);
+check(JSON.stringify(xr) === JSON.stringify([['姓名', '', '作业'], ['张锦宇', '', '√'], ['李子涵', '', '未交 & 补'], ['林静']]), `读取压缩 + 共享字符串 xlsx：${JSON.stringify(xr)}`);
 let err = ''; try { await readXlsx(new Uint8Array([1, 2, 3])); } catch (e) { err = e.message; }
 check(err.includes('xlsx'), `坏文件报错：${err}`);
 
@@ -99,7 +99,7 @@ function deflatedXlsx() {
     'xl/workbook.xml': '<workbook xmlns:r="r"><sheets><sheet name="登记" sheetId="1" r:id="rId7"/></sheets></workbook>',
     'xl/_rels/workbook.xml.rels': '<Relationships><Relationship Id="rId7" Type="ws" Target="worksheets/sheet3.xml"/></Relationships>',
     'xl/sharedStrings.xml': '<sst><si><t>姓名</t></si><si><r><t>张</t></r><r><t xml:space="preserve">锦宇</t></r></si><si><t>李子涵</t></si><si><t>作业</t></si><si><t>√</t></si><si><t>未交 &amp; 补</t></si></sst>',
-    'xl/worksheets/sheet3.xml': '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="s"><v>3</v></c></row><row r="2"><c r="A2" t="s"><v>1</v></c><c r="C2" t="s"><v>4</v></c></row><row r="3"><c r="A3" t="s"><v>2</v></c><c r="C3" t="s"><v>5</v></c></row><row r="4"/></sheetData></worksheet>',
+    'xl/worksheets/sheet3.xml': '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="s"><v>3</v></c></row><row r="2"><c r="A2" t="s"><v>1</v></c><c r="C2" t="s"><v>4</v></c></row><row r="3"><c r="A3" t="s"><v>2</v></c><c r="C3" t="s"><v>5</v></c></row><row r="4"/><row r="5"><c r="A5" t="inlineStr"><is><t>林静</t></is></c><c r="C5"/></row></sheetData></worksheet>',
   };
   const parts = []; const central = []; let off = 0;
   for (const [name, text] of Object.entries(files)) {

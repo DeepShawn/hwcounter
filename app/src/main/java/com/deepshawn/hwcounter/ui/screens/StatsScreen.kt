@@ -65,6 +65,14 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
         GradientHeader {
             Text("数据统计", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
             Text("${c.name} · 共 ${assigns.size} 次作业 · ${c.students.size} 人", color = Color.White.copy(alpha = 0.85f))
+            if (assigns.isNotEmpty()) {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                androidx.compose.material3.TextButton(onClick = {
+                    val f = java.io.File(com.deepshawn.hwcounter.export.Exporter.exportDir(ctx), "${c.name}_各次作业统计名单_${com.deepshawn.hwcounter.export.Exporter.fileStamp()}.xlsx".replace("/", "_"))
+                    f.outputStream().use { com.deepshawn.hwcounter.export.Exporter.writeClassStatList(c, it) }
+                    com.deepshawn.hwcounter.export.Exporter.shareFile(ctx, f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "分享统计名单")
+                }) { Text("📋 导出各次统计名单 Excel", color = Color.White, fontWeight = FontWeight.Bold) }
+            }
         }
         if (assigns.isEmpty()) {
             EmptyState("📈", "还没有数据", "布置并登记几次作业后，这里会出现趋势图、热力图和催交榜")

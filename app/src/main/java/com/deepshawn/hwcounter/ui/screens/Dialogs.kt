@@ -54,9 +54,12 @@ fun NewAssignmentDialog(
     initialTitle: String = "",
     initialSubject: String = "",
     confirmText: String = "创建",
+    /** 非空时显示“先存为草稿”选项，勾选后走这里 */
+    onDraft: ((title: String, subject: String) -> Unit)? = null,
     onDismiss: () -> Unit,
     onConfirm: (title: String, subject: String) -> Unit,
 ) {
+    var asDraft by remember { mutableStateOf(false) }
     var subject by remember { mutableStateOf(initialSubject.ifBlank { subjects.firstOrNull() ?: "" }) }
     val today = remember { SimpleDateFormat("M月d日", Locale.CHINA).format(Date()) }
     var title by remember { mutableStateOf(initialTitle) }
@@ -76,10 +79,17 @@ fun NewAssignmentDialog(
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     subjects.forEach { s -> Chip2(s, s == subject, { subject = s }) }
                 }
+                if (onDraft != null) {
+                    Spacer(Modifier.height(8.dp))
+                    DraftCheckbox(asDraft) { asDraft = it }
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(title.ifBlank { "$today $subject 作业" }, subject) }) { Text(confirmText) }
+            TextButton(onClick = {
+                val tt = title.ifBlank { "$today $subject 作业" }
+                if (asDraft && onDraft != null) onDraft(tt, subject) else onConfirm(tt, subject)
+            }) { Text(if (asDraft && onDraft != null) "创建草稿" else confirmText) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )

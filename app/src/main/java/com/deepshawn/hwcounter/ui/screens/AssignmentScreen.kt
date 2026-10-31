@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Layers
@@ -84,6 +85,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -207,6 +209,8 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
     var typedAs by remember { mutableStateOf(HwStatus.SUBMITTED) }
     var ambiguous by remember { mutableStateOf<List<com.deepshawn.hwcounter.recog.VoiceParser.Match>>(emptyList()) }
     val speak = rememberTts()
+    val drafts by vm.drafts.collectAsStateWithLifecycle()
+    val myDraft = drafts.firstOrNull { it.assignmentId == a.id }
     val photo = rememberPhotoLauncher { uris -> kit.nav.push(Route.Recognize(a.id, uris)) }
 
     // 交齐时庆祝
@@ -287,6 +291,19 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                         Box {
                             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "更多", tint = Color.White) }
                             DropdownMenu(menu, { menu = false }) {
+                                DropdownMenuItem(text = { Text(if (myDraft != null) "📝 打开未上传的草稿（改动 ${com.deepshawn.hwcounter.recog.StatTable.changes(myDraft).size} 人）" else "📝 在草稿里登记（只存本机，稍后上传）") }, onClick = {
+                                    menu = false
+                                    if (myDraft != null) kit.nav.push(Route.Draft(myDraft.id))
+                                    else { val d = com.deepshawn.hwcounter.recog.StatTable.newDraft(c, a); vm.addDraft(d); kit.nav.push(Route.Draft(d.id)) }
+                                })
+                                DropdownMenuItem(text = { Text("📋 分享统计名单 Excel") }, onClick = {
+                                    menu = false
+                                    scope.launch {
+                                        val f = withContext(Dispatchers.IO) { Exporter.statListFile(ctx, c, a.title, a.subject, a.createdAt, a.statuses, a.comments) }
+                                        Exporter.shareFile(ctx, f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "分享统计名单")
+                                    }
+                                })
+                                HorizontalDivider()
                                 DropdownMenuItem(text = { Text("📊 导出 Excel（全班总表）") }, onClick = {
                                     menu = false; saveXlsx.launch("${c.name}_作业统计_${Exporter.fileStamp()}.xlsx")
                                 })
@@ -382,6 +399,10 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     ActionChip("数本数", Icons.Filled.Layers) { kit.nav.push(Route.Stack(a.id)) }
                     ActionChip("数试卷", Icons.Filled.Description) { kit.nav.push(Route.Paper(a.id)) }
                     ActionChip("剩余标未交", Icons.Filled.DoneAll) { confirmFill = true }
+                    ActionChip(if (myDraft != null) "打开草稿" else "草稿登记", Icons.Filled.Edit) {
+                        if (myDraft != null) kit.nav.push(Route.Draft(myDraft.id))
+                        else { val d = com.deepshawn.hwcounter.recog.StatTable.newDraft(c, a); vm.addDraft(d); kit.nav.push(Route.Draft(d.id)) }
+                    }
                     ActionChip("播报未交", Icons.AutoMirrored.Filled.VolumeUp) {
                         val miss = c.students.filter { (a.statuses[it.id] ?: HwStatus.NONE) in setOf(HwStatus.MISSING, HwStatus.NONE) }
                         speak(if (miss.isEmpty()) "全部同学都交齐了，真棒！" else "还有${miss.size}位同学没交作业：" + miss.joinToString("，") { it.name } + "。请尽快上交。")
@@ -389,6 +410,14 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     ActionChip(if (batch) "退出批量" else "批量操作", Icons.Filled.Checklist) {
                         batch = !batch; selected.value = emptySet()
                     }
+                }
+            }
+            if (myDraft != null) item(span = { GridItemSpan(maxLineSpan) }) {
+                Surface(
+                    color = Color(0xFFFFF8E1), shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).clip(MaterialTheme.shapes.medium).clickable { kit.nav.push(Route.Draft(myDraft.id)) },
+                ) {
+                    Text("📝 这次作业有一份未上传的草稿（改动 ${com.deepshawn.hwcounter.recog.StatTable.changes(myDraft).size} 人），上传后才会写进这里 ›", color = Color(0xFF5C4400), fontSize = 13.sp, modifier = Modifier.padding(10.dp))
                 }
             }
             if (typing) {

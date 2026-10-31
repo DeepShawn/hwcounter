@@ -242,7 +242,7 @@ export async function readXlsx(buf) {
   const sheet = files[path] || Object.entries(files).find(([k]) => k.startsWith('xl/worksheets/'))?.[1];
   if (!sheet) throw new Error('Excel 里没有找到工作表');
   const rows = [];
-  for (const rm of sheet.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>|<row\b[^>]*\/>/g)) {
+  for (const rm of sheet.matchAll(/<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g)) {
     const row = [];
     for (const cm of (rm[1] || '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
       const attrs = cm[1]; const body = cm[2] || '';
@@ -258,6 +258,7 @@ export async function readXlsx(buf) {
       while (row.length < ci) row.push('');
       row[ci] = val;
     }
+    while (row.length && row[row.length - 1] === '') row.pop();
     rows.push(row);
   }
   return rows.filter((r) => r.some((c) => String(c).trim()));
