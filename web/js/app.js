@@ -6,6 +6,7 @@ import { api, session, meta, setMeta, syncOnce, pushAs, merge, hashData, withLoc
 import { createVoiceParser } from './voice.js';
 import { xlsx, ST } from './xlsx.js';
 import { parseSeatingText, seatingFromBoxes, seatingToGrid, autoArrange, rotateSeating, swapSeats, resizeSeating } from './seating.js';
+import { splitTable, recognizeTable, recognizeLines as tableFromLines, mergeRows, columnStatuses, tally, statListSheets, classStatRows, readXlsx, loadDrafts, saveDrafts, makeDraft, draftChanges, applyDraft } from './stats.js';
 
 const html = htm.bind(h);
 const DATA_KEY = 'hw.data';
@@ -132,7 +133,39 @@ function useStore() {
     } catch (e) { setSync((s) => ({ ...s, busy: false, msg: e.message, error: true })); if (e.remoteVersion) setTimeout(runSync, 400); }
   }, [sync]);
 
-  return { data, update, say, toast, doUndo, sync, setSync, runSync, resolve, scheduleSync, readOnly, refreshPreview, onLogin, onLogout };
+  // ---------- 草稿：只保存在本机（单独的 localStorage 键，不进云端快照） ----------
+  const [drafts, setDraftList] = useState(loadDrafts);
+  const draftsRef = useRef(drafts); draftsRef.current = drafts;
+  const setDrafts = useCallback((fn) => { const next = fn(draftsRef.current); draftsRef.current = next; setDraftList(next); saveDrafts(next); }, []);
+  const editDraft = useCallback((id, fn) => setDrafts((xs) => xs.map((x) => (x.id === id ? { ...fn(x), updatedAt: Date.now() } : x))), [setDrafts]);
+  /** 上传草稿：写进作业 → 立即同步到云端；ids 为空表示全部 */
+  const uploadDrafts = useCallback((ids, why = '') => {
+    if (!session()) { say('请先在“设置”里登录，才能上传到云端'); return 0; }
+    const list = draftsRef.current.filter((x) => ids.includes(x.id));
+    let d = dataRef.current; const done = []; const errs = [];
+    for (const dr of list) { try { d = applyDraft(d, dr); done.push(dr.id); } catch (e) { errs.push(`${dr.title || '草稿'}：${e.message}`); } }
+    if (done.length) {
+      undo.current.push(dataRef.current); dataRef.current = d; setData(d); persist(d);
+      setDrafts((xs) => xs.filter((x) => !done.includes(x.id)));
+      clearTimeout(syncTimer.current); runSync();
+      say(`${why}☁️ 已上传 ${done.length} 份草稿${errs.length ? `；${errs.join('；')}` : ''}`);
+    } else if (errs.length) say(errs.join('；'));
+    return done.length;
+  }, [runSync]);
+  // 定时上传：每 15 秒检查一次；网页关着时错过的，下次打开立即上传
+  useEffect(() => {
+    const tick = () => {
+      if (!session()) return;
+      const due = draftsRef.current.filter((x) => x.scheduledAt && x.scheduledAt <= Date.now()).map((x) => x.id);
+      if (due.length) uploadDrafts(due, '⏰ 定时');
+    };
+    const t = setInterval(tick, 15000); const t0 = setTimeout(tick, 1500);
+    const onVis = () => { if (document.visibilityState === 'visible') tick(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { clearInterval(t); clearTimeout(t0); document.removeEventListener('visibilitychange', onVis); };
+  }, [uploadDrafts]);
+
+  return { data, update, say, toast, doUndo, sync, setSync, runSync, resolve, scheduleSync, readOnly, refreshPreview, onLogin, onLogout, drafts, setDrafts, editDraft, uploadDrafts };
 }
 
 // ---------------- 小工具 ----------------
@@ -197,7 +230,10 @@ function Home({ s, open }) {
         const t = c.assignments.find((a) => isToday(a.createdAt));
         if (t) open({ view: 'voice', id: t.id }); else { setAfterNew('voice'); setNewAssign(true); }
       }}><span>🎙️</span>语音登记</button>
+      <button class="qa" onClick=${() => open({ view: 'drafts' })}><span>🗂️</span>草稿箱${s.drafts.length ? html` <span class="tag">${s.drafts.length}</span>` : ''}</button>
+      <button class="qa" onClick=${() => open({ view: 'stattable' })}><span>📊</span>统计表识别</button>
     </div>`}
+    ${!s.readOnly && s.drafts.some((x) => x.classId === c.id) && html`<div class="card draft-note" onClick=${() => open({ view: 'drafts' })}>🗂️ 有 ${s.drafts.filter((x) => x.classId === c.id).length} 份草稿只保存在本机，还没上传 <b>查看 ›</b></div>`}
     ${!sorted.length && html`<div class="empty">📭 还没有作业，点“新建作业”开始</div>`}
     ${sorted.map((a) => { const sm = summary(c, a); return html`
       <div class="card assign" onClick=${() => open({ view: 'assign', id: a.id })}>
@@ -209,7 +245,10 @@ function Home({ s, open }) {
         </div>
         <div class="right"><b>${sm.handedIn}/${sm.expected}</b><div class="muted small">${Math.round(sm.rate * 100)}%</div></div>
       </div>`; })}
-    ${newAssign && html`<${AssignDialog} subjects=${data.settings.subjects} onClose=${() => { setNewAssign(false); setAfterNew(null); }} onSave=${(title, subject) => { const a = mkAssignment(title, subject, c); update((d) => mapClass(d, c.id, (k) => ({ ...k, assignments: [...k.assignments, a] }))); setNewAssign(false); open({ view: afterNew || 'assign', id: a.id }); setAfterNew(null); }} />`}
+    ${newAssign && html`<${AssignDialog} subjects=${data.settings.subjects} allowDraft=${!afterNew} onClose=${() => { setNewAssign(false); setAfterNew(null); }} onSave=${(title, subject, asDraft) => {
+      setNewAssign(false);
+      if (asDraft) { const dr = makeDraft(c, null, { title, subject }); s.setDrafts((xs) => [dr, ...xs]); open({ view: 'draft', id: dr.id }); say('📝 已建草稿：只保存在本机，登记完再上传'); return; }
+      const a = mkAssignment(title, subject, c); update((d) => mapClass(d, c.id, (k) => ({ ...k, assignments: [...k.assignments, a] }))); open({ view: afterNew || 'assign', id: a.id }); setAfterNew(null); }} />`}
     ${newClass && html`<${ClassDialog} onClose=${() => setNewClass(false)} onSave=${(name, emoji) => { const nc = { id: newId(), name, emoji, students: [], assignments: [], scores: [] }; update((d) => ({ ...d, classes: [...d.classes, nc], currentClassId: nc.id })); setNewClass(false); say(`已新建 ${name}`); }} />`}
   </div>`;
 }
@@ -219,12 +258,14 @@ function Bar({ c, a }) {
   const sm = summary(c, a); const total = Math.max(1, c.students.length);
   return html`<div class="bar">${['EXCELLENT', 'SUBMITTED', 'LATE', 'LEAVE', 'MISSING'].map((k) => sm.counts[k] ? html`<i style=${{ width: (sm.counts[k] / total * 100) + '%', background: STATUS[k].color }}></i>` : null)}</div>`;
 }
-function AssignDialog({ subjects, onClose, onSave, initial }) {
+function AssignDialog({ subjects, onClose, onSave, initial, allowDraft, draftDefault = false }) {
   const [title, setTitle] = useState(initial?.title || ''); const [subject, setSubject] = useState(initial?.subject || subjects[0] || '');
+  const [asDraft, setAsDraft] = useState(draftDefault);
   return html`<${Modal} title=${initial ? '✏️ 编辑作业' : '📝 新建作业'} onClose=${onClose}>
     <input class="input" placeholder=${`${today()} ${subject} 作业`} value=${title} onInput=${(e) => setTitle(e.target.value)} />
     <div class="chips">${subjects.map((x) => html`<button class=${'chip' + (x === subject ? ' on' : '')} onClick=${() => setSubject(x)}>${x}</button>`)}</div>
-    <div class="actions"><button class="btn" onClick=${() => onSave(title.trim() || `${today()} ${subject} 作业`, subject)}>${initial ? '保存' : '创建'}</button></div>
+    ${allowDraft && html`<label class="row between"><span><b>📝 先存为草稿</b><div class="muted tiny">登记只保存在本机，确认无误后再手动上传或定时上传到云端</div></span><input type="checkbox" checked=${asDraft} onChange=${(e) => setAsDraft(e.target.checked)} /></label>`}
+    <div class="actions"><button class="btn" onClick=${() => onSave(title.trim() || `${today()} ${subject} 作业`, subject, allowDraft && asDraft)}>${initial ? '保存' : asDraft && allowDraft ? '创建草稿' : '创建'}</button></div>
   </${Modal}>`;
 }
 function ClassDialog({ onClose, onSave, initial }) {
@@ -292,9 +333,12 @@ function AssignView({ s, id, back, open }) {
     <div class="toolbar">
       ${!s.readOnly && html`<button class="chip" onClick=${() => open({ view: 'voice', id: a.id })}>🎙️ 语音登记</button>`}
       ${!s.readOnly && html`<button class="chip" onClick=${() => { if (confirm(`将 ${sm.counts.NONE} 名未登记的同学标记为“未交”？`)) { setStatus(c.students.filter((st) => !a.statuses[st.id]).map((st) => st.id), 'MISSING'); say(`已标记 ${sm.counts.NONE} 人未交`, true); } }}>☑️ 剩余标未交</button>`}
+      ${!s.readOnly && html`<button class="chip" onClick=${() => { const ex = s.drafts.find((x) => x.assignmentId === a.id); if (ex) { open({ view: 'draft', id: ex.id }); return; } const dr = makeDraft(c, a); s.setDrafts((xs) => [dr, ...xs]); open({ view: 'draft', id: dr.id }); }}>📝 ${s.drafts.some((x) => x.assignmentId === a.id) ? '打开草稿' : '在草稿里登记'}</button>`}
       <button class="chip" onClick=${exportX}>📊 导出 Excel</button>
+      <button class="chip" onClick=${() => exportStatList(c, a.title, a.subject, a.createdAt, a.statuses, a.comments)}>📋 统计名单</button>
       <button class="chip" onClick=${shareText}>💬 通报文字</button>
     </div>
+    ${!s.readOnly && s.drafts.some((x) => x.assignmentId === a.id) && html`<div class="card draft-note" onClick=${() => open({ view: 'draft', id: s.drafts.find((x) => x.assignmentId === a.id).id })}>📝 这次作业有一份<b>未上传的草稿</b>（改动 ${draftChanges(s.drafts.find((x) => x.assignmentId === a.id)).length} 人），上传后才会写进这里 <b>打开 ›</b></div>`}
     ${!s.readOnly && html`<form class="typed" onSubmit=${(e) => { e.preventDefault(); submitTyped(); }}>
       <input class="input" placeholder="⌨️ 输入拼音首字母登记：zjy lzh wf（也可写学号、姓名）" value=${typed} onInput=${(e) => setTyped(e.target.value)} autocapitalize="off" autocomplete="off" />
       <select class="input" value=${typedAs} onChange=${(e) => setTypedAs(e.target.value)}>${['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'LEAVE'].map((k) => html`<option value=${k}>${STATUS[k].label}</option>`)}</select>
@@ -601,13 +645,14 @@ function Scores({ s }) {
     const rows = [head, ...c.students.map((st) => { const x = byId[st.id]; return [st.no, st.name, ...assigns.map((a) => { const k = a.statuses[st.id] || 'NONE'; return { v: STATUS[k].label, s: styleOf[k] }; }), x.submitted, x.late, x.missing, x.score]; })];
     const rank = [['名次', '学号', '姓名', '积分'].map((v) => ({ v, s: ST.HEADER })), ...stats.map((x, i) => [i + 1, x.student.no, x.student.name, x.score])];
     const log = [['日期', '学号', '姓名', '分值', '原因'].map((v) => ({ v, s: ST.HEADER })), ...[...c.scores].sort((a, b) => b.time - a.time).map((e) => { const st = c.students.find((x) => x.id === e.studentId); return st ? [fmtDate(e.time), st.no, st.name, { v: e.delta, s: e.delta >= 0 ? ST.GREEN : ST.RED }, e.reason] : null; }).filter(Boolean)];
-    download(xlsx([{ name: '作业统计', rows }, { name: '积分榜', rows: rank }, { name: '积分明细', rows: log }]), `${c.name}_作业统计.xlsx`);
+    download(xlsx([{ name: '作业统计', rows }, { name: '各次统计名单', rows: classStatRows(c, fmtDate) }, { name: '积分榜', rows: rank }, { name: '积分明细', rows: log }]), `${c.name}_作业统计.xlsx`);
   };
   return html`<div class="page">
     <div class="hero"><div class="hero-title">积分榜</div><div class="muted-light small">初始 ${fmtNum(rules.initial)} · 未交 ${signed(rules.missing)} · 迟交 ${signed(rules.late)} · 优秀 ${signed(rules.excellent)}</div>
       ${stats.length >= 3 && html`<div class="podium">${[1, 0, 2].map((i) => html`<div class=${'pod p' + i}><div>${['🥇', '🥈', '🥉'][i]}</div><${Avatar} name=${stats[i].student.name} size=${i ? 44 : 54} /><div class="small">${stats[i].student.name}</div><div class="pod-bar"><b>${fmtNum(stats[i].score)}</b></div></div>`)}</div>`}
     </div>
     <div class="toolbar"><button class="chip" onClick=${exportAll}>📊 导出全班 Excel</button>
+      <button class="chip" onClick=${() => download(xlsx([{ name: '各次统计名单', rows: classStatRows(c, fmtDate) }]), `${c.name}_各次作业统计名单.xlsx`)}>📋 各次统计名单</button>
       <button class="chip" onClick=${() => { update((d) => mapClass(d, c.id, (k) => ({ ...k, scores: [...k.scores, ...k.students.map((x) => ({ id: newId(), studentId: x.id, delta: 1, reason: '全班表现好', time: Date.now() }))] }))); say('全班 +1 🎉', true); }}>🎉 全班 +1</button></div>
     ${stats.map((x, i) => html`<div class="card row" onClick=${() => { setTarget(x.student); setVal(1); setReason(''); }}>
       <b class="idx">${i + 1}</b><${Avatar} name=${x.student.name} size=${36} /><div class="grow"><b>${x.student.name}</b><div class="muted tiny">交${x.submitted} · 迟${x.late} · 缺${x.missing}</div></div><b class="score">${fmtNum(x.score)}</b></div>`)}
@@ -723,11 +768,257 @@ function Heatmap({ s, open }) {
   </div>`;
 }
 
+// ---------------- 统计名单导出 ----------------
+function exportStatList(c, title, subject, createdAt, statuses, comments = {}) {
+  const sheets = statListSheets({ className: c.name, title, subject, date: fmtDate(createdAt), students: c.students, statuses, comments });
+  download(xlsx(sheets), `${[subject, title].filter(Boolean).join('_') || '作业'}_统计名单.xlsx`.replace(/[\\/:*?"<>|]/g, '_'));
+}
+const fmtTime = (t) => { const d = new Date(t); const p = (n) => String(n).padStart(2, '0'); return `${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`; };
+const toLocalInput = (t) => { const d = new Date(t); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
+
+// ---------------- 草稿 ----------------
+/** 定时上传：选时间（快捷：1 小时后 / 今晚 8 点 / 明早 7 点） */
+function ScheduleDialog({ initial, onClose, onSave }) {
+  const at = (h, m, addDay) => { const d = new Date(); if (addDay) d.setDate(d.getDate() + 1); d.setHours(h, m, 0, 0); return d.getTime(); };
+  const [v, setV] = useState(toLocalInput(initial || Date.now() + 3600000));
+  const quick = [['45 分钟后', Date.now() + 45 * 60000], ['1 小时后', Date.now() + 3600000], ['今晚 20:00', at(20, 0, new Date().getHours() >= 20)], ['明早 7:00', at(7, 0, true)]];
+  const t = new Date(v).getTime();
+  return html`<${Modal} title="⏰ 定时上传" onClose=${onClose}>
+    <div class="chips">${quick.map(([l, x]) => html`<button class="chip" onClick=${() => setV(toLocalInput(x))}>${l}</button>`)}</div>
+    <input class="input" type="datetime-local" value=${v} onInput=${(e) => setV(e.target.value)} />
+    <div class="muted tiny">到时间自动写进作业并上传到云端。网页需要开着（可以在后台）；如果到点时网页没开，下次打开会立即上传。</div>
+    <div class="actions">${initial && html`<button class="btn ghost" onClick=${() => onSave(null)}>取消定时</button>`}
+      <button class="btn" disabled=${!t || Number.isNaN(t)} onClick=${() => onSave(t <= Date.now() ? Date.now() + 1000 : t)}>确定</button></div>
+  </${Modal}>`;
+}
+
+/** 输入首字母/学号/姓名登记（草稿页用，与作业页同一套解析） */
+function parseTyped(c, settings, text) {
+  const parse = createVoiceParser(c.students, { tolerance: [0.6, 1, 1.4][settings.voiceFuzzy ?? 1], initials: true });
+  const r = parse(text); const sure = []; const amb = [];
+  for (const m of r.matches) { if (m.ids.length === 1) { if (!sure.includes(m.ids[0])) sure.push(m.ids[0]); } else amb.push(m); }
+  return { sure, amb, left: r.leftover };
+}
+
+function DraftView({ s, id, back, open }) {
+  const { data, say } = s;
+  const dr = s.drafts.find((x) => x.id === id);
+  const c = dr && data.classes.find((k) => k.id === dr.classId);
+  const [filter, setFilter] = useState('ALL'); const [sheet, setSheet] = useState(null); const [edit, setEdit] = useState(false); const [sched, setSched] = useState(false);
+  const [typed, setTyped] = useState(''); const [typedAs, setTypedAs] = useState('SUBMITTED'); const [typedRes, setTypedRes] = useState(null);
+  const [view, setView] = useState(c?.seating ? 'seat' : 'card');
+  useEffect(() => { if (!dr || !c) back(); }, [dr, c]);
+  if (!dr || !c) return null;
+  const setStatus = (ids, st) => s.editDraft(id, (x) => { const m = { ...x.statuses }; ids.forEach((i) => { if (st === 'NONE') delete m[i]; else m[i] = st; }); return { ...x, statuses: m }; });
+  const t = tally(c.students, dr.statuses); const changed = draftChanges(dr);
+  const toggle = (st) => { const x = dr.statuses[st.id] || 'NONE'; setStatus([st.id], x === 'NONE' || x === 'MISSING' ? 'SUBMITTED' : 'NONE'); };
+  const submitTyped = () => {
+    if (!typed.trim()) return;
+    const r = parseTyped(c, data.settings, typed.trim());
+    if (r.sure.length) setStatus(r.sure, typedAs);
+    const nm = (i) => c.students.find((x) => x.id === i)?.name || '?';
+    setTypedRes(r); setTyped('');
+    if (r.sure.length) say(`草稿：${r.sure.map(nm).join('、')} → ${STATUS[typedAs].label}`); else if (!r.amb.length) say('没有认出名单里的同学');
+  };
+  const filters = { ALL: ['全部', () => true], NONE: ['未登记', (x) => x === 'NONE'], MISSING: ['未交', (x) => x === 'MISSING' || x === 'NONE'], DONE: ['已交', (x) => ['SUBMITTED', 'EXCELLENT', 'LATE'].includes(x)], CHANGED: ['改动', null] };
+  const list = c.students.filter((st) => (filter === 'CHANGED' ? changed.includes(st.id) : filters[filter][1](dr.statuses[st.id] || 'NONE')));
+  let pressTimer = 0;
+  return html`<div class="page">
+    <div class="hero draft-hero">
+      <div class="row"><button class="icon-btn light" onClick=${back}>←</button>
+        <div class="grow" onClick=${() => setEdit(true)}><div class="muted-light small">📝 草稿 · 只保存在本机 · ${dr.isNew ? '新作业' : '已有作业'} · ${c.name}</div><div class="hero-title">${dr.title || '未命名作业'}</div><div class="muted-light tiny">${dr.subject} · 最后编辑 ${fmtTime(dr.updatedAt)}</div></div></div>
+      <div class="row gap">
+        <div class="ring" style=${{ '--p': t.rate }}><b>${t.handedIn}</b><span>/ ${t.expected}</span></div>
+        <div class="chips light">${['SUBMITTED', 'MISSING', 'NONE', 'LATE', 'LEAVE', 'EXCELLENT'].map((k) => html`<span class="chip">${STATUS[k].label} ${t.counts[k]}</span>`)}<span class="chip">✏️ 改动 ${changed.length} 人</span></div>
+      </div>
+    </div>
+    <div class="card draft-bar">
+      <div class="grow small">${dr.scheduledAt ? html`⏰ 将在 <b>${fmtTime(dr.scheduledAt)}</b> 自动上传` : '还没上传：云端和其它设备暂时看不到这些登记'}</div>
+      <button class="btn" onClick=${() => s.uploadDrafts([id])}>☁️ 上传</button>
+      <button class="btn ghost" onClick=${() => setSched(true)}>⏰ ${dr.scheduledAt ? '改时间' : '定时上传'}</button>
+    </div>
+    <div class="toolbar">
+      <button class="chip" onClick=${() => open({ view: 'stattable', draftId: id })}>📊 从统计表导入</button>
+      <button class="chip" onClick=${() => { if (confirm(`将 ${t.counts.NONE} 名未登记的同学标记为“未交”？`)) setStatus(t.lists.NONE.map((x) => x.id), 'MISSING'); }}>☑️ 剩余标未交</button>
+      <button class="chip" onClick=${() => exportStatList(c, dr.title, dr.subject, dr.createdAt, dr.statuses, dr.comments)}>📋 统计名单</button>
+      <button class="chip danger" onClick=${() => { if (confirm('删除这份草稿？里面的登记不会上传')) { s.setDrafts((xs) => xs.filter((x) => x.id !== id)); say('已删除草稿'); } }}>🗑️ 删除草稿</button>
+    </div>
+    <form class="typed" onSubmit=${(e) => { e.preventDefault(); submitTyped(); }}>
+      <input class="input" placeholder="⌨️ 输入拼音首字母登记：zjy lzh wf（也可写学号、姓名）" value=${typed} onInput=${(e) => setTyped(e.target.value)} autocapitalize="off" autocomplete="off" />
+      <select class="input" value=${typedAs} onChange=${(e) => setTypedAs(e.target.value)}>${['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'LEAVE'].map((k) => html`<option value=${k}>${STATUS[k].label}</option>`)}</select>
+      <button class="btn" type="submit">登记</button>
+    </form>
+    ${typedRes && (typedRes.amb.length > 0 || typedRes.left) && html`<div class="card small">
+      ${typedRes.amb.map((m) => html`<div class="row gap">“${m.heard}”有多位同学：${m.ids.map((sid) => { const st = c.students.find((x) => x.id === sid); return html`<button class="chip" onClick=${() => { setStatus([sid], typedAs); setTypedRes({ ...typedRes, amb: typedRes.amb.filter((x) => x !== m) }); }}>${st.name} ${st.no}</button>`; })}</div>`)}
+      ${typedRes.left && html`<div class="muted">没认出：${typedRes.left}</div>`}</div>`}
+    <div class="toolbar">
+      ${c.seating && html`<button class=${'chip' + (view === 'seat' ? ' on' : '')} onClick=${() => setView(view === 'seat' ? 'card' : 'seat')}>🪑 座位表</button>`}
+      ${Object.entries(filters).map(([k, [l, f]]) => html`<button class=${'chip' + (k === filter ? ' on' : '')} onClick=${() => setFilter(k)}>${l} ${k === 'CHANGED' ? changed.length : c.students.filter((st) => f(dr.statuses[st.id] || 'NONE')).length}</button>`)}
+    </div>
+    <div class="muted small pad">点一下切换 已交/未登记 · 长按（或右键）设置状态、备注 · 带 ✏️ 的是相对云端改过的</div>
+    ${view === 'seat' && c.seating ? html`<${SeatChart} seating=${c.seating} students=${c.students} sel=${() => false}
+        cell=${(st) => { if (!st) return { body: '' }; const x = dr.statuses[st.id] || 'NONE'; return { style: x === 'NONE' ? {} : { background: STATUS[x].color + '33', borderColor: STATUS[x].color }, body: html`<b>${changed.includes(st.id) ? '✏️' : ''}${st.name}</b><span class="tiny" style=${{ color: STATUS[x].color }}>${STATUS[x].label}</span>`, onMenu: () => setSheet(st) }; }}
+        onCell=${(k, st) => st && toggle(st)} onRow=${() => {}} onCol=${() => {}} />
+      ${(() => { const un = c.students.filter((x) => c.seating.seats[x.id] == null); return un.length ? html`<div class="muted tiny pad">未入座：${un.map((x) => html`<button class="chip" onClick=${() => toggle(x)}>${x.name} · ${STATUS[dr.statuses[x.id] || 'NONE'].label}</button>`)}</div>` : ''; })()}` : html`
+    <div class="grid">${list.map((st) => { const x = dr.statuses[st.id] || 'NONE'; return html`
+      <div class="stu" style=${x === 'NONE' ? {} : { background: STATUS[x].color + '26', borderColor: STATUS[x].color + '66' }}
+        onClick=${() => { if (pressTimer === -1) { pressTimer = 0; return; } toggle(st); }}
+        onContextMenu=${(e) => { e.preventDefault(); setSheet(st); }}
+        onTouchStart=${() => { pressTimer = setTimeout(() => { pressTimer = -1; setSheet(st); }, 500); }}
+        onTouchEnd=${() => { if (pressTimer > 0) clearTimeout(pressTimer); }} onTouchMove=${() => { if (pressTimer > 0) clearTimeout(pressTimer); }}>
+        <${Avatar} name=${st.name} />
+        <div class="stu-name">${changed.includes(st.id) ? '✏️' : ''}${st.name}</div><div class="muted tiny">${st.no}</div>
+        <div class="tiny" style=${{ color: STATUS[x].color, fontWeight: 700 }}>${STATUS[x].label}</div>
+        ${dr.comments[st.id] && html`<div class="tiny muted">💬 ${dr.comments[st.id]}</div>`}
+      </div>`; })}</div>`}
+    ${sheet && html`<${Modal} title=${html`<span class="row"><${Avatar} name=${sheet.name} size=${36} /> ${sheet.name} <span class="muted small">${sheet.no}</span></span>`} onClose=${() => setSheet(null)}>
+      <div class="label">草稿里的状态</div>
+      <div class="chips">${STATUS_KEYS.map((k) => { const cur = dr.statuses[sheet.id] || 'NONE'; return html`<button class=${'chip' + (k === cur ? ' on' : '')} style=${k === cur ? { background: STATUS[k].color, borderColor: STATUS[k].color } : {}} onClick=${() => setStatus([sheet.id], k)}>${STATUS[k].emoji} ${STATUS[k].label}</button>`; })}</div>
+      ${!dr.isNew && html`<div class="muted tiny">云端现在：${STATUS[dr.base.statuses[sheet.id] || 'NONE'].label}</div>`}
+      <div class="label">备注</div>
+      <input class="input" placeholder="如：字迹潦草、缺第3页" value=${dr.comments[sheet.id] || ''} onInput=${(e) => { const v = e.target.value; s.editDraft(id, (x) => { const m = { ...x.comments }; if (v.trim()) m[sheet.id] = v; else delete m[sheet.id]; return { ...x, comments: m }; }); }} />
+      <div class="actions"><button class="btn" onClick=${() => setSheet(null)}>完成</button></div>
+    </${Modal}>`}
+    ${edit && html`<${AssignDialog} initial=${dr} subjects=${data.settings.subjects} onClose=${() => setEdit(false)} onSave=${(title, subject) => { s.editDraft(id, (x) => ({ ...x, title, subject })); setEdit(false); }} />`}
+    ${sched && html`<${ScheduleDialog} initial=${dr.scheduledAt} onClose=${() => setSched(false)} onSave=${(at) => { s.editDraft(id, (x) => ({ ...x, scheduledAt: at })); setSched(false); say(at ? `⏰ 将在 ${fmtTime(at)} 自动上传` : '已取消定时上传'); }} />`}
+  </div>`;
+}
+
+function DraftList({ s, back, open }) {
+  const { data, say } = s; const [sched, setSched] = useState(null);
+  const list = [...s.drafts].sort((a, b) => b.updatedAt - a.updatedAt);
+  const cls = (id) => data.classes.find((k) => k.id === id);
+  return html`<div class="page">
+    <div class="topbar"><button class="icon-btn" onClick=${back}>←</button><div class="grow"><b>🗂️ 草稿箱</b><div class="muted small">草稿只保存在这台设备上，上传后才会进入云端数据库</div></div>
+      ${list.length > 1 && html`<button class="btn" onClick=${() => s.uploadDrafts(list.map((x) => x.id))}>全部上传</button>`}</div>
+    ${!list.length && html`<div class="empty">📭 没有草稿<br /><br />新建作业时勾选“先存为草稿”，或在作业页点“📝 在草稿里登记”、用“📊 统计表识别”导入</div>`}
+    ${list.map((dr) => { const c = cls(dr.classId); const t = c ? tally(c.students, dr.statuses) : null; return html`<div class="card draft-card">
+      <div class="row" onClick=${() => (c ? open({ view: 'draft', id: dr.id }) : say('草稿所属的班级已不存在'))}>
+        <div class="subj" style=${{ background: subjectColor(dr.subject) + '22', color: subjectColor(dr.subject) }}>${(dr.subject || '草')[0]}</div>
+        <div class="grow"><div class="title">${dr.title || '未命名作业'} ${dr.isNew ? html`<span class="tag">新作业</span>` : ''}</div>
+          <div class="muted small">${c ? `${c.emoji} ${c.name}` : '⚠️ 班级已删除'} · 改动 ${draftChanges(dr).length} 人 · 编辑于 ${fmtTime(dr.updatedAt)}</div>
+          ${dr.scheduledAt && html`<div class="small" style="color:var(--g1)">⏰ ${fmtTime(dr.scheduledAt)} 自动上传</div>`}</div>
+        ${t && html`<div class="right"><b>${t.handedIn}/${t.expected}</b><div class="muted small">${Math.round(t.rate * 100)}%</div></div>`}
+      </div>
+      <div class="actions">
+        <button class="chip danger" onClick=${() => { if (confirm('删除这份草稿？')) s.setDrafts((xs) => xs.filter((x) => x.id !== dr.id)); }}>删除</button>
+        <button class="chip" onClick=${() => setSched(dr)}>⏰ ${dr.scheduledAt ? '改时间' : '定时上传'}</button>
+        <button class="chip on" onClick=${() => s.uploadDrafts([dr.id])}>☁️ 上传</button>
+      </div></div>`; })}
+    ${sched && html`<${ScheduleDialog} initial=${sched.scheduledAt} onClose=${() => setSched(null)} onSave=${(at) => { s.editDraft(sched.id, (x) => ({ ...x, scheduledAt: at })); setSched(null); say(at ? `⏰ 将在 ${fmtTime(at)} 自动上传` : '已取消定时上传'); }} />`}
+  </div>`;
+}
+
+// ---------------- 统计表识别 ----------------
+function StatTable({ s, draftId, back, open, replace }) {
+  const { data, say } = s; const c = currentClass(data);
+  const target = draftId ? s.drafts.find((x) => x.id === draftId) : null;
+  const tc = target ? data.classes.find((k) => k.id === target.classId) : c;
+  const [res, setRes] = useState(null); const [col, setCol] = useState(0); const [st, setSt] = useState({}); const [src, setSrc] = useState('');
+  const [paste, setPaste] = useState(false); const [text, setText] = useState(''); const [busy, setBusy] = useState(null);
+  const [saveAs, setSaveAs] = useState(false); const [into, setInto] = useState('');
+  const fileRef = useRef(); const imgRef = useRef();
+  if (!tc) return html`<div class="page"><div class="topbar"><button class="icon-btn" onClick=${back}>←</button><b>统计表识别</b></div><div class="empty">先建立班级、导入名单</div></div>`;
+  const useResult = (r, from) => {
+    if (!r.rows.length) { say('没有认出名单里的同学，请检查表格（需要有姓名或学号一列）'); return; }
+    if (!r.columns.length) { say('认出了学生，但没找到 ✓ × 优 迟 假 这类标记列'); }
+    setRes(r); setCol(Math.max(0, r.columns.length - 1)); setSt(columnStatuses(r, Math.max(0, r.columns.length - 1))); setSrc(from);
+  };
+  const onFile = async (f) => {
+    if (!f) return;
+    try {
+      if (/\.xlsx$/i.test(f.name) || f.type.includes('spreadsheetml')) useResult(recognizeTable(await readXlsx(await f.arrayBuffer()), tc.students), `Excel：${f.name}`);
+      else if (/\.xls$/i.test(f.name)) say('老版 .xls 读不了：请在 Excel 里“另存为 .xlsx 或 CSV”再导入');
+      else useResult(recognizeTable(splitTable(await f.text()), tc.students), `文件：${f.name}`);
+    } catch (e) { say(`读取失败：${e.message}`); }
+  };
+  const onImage = async (f) => {
+    if (!f) return;
+    setBusy({ p: 0, msg: '准备识别…' });
+    try {
+      const { recognizeLines: ocr } = await import('./ocr.js');
+      const lines = await ocr(f, (p, msg) => setBusy({ p, msg }));
+      useResult(tableFromLines(mergeRows(lines), tc.students), `照片：${f.name}`);
+    } catch (e) { say(`识别失败：${e.message}`); }
+    setBusy(null);
+  };
+  const pickCol = (k) => { setCol(k); setSt(columnStatuses(res, k)); };
+  const t = res ? tally(tc.students, st) : null;
+  const header = res?.columns[col]?.header || '';
+  const titleGuess = header && !/^第\d+列$/.test(header) ? header : `${today()} 作业`;
+  const toDraft = (title, subject) => {
+    const dr = makeDraft(tc, null, { title, subject, statuses: st });
+    s.setDrafts((xs) => [dr, ...xs]); replace({ view: 'draft', id: dr.id }); say('📝 已存为草稿（只保存在本机）');
+  };
+  const intoAssign = (aid) => {
+    const a = tc.assignments.find((x) => x.id === aid); if (!a) return;
+    const ex = s.drafts.find((x) => x.assignmentId === a.id);
+    if (ex) { s.editDraft(ex.id, (x) => ({ ...x, statuses: { ...x.statuses, ...st } })); replace({ view: 'draft', id: ex.id }); } else { const dr = makeDraft(tc, a, { statuses: st }); s.setDrafts((xs) => [dr, ...xs]); replace({ view: 'draft', id: dr.id }); }
+    say(`已写入“${a.title}”的草稿，确认后再上传`);
+  };
+  const allCols = () => {
+    const made = res.columns.map((cc, k) => makeDraft(tc, null, { title: /^第\d+列$/.test(cc.header) ? `${today()} 作业 ${k + 1}` : cc.header, subject: '', statuses: columnStatuses(res, k) }));
+    s.setDrafts((xs) => [...made, ...xs]); replace({ view: 'drafts' }); say(`已存为 ${made.length} 份草稿`);
+  };
+  const nm = Object.fromEntries(tc.students.map((x) => [x.id, x]));
+  const inTable = new Set(res ? res.rows.map((r) => r.studentId) : []);
+  return html`<div class="page">
+    <div class="topbar"><button class="icon-btn" onClick=${back}>←</button><div class="grow"><b>📊 统计表识别</b><div class="muted small">${target ? `导入到草稿：${target.title}` : `${tc.emoji} ${tc.name}`} · 认出每个同学交没交，自动统计</div></div></div>
+    <div class="card">
+      <div class="small">支持：拍照/图片（登记表、点名册）、Excel（.xlsx）、CSV、直接粘贴表格。每行一个同学（姓名或学号），后面是标记：</div>
+      <div class="muted tiny">✓ √ 交 1 → 已交 · 优 A ★ → 优秀 · 迟 补 → 迟交 · × X 未交 缺 0 → 未交 · 假 病 → 请假 · 空白 → 未登记。有多列（多次作业）时可以选择用哪一列。</div>
+      <div class="actions">
+        <button class="btn" onClick=${() => imgRef.current.click()}>📷 拍照 / 图片</button>
+        <button class="btn ghost" onClick=${() => fileRef.current.click()}>📄 Excel / CSV</button>
+        <button class="btn ghost" onClick=${() => setPaste(true)}>📋 粘贴</button>
+      </div>
+      <input type="file" ref=${imgRef} accept="image/*" style="display:none" onChange=${(e) => { const f = e.target.files[0]; e.target.value = ''; onImage(f); }} />
+      <input type="file" ref=${fileRef} accept=".xlsx,.xls,.csv,.txt,.tsv,text/*,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" onChange=${(e) => { const f = e.target.files[0]; e.target.value = ''; onFile(f); }} />
+      ${busy && html`<div class="row"><span class="spin"></span><span class="small">${busy.msg} ${Math.round(busy.p * 100)}%</span></div>`}
+    </div>
+    ${res && html`
+      <div class="card stat-sum">
+        <div class="muted tiny">${src} · 认出 ${res.rows.length} 人${res.unmatched.length ? ` · ${res.unmatched.length} 行没对上名单` : ''}</div>
+        ${res.columns.length > 1 && html`<div class="label">表里有 ${res.columns.length} 列标记，用哪一列：</div><div class="chips">${res.columns.map((cc, k) => html`<button class=${'chip' + (k === col ? ' on' : '')} onClick=${() => pickCol(k)}>${cc.header}</button>`)}</div>`}
+        <div class="row gap stat-row">
+          <div class="ring dark" style=${{ '--p': t.rate }}><b>${t.handedIn}</b><span>/ ${t.expected}</span></div>
+          <div class="grow">
+            <div><b>交齐率 ${Math.round(t.rate * 100)}%</b></div>
+            <div class="chips">${['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'LEAVE', 'NONE'].map((k) => html`<span class="chip" style=${{ borderColor: STATUS[k].color, color: STATUS[k].color }}>${STATUS[k].label} ${t.counts[k]}</span>`)}</div>
+            ${t.counts.MISSING > 0 && html`<div class="small">❌ 未交：${t.lists.MISSING.map((x) => x.name).join('、')}</div>`}
+            ${t.counts.NONE > 0 && html`<div class="small muted">⏳ 未登记：${t.lists.NONE.map((x) => x.name).join('、')}</div>`}
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn ghost" onClick=${() => exportStatList(tc, header, '', Date.now(), st)}>📋 导出统计名单 Excel</button>
+          ${target ? html`<button class="btn" onClick=${() => { s.editDraft(target.id, (x) => ({ ...x, statuses: { ...x.statuses, ...st } })); say(`已导入 ${Object.keys(st).length} 人到草稿`); back(); }}>写入这份草稿</button>` : html`
+            ${res.columns.length > 1 && html`<button class="btn ghost" onClick=${allCols}>每列各存一份草稿</button>`}
+            <button class="btn ghost" onClick=${() => setInto(tc.assignments[0]?.id || '')} disabled=${!tc.assignments.length}>写入已有作业</button>
+            <button class="btn" onClick=${() => setSaveAs(true)}>📝 存为新作业草稿</button>`}
+        </div>
+      </div>
+      <div class="muted small pad">核对一下：点状态可以改；没对上的行在最下面</div>
+      <div class="card stat-list">${tc.students.map((x) => { const k = st[x.id] || 'NONE'; return html`<div class="row stat-line">
+        <span class="grow"><b>${x.name}</b> <span class="muted tiny">${x.no}${inTable.has(x.id) ? '' : ' · 表里没有'}</span></span>
+        <select class="input stat-sel" style=${{ color: STATUS[k].color }} value=${k} onChange=${(e) => setSt((m) => { const n = { ...m }; if (e.target.value === 'NONE') delete n[x.id]; else n[x.id] = e.target.value; return n; })}>${STATUS_KEYS.map((q) => html`<option value=${q}>${STATUS[q].label}</option>`)}</select></div>`; })}</div>
+      ${res.unmatched.length > 0 && html`<div class="card small"><b>没对上名单的行（${res.unmatched.length}）</b>${res.unmatched.slice(0, 30).map((u) => html`<div class="muted">${u}</div>`)}</div>`}`}
+    ${paste && html`<${Modal} title="📋 粘贴统计表" onClose=${() => setPaste(false)}>
+      <div class="muted small">从 Excel / WPS / 在线表格里选中整张表复制，粘贴到这里</div>
+      <textarea class="input" rows="9" value=${text} onInput=${(e) => setText(e.target.value)} placeholder=${'姓名\t10月30日\t10月31日\n张三\t✓\t×\n李四\t优\t✓'}></textarea>
+      <div class="actions"><button class="btn" disabled=${!text.trim()} onClick=${() => { setPaste(false); useResult(recognizeTable(splitTable(text), tc.students), '粘贴的表格'); }}>识别</button></div></${Modal}>`}
+    ${saveAs && html`<${AssignDialog} initial=${{ title: titleGuess, subject: data.settings.subjects[0] || '' }} subjects=${data.settings.subjects} onClose=${() => setSaveAs(false)} onSave=${(title, subject) => { setSaveAs(false); toDraft(title, subject); }} />`}
+    ${into !== '' && html`<${Modal} title="写入已有作业" onClose=${() => setInto('')}>
+      <div class="muted small">会先存为这次作业的草稿（只改表里有标记的同学），核对后再上传</div>
+      <select class="input" value=${into} onChange=${(e) => setInto(e.target.value)}>${[...tc.assignments].sort((a, b) => b.createdAt - a.createdAt).map((a) => html`<option value=${a.id}>${fmtDate(a.createdAt)} ${a.subject} ${a.title}</option>`)}</select>
+      <div class="actions"><button class="btn" onClick=${() => { const v = into; setInto(''); intoAssign(v); }}>确定</button></div></${Modal}>`}
+  </div>`;
+}
+
 // ---------------- 外壳 ----------------
 function App() {
   const s = useStore();
   const [tab, setTab] = useState('home'); const [stack, setStack] = useState([]);
-  const open = (r) => { if (r.view === 'voice' && s.readOnly) { s.say('👀 预览模式：登录后才能登记'); return; } setStack((x) => [...x, r]); };
+  const open = (r) => { if (['voice', 'draft', 'drafts', 'stattable'].includes(r.view) && s.readOnly) { s.say('👀 预览模式：登录后才能登记'); return; } setStack((x) => [...x, r]); };
   const back = () => setStack((x) => x.slice(0, -1));
   const [p1, p2] = PALETTES[s.data.settings.theme] || PALETTES.mint;
   const dark = s.data.settings.dark === 2 || (s.data.settings.dark === 0 && window.matchMedia('(prefers-color-scheme: dark)').matches) || s.data.settings.theme === 'neon';
@@ -736,6 +1027,9 @@ function App() {
   let body;
   if (top?.view === 'assign') body = html`<${AssignView} s=${s} id=${top.id} back=${back} open=${open} />`;
   else if (top?.view === 'voice') body = html`<${VoiceView} s=${s} id=${top.id} back=${back} />`;
+  else if (top?.view === 'draft') body = html`<${DraftView} s=${s} id=${top.id} back=${back} open=${open} />`;
+  else if (top?.view === 'drafts') body = html`<${DraftList} s=${s} back=${back} open=${open} />`;
+  else if (top?.view === 'stattable') body = html`<${StatTable} s=${s} draftId=${top.draftId} back=${back} open=${open} replace=${(r) => setStack((x) => [...x.slice(0, -1), r])} />`;
   // 预览模式不显示名单页（热力图照常显示）
   const curTab = s.readOnly && tab === 'roster' ? 'home' : tab;
   const tabs = [['home', '🏠', '首页'], ...(s.readOnly ? [] : [['roster', '👥', '名单']]), ['heat', '🔥', '热力图'], ['scores', '🏆', '积分'], ['settings', '⚙️', '设置']];

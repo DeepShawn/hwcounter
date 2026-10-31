@@ -24,7 +24,7 @@ jobs:
           node-version: 22
 
       - name: Test voice parser (real pinyin data)
-        run: node tools/web-tests/voice.test.mjs && node tools/web-tests/seating.test.mjs
+        run: node tools/web-tests/voice.test.mjs && node tools/web-tests/seating.test.mjs && node tools/web-tests/stats.test.mjs
 
       - name: End-to-end test (Chromium, mocked Supabase)
         run: |

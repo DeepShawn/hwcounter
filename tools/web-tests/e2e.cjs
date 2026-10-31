@@ -182,6 +182,64 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check((await page.locator('.seat-grid .seat').nth(0).textContent()).includes('未交') && (await page.locator('.seat-grid .seat').nth(1).textContent()).includes('未交'), '空格连续输入 zjy lzh → 两人都登记');
   await page.click('.hero .icon-btn');
 
+
+  // 5c) 统计表识别（粘贴）→ 存为新作业草稿 → 只在本机 → 上传
+  await page.click('.tabs button:has-text("首页")');
+  await page.waitForTimeout(4500); // 等上一步的自动同步完成
+  const cloudAssigns = db.row.data.classes[0].assignments.length; const vDraft0 = db.row.version;
+  await page.click('.qa:has-text("统计表识别")');
+  await page.click('button:has-text("📋 粘贴")');
+  await page.fill('.modal textarea', '学号\t姓名\t11月1日 默写\n34\t张锦宇\t√\n49\t李子涵\t×\n12\t王芳\t优\n50\t新同学\t假\n99\t路人甲\t√');
+  await page.click('.modal button:has-text("识别")');
+  await page.waitForSelector('.stat-sum');
+  const sumText = await page.textContent('.stat-sum');
+  check(sumText.includes('认出 4 人') && sumText.includes('1 行没对上') && sumText.includes('未交：李子涵'), '统计表识别：认出 4 人、1 行名单外、未交名单');
+  check(sumText.includes('交齐率 67%'), `统计：2/3 交齐率 67%（请假不计应交）`);
+  await page.screenshot({ path: `${OUT}/5d-stat-table.png` });
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("导出统计名单 Excel")')]);
+  const dlPath = `${OUT}/stat-list.xlsx`; await dl.saveAs(dlPath);
+  const { readXlsx } = await import('../../web/js/stats.js');
+  const wbRows = await readXlsx(fs.readFileSync(dlPath));
+  check(wbRows.some((r) => r[0] === '未交' && r[3] === '李子涵'), `导出统计名单 Excel（${dl.suggestedFilename()}）`);
+  await page.click('button:has-text("存为新作业草稿")');
+  await page.waitForSelector('.modal-title:has-text("编辑作业")');
+  check((await page.inputValue('.modal input')) === '11月1日 默写', '表头自动作为作业名');
+  await page.click('.modal button:has-text("保存")');
+  await page.waitForSelector('.draft-hero');
+  check((await page.textContent('.draft-hero')).includes('只保存在本机'), '进入草稿页');
+  await page.click('.seat-grid .seat:has-text("李子涵")');
+  await page.waitForTimeout(5500);
+  check(db.row.data.classes[0].assignments.length === cloudAssigns && db.row.version === vDraft0, '草稿不会自动上传到云端');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('hw.drafts')));
+  check(stored.length === 1 && stored[0].statuses.s2 === 'SUBMITTED' && stored[0].statuses.s9 === 'LEAVE', '草稿保存在本机（含刚才的修改）');
+  await page.screenshot({ path: `${OUT}/5e-draft.png` });
+  await page.click('.draft-bar button:has-text("上传")');
+  await page.waitForTimeout(1500);
+  const up = db.row.data.classes[0].assignments.find((a) => a.title === '11月1日 默写');
+  check(up && up.statuses.s1 === 'SUBMITTED' && up.statuses.s2 === 'SUBMITTED' && up.statuses.s3 === 'EXCELLENT' && db.row.version > vDraft0, '上传草稿 → 云端出现新作业和登记');
+  check((await page.evaluate(() => JSON.parse(localStorage.getItem('hw.drafts')))).length === 0, '上传后草稿删除');
+
+  // 5d) 已有作业 → 在草稿里登记 → 定时上传
+  await page.waitForSelector('text=练习册 P32');
+  await page.click('text=练习册 P32');
+  await page.click('.toolbar .chip:has-text("在草稿里登记")');
+  await page.waitForSelector('.draft-hero');
+  await page.click('.toolbar .chip:has-text("座位表")');
+  await page.click('.grid .stu:has-text("王芳")');
+  const before5d = db.row.data.classes[0].assignments.find((a) => a.id === 'a1').statuses.s3;
+  await page.click('.draft-bar button:has-text("定时上传")');
+  await page.fill('.modal input[type=datetime-local]', '2020-01-01T08:00');
+  await page.click('.modal button:has-text("确定")');
+  check((await page.textContent('.draft-bar')).includes('自动上传'), '设置定时上传');
+  await page.click('.hero .icon-btn');
+  check(await page.isVisible('.draft-note'), '作业页提示有未上传的草稿');
+  await page.click('.hero .icon-btn');
+  check((await page.textContent('.qa:has-text("草稿箱")')).includes('1'), '首页草稿箱显示 1 份');
+  await page.waitForFunction(() => !(JSON.parse(localStorage.getItem('hw.drafts')) || []).length, null, { timeout: 20000 });
+  await page.waitForTimeout(1500);
+  const after5d = db.row.data.classes[0].assignments.find((a) => a.id === 'a1').statuses.s3;
+  check(before5d !== after5d && after5d === (!before5d || before5d === 'MISSING' ? 'SUBMITTED' : undefined), `到时间自动上传（王芳 ${before5d} → ${after5d}）`);
+
   // 6) 修改密码（旧密码校验 + 两次新密码一致）
   await page.click('.tabs button:has-text("设置")');
   await page.click('button:has-text("修改密码")');
