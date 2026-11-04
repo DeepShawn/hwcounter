@@ -220,13 +220,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------- 积分 ----------
-    fun addScore(studentIds: Collection<String>, delta: Double, reason: String) = updateClass { c ->
-        c.copy(scores = c.scores + studentIds.map { ScoreEntry(studentId = it, delta = delta, reason = reason) })
+    fun addScore(studentIds: Collection<String>, delta: Double, reason: String) {
+        if (!delta.isFinite() || delta == 0.0 || studentIds.isEmpty()) return
+        val ids = studentIds.toSet()
+        updateClass { c ->
+            c.copy(scores = c.scores + c.students.filter { it.id in ids }.map { ScoreEntry(studentId = it.id, delta = delta, reason = reason) })
+        }
     }
 
     fun removeScore(entryId: String) = updateClass { c -> c.copy(scores = c.scores.filterNot { it.id == entryId }) }
 
     fun clearScores() = updateClass { c -> c.copy(scores = emptyList()) }
+
+    fun resetScores(studentIds: Collection<String>, target: Double) = updateClass { c ->
+        c.resetStudentScores(_data.value.settings.rules, studentIds, target)
+    }
 
     // ---------- 学生 ----------
     fun upsertStudent(s: Student) = updateClass { c ->

@@ -165,10 +165,19 @@ final class Store: ObservableObject {
     }
 
     // 积分
-    func addScore(_ ids: [String], _ delta: Double, _ reason: String) {
-        updateClass { c in c.scores += ids.map { ScoreEntry(studentId: $0, delta: delta, reason: reason) } }
+    func addScore(_ ids: [String], _ delta: Double, _ reason: String, classId: String? = nil) {
+        guard delta.isFinite, delta != 0, !ids.isEmpty else { return }
+        let selected = Set(ids)
+        updateClass(classId) { c in
+            c.scores += c.students.filter { selected.contains($0.id) }.map { ScoreEntry(studentId: $0.id, delta: delta, reason: reason) }
+        }
     }
     func removeScore(_ id: String) { updateClass { $0.scores.removeAll { $0.id == id } } }
+
+    func resetScores(_ ids: [String], target: Double, classId: String) {
+        let rules = data.rules
+        updateClass(classId) { $0 = $0.resettingScores(rules, ids: ids, target: target) }
+    }
 
     // 学生
     func upsertStudent(_ s: Student) {

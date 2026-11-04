@@ -456,6 +456,7 @@ fun ScoreDialog(targets: List<Student>, reasons: List<String>, onDismiss: () -> 
         title = { Text(if (targets.size == 1) "给 ${targets[0].name} 加减分" else "给 ${targets.size} 人加减分") },
         text = {
             Column {
+                if (targets.size > 1) Text(targets.joinToString("、") { "${it.no} ${it.name}" }, modifier = Modifier.heightIn(max = 100.dp).verticalScroll(rememberScrollState()), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = { value -= 0.5 }) { Text("−") }
                     Text(

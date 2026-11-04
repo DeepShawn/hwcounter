@@ -1,7 +1,7 @@
 import { h, render } from '../vendor/preact.module.js';
 import { useState, useEffect, useMemo, useRef, useCallback } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
-import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
+import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, resetStudentScores, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
 import { api, session, meta, setMeta, syncOnce, pushAs, merge, hashData, withLocalKey } from './cloud.js';
 import { createVoiceParser } from './voice.js';
 import { xlsx, ST } from './xlsx.js';
@@ -590,9 +590,27 @@ function StudentEdit({ st, onClose, onSave, onDelete }) {
 // ---------------- 积分 ----------------
 function Scores({ s }) {
   const { data, update, say } = s; const c = currentClass(data); const rules = data.settings.rules;
-  const [target, setTarget] = useState(null); const [val, setVal] = useState(1); const [reason, setReason] = useState('');
+  const [targetIds, setTargetIds] = useState(null); const [val, setVal] = useState(1); const [reason, setReason] = useState('');
+  const [selecting, setSelecting] = useState(false); const [selected, setSelected] = useState(new Set());
+  const [resetIds, setResetIds] = useState(null); const [baseOpen, setBaseOpen] = useState(false); const [scoreValue, setScoreValue] = useState('');
+  useEffect(() => { setSelecting(false); setSelected(new Set()); setTargetIds(null); setResetIds(null); setBaseOpen(false); }, [c?.id, s.readOnly]);
   if (!c) return html`<div class="page"><div class="empty">🏆 还没有班级</div></div>`;
   const stats = studentStats(c, rules).sort((x, y) => y.score - x.score);
+  const picked = c.students.filter((st) => selected.has(st.id));
+  const targets = c.students.filter((st) => targetIds?.includes(st.id));
+  const resetTargets = c.students.filter((st) => resetIds?.includes(st.id));
+  const validScoreValue = scoreValue.trim() !== '' && Number.isFinite(Number(scoreValue));
+  const openReset = (ids) => { setResetIds(ids); setScoreValue(String(rules.initial)); };
+  const openScore = (ids) => { setTargetIds(ids); setVal(1); setReason(''); };
+  const cancelSelection = () => { setSelecting(false); setSelected(new Set()); };
+  const saveScore = () => {
+    const delta = Number(val);
+    if (s.readOnly || !targets.length || !Number.isFinite(delta) || delta === 0) return;
+    const ids = new Set(targets.map((st) => st.id)); const time = Date.now();
+    update((d) => mapClass(d, c.id, (k) => ({ ...k, scores: [...k.scores, ...k.students.filter((st) => ids.has(st.id)).map((st) => ({ id: newId(), studentId: st.id, delta, reason: reason.trim() || (delta > 0 ? '表现加分' : '扣分'), time }))] })));
+    say(`${targets.length === 1 ? targets[0].name : targets.length + ' 人'} ${signed(delta)} 分`, true);
+    setTargetIds(null); cancelSelection();
+  };
   const exportAll = () => {
     const assigns = [...c.assignments].sort((x, y) => x.createdAt - y.createdAt);
     const styleOf = { SUBMITTED: ST.GREEN, EXCELLENT: ST.GOLD, LATE: ST.YELLOW, MISSING: ST.RED, LEAVE: ST.BLUE, NONE: 0 };
@@ -603,19 +621,58 @@ function Scores({ s }) {
     const log = [['日期', '学号', '姓名', '分值', '原因'].map((v) => ({ v, s: ST.HEADER })), ...[...c.scores].sort((a, b) => b.time - a.time).map((e) => { const st = c.students.find((x) => x.id === e.studentId); return st ? [fmtDate(e.time), st.no, st.name, { v: e.delta, s: e.delta >= 0 ? ST.GREEN : ST.RED }, e.reason] : null; }).filter(Boolean)];
     download(xlsx([{ name: '作业统计', rows }, { name: '积分榜', rows: rank }, { name: '积分明细', rows: log }]), `${c.name}_作业统计.xlsx`);
   };
-  return html`<div class="page">
-    <div class="hero"><div class="hero-title">积分榜</div><div class="muted-light small">初始 ${fmtNum(rules.initial)} · 未交 ${signed(rules.missing)} · 迟交 ${signed(rules.late)} · 优秀 ${signed(rules.excellent)}</div>
+  return html`<div class=${'page' + (selecting ? ' scores-selecting' : '')}>
+    <div class="hero"><div class="hero-title">积分榜</div><div class="muted-light small">基准 ${fmtNum(rules.initial)} · 未交 ${signed(rules.missing)} · 迟交 ${signed(rules.late)} · 优秀 ${signed(rules.excellent)}</div>
       ${stats.length >= 3 && html`<div class="podium">${[1, 0, 2].map((i) => html`<div class=${'pod p' + i}><div>${['🥇', '🥈', '🥉'][i]}</div><${Avatar} name=${stats[i].student.name} size=${i ? 44 : 54} /><div class="small">${stats[i].student.name}</div><div class="pod-bar"><b>${fmtNum(stats[i].score)}</b></div></div>`)}</div>`}
     </div>
     <div class="toolbar"><button class="chip" onClick=${exportAll}>📊 导出全班 Excel</button>
-      <button class="chip" onClick=${() => { update((d) => mapClass(d, c.id, (k) => ({ ...k, scores: [...k.scores, ...k.students.map((x) => ({ id: newId(), studentId: x.id, delta: 1, reason: '全班表现好', time: Date.now() }))] }))); say('全班 +1 🎉', true); }}>🎉 全班 +1</button></div>
-    ${stats.map((x, i) => html`<div class="card row" onClick=${() => { setTarget(x.student); setVal(1); setReason(''); }}>
-      <b class="idx">${i + 1}</b><${Avatar} name=${x.student.name} size=${36} /><div class="grow"><b>${x.student.name}</b><div class="muted tiny">交${x.submitted} · 迟${x.late} · 缺${x.missing}</div></div><b class="score">${fmtNum(x.score)}</b></div>`)}
-    ${target && html`<${Modal} title=${`给 ${target.name} 加减分`} onClose=${() => setTarget(null)}>
+      ${!s.readOnly && html`<button class=${'chip' + (selecting ? ' on' : '')} disabled=${!c.students.length} onClick=${() => { if (selecting) cancelSelection(); else setSelecting(true); }}>${selecting ? '退出多选' : '☑️ 多选'}</button>
+      <button class="chip" onClick=${() => { setScoreValue(String(rules.initial)); setBaseOpen(true); }}>修改基准分</button>
+      <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => openReset(c.students.map((st) => st.id))}>重置全班分数</button>
+      <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => { update((d) => mapClass(d, c.id, (k) => ({ ...k, scores: [...k.scores, ...k.students.map((x) => ({ id: newId(), studentId: x.id, delta: 1, reason: '全班表现好', time: Date.now() }))] }))); say('全班 +1 🎉', true); }}>🎉 全班 +1</button>`}</div>
+    ${selecting && html`<div class="muted small pad">点击学生选择或取消，再点击“批量加减分”</div>`}
+    ${stats.map((x, i) => html`<button key=${x.student.id} type="button" class=${'card row score-row' + (selecting && selected.has(x.student.id) ? ' selected' : '')}
+      aria-pressed=${selecting ? selected.has(x.student.id) : undefined} onClick=${() => {
+        if (s.readOnly) return;
+        if (selecting) setSelected((prev) => { const next = new Set(prev); if (next.has(x.student.id)) next.delete(x.student.id); else next.add(x.student.id); return next; });
+        else openScore([x.student.id]);
+      }}>
+      ${selecting ? html`<span class="score-check" aria-hidden="true">${selected.has(x.student.id) ? '✓' : ''}</span>` : html`<b class="idx">${i + 1}</b>`}
+      <${Avatar} name=${x.student.name} size=${36} /><div class="grow"><b>${x.student.name}</b><div class="muted tiny">${x.student.no} · 交${x.submitted} · 迟${x.late} · 缺${x.missing}</div></div><b class="score">${fmtNum(x.score)}</b></button>`)}
+    ${selecting && html`<div class="pickbar" aria-label="批量积分操作">
+      <b class="grow" aria-live="polite">已选 ${picked.length} 人</b>
+      <button class="chip" onClick=${() => setSelected(new Set(c.students.map((st) => st.id)))}>全选</button>
+      <button class="chip" onClick=${() => setSelected(new Set())}>清空选择</button>
+      <button class="btn" disabled=${!picked.length} onClick=${() => openScore(picked.map((st) => st.id))}>批量加减分</button>
+      <button class="chip" disabled=${!picked.length} onClick=${() => openReset(picked.map((st) => st.id))}>重置分数</button>
+      <button class="chip" onClick=${cancelSelection}>取消</button>
+    </div>`}
+    ${!s.readOnly && targets.length > 0 && html`<${Modal} title=${`给 ${targets.length === 1 ? targets[0].name : targets.length + ' 人'} 加减分`} onClose=${() => setTargetIds(null)}>
+      <div class="score-targets muted small">${targets.map((st) => `${st.no} ${st.name}`).join('、')}</div>
       <div class="chips center">${[-5, -2, -1, 1, 2, 5].map((v) => html`<button class=${'chip' + (v === val ? ' on' : '')} onClick=${() => setVal(v)}>${signed(v)}</button>`)}</div>
+      <label>每人分值（负数为扣分）<input class="input" type="number" step="0.5" value=${val} onInput=${(e) => setVal(e.target.value)} /></label>
       <input class="input" placeholder="原因" value=${reason} onInput=${(e) => setReason(e.target.value)} />
       <div class="chips">${data.settings.quickReasons.map((r) => html`<button class=${'chip' + (r === reason ? ' on' : '')} onClick=${() => setReason(r)}>${r}</button>`)}</div>
-      <div class="actions"><button class="btn" onClick=${() => { update((d) => mapClass(d, c.id, (k) => ({ ...k, scores: [...k.scores, { id: newId(), studentId: target.id, delta: val, reason: reason || (val > 0 ? '表现加分' : '扣分'), time: Date.now() }] }))); say(`${target.name} ${signed(val)}`, true); setTarget(null); }}>确定</button></div>
+      <div class="actions"><button class="btn ghost" onClick=${() => setTargetIds(null)}>取消</button><button class="btn" disabled=${!Number.isFinite(Number(val)) || Number(val) === 0} onClick=${saveScore}>确定</button></div>
+    </${Modal}>`}
+    ${!s.readOnly && baseOpen && html`<${Modal} title="修改基准分" onClose=${() => setBaseOpen(false)}>
+      <p class="muted small">适用于所有班级。只修改计分基准，历史加减分继续计入，未交次数和记录保留。</p>
+      <label>基准分<input class="input" type="number" step="0.5" value=${scoreValue} onInput=${(e) => setScoreValue(e.target.value)} /></label>
+      <div class="actions"><button class="btn ghost" onClick=${() => setBaseOpen(false)}>取消</button><button class="btn" disabled=${!validScoreValue} onClick=${() => {
+        if (!validScoreValue || s.readOnly) return;
+        update((d) => ({ ...d, settings: { ...d.settings, rules: { ...d.settings.rules, initial: Number(scoreValue) } } }));
+        setBaseOpen(false); say(`基准分已改为 ${fmtNum(Number(scoreValue))}，历史记录已保留`, true);
+      }}>保存</button></div>
+    </${Modal}>`}
+    ${!s.readOnly && resetTargets.length > 0 && html`<${Modal} title=${`重置 ${resetTargets.length} 人的分数`} onClose=${() => setResetIds(null)}>
+      <div class="score-targets muted small">${resetTargets.map((st) => `${st.no} ${st.name}`).join('、')}</div>
+      <p class="muted small">将当前积分调整到指定分数，每人新增一条“重置分数”记录。未交次数、作业状态和原有加减分记录全部保留；之后的加减分继续累计。</p>
+      <label>重置到<input class="input" type="number" step="0.5" value=${scoreValue} onInput=${(e) => setScoreValue(e.target.value)} /></label>
+      <div class="actions"><button class="btn ghost" onClick=${() => setResetIds(null)}>取消</button><button class="btn" disabled=${!validScoreValue} onClick=${() => {
+        if (!validScoreValue || s.readOnly) return;
+        update((d) => mapClass(d, c.id, (k) => resetStudentScores(k, d.settings.rules, resetTargets.map((st) => st.id), Number(scoreValue))));
+        setResetIds(null); cancelSelection(); say(`已将 ${resetTargets.length} 人重置为 ${fmtNum(Number(scoreValue))} 分，未交次数及历史记录已保留`, true);
+      }}>确认重置</button></div>
     </${Modal}>`}
   </div>`;
 }

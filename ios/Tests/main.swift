@@ -147,5 +147,30 @@ do {
     s = SeatingLogic.resize(s, rows: 2, cols: 4)
     check(s.seats.count == 7, "缩小到 2×4")
 }
+// 积分：重置保留历史，修改基准保留手动加减分及未交次数。
+do {
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    let rules = Rules()
+    var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三"), Student(id: "s2", no: "02", name: "李四")])
+    for _ in 1...3 {
+        var a = Assignment(title: "作业", subject: "数学")
+        a.statuses = ["s1": "MISSING"]; a.comments = ["s1": "补交中"]
+        c.assignments.append(a)
+    }
+    c.scores = [ScoreEntry(studentId: "s1", delta: 3, reason: "课堂表现"), ScoreEntry(studentId: "s1", delta: -1, reason: "迟到")]
+    var zeroBase = rules; zeroBase.initial = 0
+    check(c.stats(rules)[0].score == 96 && c.stats(zeroBase)[0].score == -4 && c.stats(zeroBase)[0].missing == 3, "基准100改0，手动加减分和三次未交保留")
+    let reset = c.resettingScores(rules, ids: ["s1", "s1", "other-class"], target: 0)
+    check(reset.stats(rules).map(\.score) == [0, 100] && reset.scores.count == c.scores.count + 1, "重置只影响选中学生，重复ID不重复计分")
+    check(reset.assignments == c.assignments && Array(reset.scores.prefix(c.scores.count)) == c.scores && reset.stats(rules)[0].missing == 3, "重置保留原始流水、作业备注及未交次数")
+    check(reset.scores.last?.reason == "重置分数至 0" && reset.scores.last?.delta == -96, "重置生成可追溯的调整记录")
+    var next = reset
+    next.scores.append(ScoreEntry(studentId: "s1", delta: 2, reason: "进步"))
+    check(next.stats(rules)[0].score == 2, "重置后手动加减分继续累计")
+    let all = c.resettingScores(rules, ids: ["s1", "s2"], target: 25.5)
+    check(all.stats(rules).map(\.score) == [25.5, 25.5] && Set(all.scores.map(\.id)).count == all.scores.count, "全班重置到指定分数，流水ID唯一")
+    check(reset.resettingScores(rules, ids: ["s1"], target: 0) == reset, "重复重置不新增记录")
+    check(c.resettingScores(rules, ids: [], target: 0) == c && c.resettingScores(rules, ids: ["s1"], target: .nan) == c && c.resettingScores(rules, ids: ["s1"], target: .infinity) == c, "空选择和非有限分数不修改数据")
+}
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)
