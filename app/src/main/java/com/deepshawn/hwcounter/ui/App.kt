@@ -17,6 +17,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -59,6 +60,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -205,6 +207,7 @@ fun App(vm: AppViewModel, data: AppData) {
     androidx.compose.runtime.LaunchedEffect(readOnly) { if (readOnly && stack.any { it is Route.Students }) { stack.clear(); stack.add(Route.Home) } }
 
     val current = stack.last()
+    val screenState = rememberSaveableStateHolder()
     val topLevel = current is Route.Home || current is Route.Students || current is Route.Scores || current is Route.Stats || current is Route.Settings
 
     CompositionLocalProvider(LocalKit provides kit) {
@@ -236,15 +239,18 @@ fun App(vm: AppViewModel, data: AppData) {
                         transitionSpec = {
                             val forward = targetState.second > initialState.second
                             val back = targetState.second < initialState.second
-                            when {
-                                forward -> (slideInHorizontally { it / 3 } + fadeIn()) togetherWith (slideOutHorizontally { -it / 6 } + fadeOut())
-                                back -> (slideInHorizontally { -it / 6 } + fadeIn()) togetherWith (slideOutHorizontally { it / 3 } + fadeOut())
-                                else -> fadeIn() togetherWith fadeOut()
+                            val transition = when {
+                                forward -> (slideInHorizontally(tween(180)) { it / 8 } + fadeIn(tween(140))) togetherWith (slideOutHorizontally(tween(140)) { -it / 12 } + fadeOut(tween(90)))
+                                back -> (slideInHorizontally(tween(180)) { -it / 12 } + fadeIn(tween(140))) togetherWith (slideOutHorizontally(tween(140)) { it / 8 } + fadeOut(tween(90)))
+                                else -> fadeIn(tween(140)) togetherWith fadeOut(tween(90))
                             }
+                            transition.using(null)
                         },
                         label = "nav",
                     ) { (route, _) ->
-                        RouteContent(route, vm, data)
+                        if (route in listOf(Route.Home, Route.Students, Route.Scores, Route.Stats, Route.Settings)) {
+                            screenState.SaveableStateProvider(route.toString()) { RouteContent(route, vm, data) }
+                        } else RouteContent(route, vm, data)
                     }
                 }
             }

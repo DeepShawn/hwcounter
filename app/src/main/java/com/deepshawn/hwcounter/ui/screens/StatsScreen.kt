@@ -8,6 +8,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -60,9 +62,18 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
     val recent = assigns.takeLast(10)
     val stats = remember(c, rules) { c.studentStats(rules) }
     val dateFmt = remember { SimpleDateFormat("M/d", Locale.CHINA) }
+    val summaries = remember(c.students, c.assignments) { assigns.associate { it.id to c.summary(it) } }
+    val totals = remember(summaries) {
+        HashMap<HwStatus, Int>().apply {
+            summaries.values.forEach { summary -> summary.counts.forEach { (status, n) -> this[status] = (this[status] ?: 0) + n } }
+        }
+    }
+    val handed = (totals[HwStatus.SUBMITTED] ?: 0) + (totals[HwStatus.EXCELLENT] ?: 0) + (totals[HwStatus.LATE] ?: 0)
+    val expected = summaries.values.sumOf { it.expected }
+    val overall = if (expected == 0) 0f else handed.toFloat() / expected
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        GradientHeader {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        item { GradientHeader {
             Text("数据统计", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
             Text("${c.name} · 共 ${assigns.size} 次作业 · ${c.students.size} 人", color = Color.White.copy(alpha = 0.85f))
             if (assigns.isNotEmpty()) {
@@ -73,29 +84,23 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                     com.deepshawn.hwcounter.export.Exporter.shareFile(ctx, f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "分享统计名单")
                 }) { Text("📋 导出各次统计名单 Excel", color = Color.White, fontWeight = FontWeight.Bold) }
             }
-        }
+        } }
         if (assigns.isEmpty()) {
-            EmptyState("📈", "还没有数据", "布置并登记几次作业后，这里会出现趋势图、热力图和催交榜")
-            return@Column
+            item { EmptyState("📈", "还没有数据", "布置并登记几次作业后，这里会出现趋势图、热力图和催交榜") }
+            return@LazyColumn
         }
-        val totals = HashMap<HwStatus, Int>()
-        assigns.forEach { a -> c.summary(a).counts.forEach { (k, v) -> totals[k] = (totals[k] ?: 0) + v } }
-        val handed = (totals[HwStatus.SUBMITTED] ?: 0) + (totals[HwStatus.EXCELLENT] ?: 0) + (totals[HwStatus.LATE] ?: 0)
-        val expected = assigns.sumOf { c.summary(it).expected }
-        val overall = if (expected == 0) 0f else handed.toFloat() / expected
-
-        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item { Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatTile("总提交率", "${(overall * 100).toInt()}%", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
             StatTile("优秀次数", "${totals[HwStatus.EXCELLENT] ?: 0}", statusColor(HwStatus.EXCELLENT), Modifier.weight(1f))
             StatTile("缺交人次", "${totals[HwStatus.MISSING] ?: 0}", statusColor(HwStatus.MISSING), Modifier.weight(1f))
-        }
+        } }
 
-        AppCard(Modifier.padding(horizontal = 16.dp)) {
+        item { AppCard(Modifier.padding(horizontal = 16.dp)) {
             SectionTitle("📈 最近 ${recent.size} 次提交率")
-            BarChart(recent.map { c.summary(it).rate }, recent.map { dateFmt.format(Date(it.createdAt)) }, Modifier.padding(top = 8.dp))
+            BarChart(recent.map { summaries.getValue(it.id).rate }, recent.map { dateFmt.format(Date(it.createdAt)) }, Modifier.padding(top = 8.dp))
         }
-        Spacer(Modifier.height(12.dp))
-        AppCard(Modifier.padding(horizontal = 16.dp)) {
+        Spacer(Modifier.height(12.dp)) }
+        item { AppCard(Modifier.padding(horizontal = 16.dp)) {
             SectionTitle("🍩 状态分布")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val order = listOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE, HwStatus.LEAVE, HwStatus.MISSING, HwStatus.NONE)
@@ -117,11 +122,11 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(12.dp)) }
         // 科目
-        val bySubject = assigns.groupBy { it.subject.ifBlank { "其他" } }.map { (k, l) -> k to l.map { c.summary(it).rate }.average().toFloat() }.sortedByDescending { it.second }
+        val bySubject = assigns.groupBy { it.subject.ifBlank { "其他" } }.map { (k, l) -> k to l.map { summaries.getValue(it.id).rate }.average().toFloat() }.sortedByDescending { it.second }
         if (bySubject.size > 1) {
-            AppCard(Modifier.padding(horizontal = 16.dp)) {
+            item { AppCard(Modifier.padding(horizontal = 16.dp)) {
                 SectionTitle("📚 各科平均提交率")
                 bySubject.forEach { (sub, r) ->
                     Row(Modifier.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -133,10 +138,10 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                     }
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(12.dp)) }
         }
         // 热力图
-        AppCard(Modifier.padding(horizontal = 16.dp)) {
+        item { AppCard(Modifier.padding(horizontal = 16.dp)) {
             SectionTitle("🔥 作业热力图（最近 ${recent.size} 次）")
             Text("每行一位同学，每格一次作业，点击格子进入该次作业", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
@@ -156,13 +161,13 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(12.dp)) }
         // 进步之星：最近 3 次全交且之前有缺交
         val stars = stats.filter { it.missing == 0 && it.late == 0 }.map { it.student.name }
-        AppCard(Modifier.padding(horizontal = 16.dp)) {
+        item { AppCard(Modifier.padding(horizontal = 16.dp)) {
             SectionTitle("🌟 全勤之星 ${stars.size} 人")
             Text(if (stars.isEmpty()) "暂时还没有，继续加油！" else stars.joinToString("、"), fontSize = 14.sp)
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(24.dp)) }
     }
 }

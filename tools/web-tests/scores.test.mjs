@@ -1,7 +1,7 @@
 // node --test tools/web-tests/scores.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultRules, studentStats, resetStudentScores } from '../../web/js/model.js';
+import { defaultRules, summary, studentStats, addStudentScores, resetStudentScores } from '../../web/js/model.js';
 
 const rules = defaultRules();
 const fixture = () => ({
@@ -58,4 +58,30 @@ test('重复重置到相同分数、空选择、无效目标均不新增记录',
   assert.equal(resetStudentScores(c, rules, [], 0), c);
   assert.equal(resetStudentScores(c, rules, ['missing'], 0), c);
   for (const target of [NaN, Infinity, -Infinity]) assert.equal(resetStudentScores(c, rules, ['s1'], target), c);
+});
+
+test('批量加减分去重并限制在当前班级，不改作业登记及未交次数', () => {
+  const c = fixture();
+  const scored = addStudentScores(c, ['s1', 's1', 'other-class'], -1.5, '作业：练习册');
+  assert.equal(scored.scores.length, c.scores.length + 1);
+  assert.equal(studentStats(scored, rules)[0].score, 94.5);
+  assert.equal(studentStats(scored, rules)[0].missing, 3);
+  assert.equal(studentStats(scored, rules)[1].score, 100);
+  assert.equal(scored.assignments, c.assignments);
+  assert.equal(addStudentScores(c, ['s1'], 0, '无效'), c);
+});
+
+test('统计缓存能复用重复读取，并在作业、名单或规则改变后更新', () => {
+  const c = fixture();
+  const stats = studentStats(c, rules); const first = summary(c, c.assignments[0]);
+  assert.equal(studentStats(c, rules), stats);
+  assert.equal(summary(c, c.assignments[0]), first);
+  const assignment = { ...c.assignments[0], statuses: { ...c.assignments[0].statuses, s1: 'SUBMITTED' } };
+  const changed = { ...c, assignments: [assignment, ...c.assignments.slice(1)] };
+  assert.equal(summary(changed, assignment).counts.MISSING, 0);
+  assert.equal(studentStats(changed, rules)[0].missing, 2);
+  assert.equal(studentStats(c, { ...rules, initial: 0 })[0].score, -4);
+  const roster = { ...c, students: [...c.students, { id: 's3', name: '新同学', no: '03' }] };
+  assert.equal(summary(roster, c.assignments[0]).counts.NONE, 1);
+  assert.equal(studentStats(roster, rules).length, 3);
 });

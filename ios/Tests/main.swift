@@ -229,5 +229,22 @@ do {
     check(as2.count == 2 && as2[1].title == "新作业" && as2[1].statuses["s6"] == "LEAVE" && as2[1].statuses["s1"] == "SUBMITTED", "新作业草稿")
     check((try? StatTable.apply(AppData(), d2)) == nil, "班级被删 → 报错")
 }
+// 后台文件写入：读取必须等待之前的写入，快速连续写入不能覆盖为旧版本。
+do {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hwcounter-files-\(newId())")
+    try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let mainFile = dir.appendingPathComponent("main.json"), draftFile = dir.appendingPathComponent("drafts.json")
+    for i in 0..<30 { LocalJSONFile.write(["version": i], to: mainFile) }
+    LocalJSONFile.write(["草稿一", "草稿二"], to: draftFile)
+    let saved = LocalJSONFile.read([String: Int].self, from: mainFile)
+    let drafts = LocalJSONFile.read([String].self, from: draftFile)
+    total += 1
+    if saved?["version"] == 29 && drafts == ["草稿一", "草稿二"] { pass += 1; print("✓ 后台文件写入按顺序保存，立即读取返回最新数据") }
+    LocalJSONFile.write(["version": 30], to: mainFile); LocalJSONFile.flush()
+    let persisted = try! JSONDecoder().decode([String: Int].self, from: Data(contentsOf: mainFile))
+    total += 1
+    if persisted["version"] == 30 { pass += 1; print("✓ 进入后台前可等待最新数据落盘") }
+}
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

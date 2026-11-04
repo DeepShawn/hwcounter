@@ -40,23 +40,43 @@ export function normalizeData(d) {
 
 export const ruleOf = (rules, s) => (s === 'NONE' || !s ? 0 : rules[{ SUBMITTED: 'submitted', EXCELLENT: 'excellent', LATE: 'late', MISSING: 'missing', LEAVE: 'leave' }[s]] ?? 0);
 
+const summaryCache = new WeakMap();
+const statsCache = new WeakMap();
+
 export function summary(c, a) {
+  let assignments = summaryCache.get(c.students);
+  if (!assignments) { assignments = new WeakMap(); summaryCache.set(c.students, assignments); }
+  if (assignments.has(a)) return assignments.get(a);
   const counts = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
   for (const s of c.students) counts[a.statuses[s.id] || 'NONE']++;
   const handedIn = counts.SUBMITTED + counts.EXCELLENT + counts.LATE;
   const expected = c.students.length - counts.LEAVE;
-  return { counts, handedIn, expected, rate: expected <= 0 ? 1 : handedIn / expected };
+  const result = { counts, handedIn, expected, rate: expected <= 0 ? 1 : handedIn / expected };
+  assignments.set(a, result);
+  return result;
 }
 
 export function studentStats(c, rules) {
+  let byRules = statsCache.get(c);
+  if (!byRules) { byRules = new WeakMap(); statsCache.set(c, byRules); }
+  if (byRules.has(rules)) return byRules.get(rules);
   const manual = {};
   for (const e of c.scores) manual[e.studentId] = (manual[e.studentId] || 0) + e.delta;
-  return c.students.map((st) => {
+  const result = c.students.map((st) => {
     const counts = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
     let auto = 0;
     for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; auto += ruleOf(rules, s); }
     return { student: st, score: rules.initial + auto + (manual[st.id] || 0), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING };
   });
+  byRules.set(rules, result);
+  return result;
+}
+
+export function addStudentScores(c, studentIds, delta, reason) {
+  if (!Number.isFinite(delta) || delta === 0) return c;
+  const ids = new Set(studentIds); const time = Date.now();
+  const entries = c.students.filter((st) => ids.has(st.id)).map((st) => ({ id: newId(), studentId: st.id, delta, reason, time }));
+  return entries.length ? { ...c, scores: [...c.scores, ...entries] } : c;
 }
 
 /** 通过一条调整记录重置积分，保留原有流水、作业状态及未交次数。 */

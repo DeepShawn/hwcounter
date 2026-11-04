@@ -448,9 +448,9 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
 
 /** 加减分对话框：步进 + 快捷理由 */
 @Composable
-fun ScoreDialog(targets: List<Student>, reasons: List<String>, onDismiss: () -> Unit, onConfirm: (Double, String) -> Unit) {
+fun ScoreDialog(targets: List<Student>, reasons: List<String>, onDismiss: () -> Unit, initialReason: String = "", onConfirm: (Double, String) -> Unit) {
     var value by remember { mutableStateOf(1.0) }
-    var reason by remember { mutableStateOf("") }
+    var reason by remember { mutableStateOf(initialReason) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (targets.size == 1) "给 ${targets[0].name} 加减分" else "给 ${targets.size} 人加减分") },
