@@ -11,6 +11,8 @@ struct AssignmentDetailView: View {
     @State private var exportURL: URL? = nil
     @State private var seatMode: Bool? = nil
     @State private var pick: Set<String> = []
+    @State private var selecting = false
+    @State private var scoreFor: ScoreRequest? = nil
     @State private var typed = ""
     @State private var typedAs: HwStatus = .SUBMITTED
     @State private var ambiguous: [VoiceMatch] = []
@@ -28,7 +30,7 @@ struct AssignmentDetailView: View {
         let s = c.summary(a)
         let students = c.students.filter { filter == nil || a.status($0.id) == filter }
         return ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            LazyVStack(alignment: .leading, spacing: 18) {
                 header(c, a, s)
                 if !store.readOnly, let dr = store.drafts.first(where: { $0.assignmentId == a.id }) {
                     Button { openDraft = IdBox(id: dr.id) } label: {
@@ -38,6 +40,14 @@ struct AssignmentDetailView: View {
                     }.buttonStyle(.plain)
                 }
                 if !store.readOnly { actions(a); typedBar(c, a) }
+                if !store.readOnly {
+                    HStack {
+                        Text(selecting ? "点选学生后批量登记或加减分" : "点学生登记，或开启多选").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button(selecting ? "退出多选" : "多选") { selecting.toggle(); pick.removeAll() }
+                            .buttonStyle(.bordered).disabled(c.students.isEmpty)
+                    }
+                }
                 HStack {
                     if c.seating != nil {
                         Toggle(isOn: Binding(get: { seatMode ?? true }, set: { seatMode = $0; pick = [] })) { Label("座位表", systemImage: "rectangle.grid.3x2") }
@@ -50,9 +60,9 @@ struct AssignmentDetailView: View {
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12)], spacing: 12) {
                         ForEach(students) { st in
-                            StudentTile(st: st, status: a.status(st.id), comment: a.comments[st.id])
+                            StudentTile(st: st, status: a.status(st.id), comment: a.comments[st.id], selecting: selecting, selected: pick.contains(st.id))
                                 .onTapGesture { tap(a, st) }
-                                .contextMenu { if !store.readOnly { statusMenu(a, st) } }
+                                .contextMenu { if !store.readOnly && !selecting { statusMenu(a, st) } }
                         }
                     }
                 }
@@ -64,6 +74,9 @@ struct AssignmentDetailView: View {
         }
         .navigationTitle(a.title)
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            if !store.readOnly && (selecting || !pick.isEmpty) { selectionBar(c, a, students) }
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -74,10 +87,50 @@ struct AssignmentDetailView: View {
             }
         }
         .sheet(item: $picked) { st in StudentStatusSheet(assignmentId: a.id, student: st) }
+        .sheet(item: $scoreFor) { request in
+            let targets = store.data.classes.first(where: { $0.id == request.classId })?.students.filter { request.studentIds.contains($0.id) } ?? []
+            ScoreSheet(students: targets, classId: request.classId, onSaved: { cancelSelection() }, initialReason: "作业：\(a.title)")
+        }
         .sheet(isPresented: $showVoice) { VoiceSheet(assignmentId: a.id) }
         .sheet(isPresented: $showPhoto) { PhotoRecognizeSheet(assignmentId: a.id) }
         .sheet(item: $openDraft) { b in NavigationStack { DraftDetailView(draftId: b.id) } }
         .sheet(item: Binding(get: { exportURL.map { ShareFile(url: $0) } }, set: { exportURL = $0?.url })) { f in ShareSheet(items: [f.url]) }
+        .onChange(of: c.id) { _ in cancelSelection(); scoreFor = nil }
+        .onChange(of: assignmentId) { _ in cancelSelection(); scoreFor = nil }
+        .onChange(of: store.readOnly) { _ in cancelSelection(); scoreFor = nil }
+        .onChange(of: filter) { _ in pick.removeAll() }
+    }
+
+    private func cancelSelection() { selecting = false; pick.removeAll() }
+
+    private func selectionBar(_ c: SchoolClass, _ a: Assignment, _ visible: [Student]) -> some View {
+        let targets = c.students.filter { pick.contains($0.id) }
+        return VStack(spacing: 8) {
+            HStack {
+                Text("已选 \(targets.count) 人").font(.headline)
+                Spacer()
+                Button("全选当前筛选") { pick = Set(visible.map(\.id)) }
+                Button("清空") { pick.removeAll() }
+                Button("取消") { cancelSelection() }
+            }.font(.callout)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack {
+                    ForEach([HwStatus.SUBMITTED, .EXCELLENT, .LATE, .MISSING, .LEAVE, .NONE]) { status in
+                        Button(status.label) {
+                            store.setStatus(a.id, targets.map(\.id), status)
+                            store.say("已将 \(targets.count) 人设为“\(status.label)”")
+                            pick.removeAll()
+                        }
+                        .buttonStyle(.bordered).tint(status.color).disabled(targets.isEmpty)
+                    }
+                }
+            }
+            Button {
+                scoreFor = ScoreRequest(classId: c.id, studentIds: targets.map(\.id))
+            } label: { Text("批量加减分").frame(maxWidth: .infinity) }
+            .buttonStyle(.borderedProminent).disabled(targets.isEmpty)
+        }
+        .padding().background(.regularMaterial)
     }
 
     private func header(_ c: SchoolClass, _ a: Assignment, _ s: Summary) -> some View {
@@ -122,6 +175,7 @@ struct AssignmentDetailView: View {
         let unseated = c.students.filter { seating.seats[$0.id] == nil }
         func toggle(_ ids: [String]) {
             if store.readOnly { return }
+            selecting = true
             if ids.allSatisfy({ pick.contains($0) }) { pick.subtract(ids) } else { pick.formUnion(ids) }
         }
         return VStack(alignment: .leading, spacing: 10) {
@@ -129,7 +183,7 @@ struct AssignmentDetailView: View {
             SeatChart(seating: seating, students: c.students, selected: { _, st in st.map { pick.contains($0.id) } ?? false },
                       onCell: { _, st in
                           guard let st else { return }
-                          if !pick.isEmpty { toggle([st.id]) } else { tap(a, st) }
+                          if selecting || !pick.isEmpty { toggle([st.id]) } else { tap(a, st) }
                       },
                       onLong: { st in picked = st },
                       onRow: { r in toggle(grid[r].compactMap { $0 }) },
@@ -155,20 +209,6 @@ struct AssignmentDetailView: View {
                         }
                     }
                 }
-            }
-            if !pick.isEmpty && !store.readOnly {
-                HStack(spacing: 8) {
-                    Text("已选 \(pick.count) 人").font(.headline)
-                    ForEach([HwStatus.SUBMITTED, .EXCELLENT, .LATE, .MISSING, .LEAVE, .NONE]) { st in
-                        Button(st.label) {
-                            store.setStatus(a.id, Array(pick), st); store.say("已将 \(pick.count) 人设为“\(st.label)”"); pick = []
-                        }
-                        .buttonStyle(.bordered).tint(st.color)
-                    }
-                    Button("取消") { pick = [] }
-                }
-                .padding(12)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
             }
         }
     }
@@ -244,6 +284,10 @@ struct AssignmentDetailView: View {
     /// 点一下：未登记 → 已交 → 未登记；其它状态打开详情
     private func tap(_ a: Assignment, _ st: Student) {
         if store.readOnly { picked = st; return }
+        if selecting || !pick.isEmpty {
+            if pick.contains(st.id) { pick.remove(st.id) } else { pick.insert(st.id) }
+            return
+        }
         switch a.status(st.id) {
         case .NONE: store.setStatus(a.id, [st.id], .SUBMITTED)
         case .SUBMITTED: store.setStatus(a.id, [st.id], .NONE)
@@ -286,6 +330,8 @@ struct StudentTile: View {
     let st: Student
     let status: HwStatus
     var comment: String? = nil
+    var selecting = false
+    var selected = false
     var body: some View {
         VStack(spacing: 4) {
             Text(st.no).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
@@ -299,6 +345,11 @@ struct StudentTile: View {
         .overlay(alignment: .topTrailing) {
             if let comment, !comment.isEmpty { Image(systemName: "text.bubble.fill").font(.caption2).foregroundStyle(.orange).padding(6) }
         }
+        .overlay(alignment: .topLeading) {
+            if selecting { Image(systemName: selected ? "checkmark.circle.fill" : "circle").foregroundStyle(selected ? Color.accentColor : Color.secondary).padding(6) }
+        }
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(selected ? Color.accentColor : Color.clear, lineWidth: 3))
+        .accessibilityValue(selecting ? (selected ? "已选" : "未选") : status.label)
         .contentShape(Rectangle())
         .animation(.easeOut(duration: 0.15), value: status)
     }

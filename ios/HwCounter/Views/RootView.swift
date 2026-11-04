@@ -11,7 +11,10 @@ struct HwCounterApp: App {
                 .environmentObject(store)
                 .tint(Palette.of(store.data.theme).primary)
         }
-        .onChange(of: phase) { p in if p == .active { store.onActive() } }
+        .onChange(of: phase) { p in
+            if p == .active { store.onActive() }
+            else if p == .background { LocalJSONFile.flush() }
+        }
     }
 }
 
@@ -60,10 +63,11 @@ struct RootView: View {
         .safeAreaInset(edge: .bottom) {
             if store.readOnly { PreviewBanner { section = .settings } }
         }
-        .overlay(alignment: .top) { toast }
+        .overlay(alignment: .top) {
+            ZStack { toast }.animation(.spring(response: 0.3, dampingFraction: 0.8), value: store.toast)
+        }
         .sheet(isPresented: $showClasses) { ClassesSheet() }
         .sheet(isPresented: Binding(get: { store.sync.conflict != nil }, set: { _ in })) { ConflictSheet() }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: store.toast)
     }
 
     private var classHeader: some View {

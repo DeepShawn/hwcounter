@@ -9,38 +9,33 @@ struct HeatmapView: View {
         Group {
             if let c = store.data.currentClass, !c.assignments.isEmpty, !c.students.isEmpty {
                 let recent = Array(c.assignments.sorted { $0.createdAt < $1.createdAt }.suffix(30))
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        legend
-                        Text("每行一位同学，每格一次作业，点格子进入该次作业").font(.caption).foregroundStyle(.secondary)
-                        ScrollView(.horizontal, showsIndicators: true) {
-                            Grid(alignment: .leading, horizontalSpacing: 4, verticalSpacing: 4) {
-                                GridRow {
-                                    Text("")
-                                    ForEach(recent) { a in
-                                        NavigationLink(value: a.id) {
-                                            Text(md(a.date)).font(.system(size: 9)).foregroundStyle(.secondary).frame(width: cell)
-                                        }
-                                    }
-                                    Text("交齐率").font(.caption2).foregroundStyle(.secondary)
-                                }
-                                ForEach(c.students) { st in
-                                    GridRow {
-                                        Text(st.name).font(.caption).lineLimit(1).frame(width: 72, alignment: .leading)
-                                        ForEach(recent) { a in
-                                            let s = a.status(st.id)
-                                            NavigationLink(value: a.id) {
-                                                RoundedRectangle(cornerRadius: 5)
-                                                    .fill(s.color.opacity(s == .NONE ? 0.25 : 0.9))
-                                                    .frame(width: cell, height: cell)
-                                            }
-                                            .buttonStyle(.plain)
-                                        }
-                                        rateText(st, recent)
-                                    }
+                ScrollView([.horizontal, .vertical]) {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        legend.padding(.bottom, 8)
+                        Text("滚动查看全班名单，点格子进入该次作业").font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
+                        HStack(spacing: 4) {
+                            Text("").frame(width: 72)
+                            ForEach(recent) { a in
+                                NavigationLink(value: a.id) {
+                                    Text(md(a.date)).font(.system(size: 9)).foregroundStyle(.secondary).frame(width: cell)
                                 }
                             }
-                            .padding(.bottom, 8)
+                            Text("交齐率").font(.caption2).foregroundStyle(.secondary).frame(width: 54)
+                        }
+                        ForEach(c.students) { st in
+                            HStack(spacing: 4) {
+                                Text(st.name).font(.caption).lineLimit(1).frame(width: 72, alignment: .leading)
+                                ForEach(recent) { a in
+                                    let status = a.status(st.id)
+                                    NavigationLink(value: a.id) {
+                                        RoundedRectangle(cornerRadius: 5)
+                                            .fill(status.color.opacity(status == .NONE ? 0.25 : 0.9))
+                                            .frame(width: cell, height: cell)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                rateText(st, recent).frame(width: 54)
+                            }
                         }
                     }
                     .padding()
@@ -79,8 +74,11 @@ struct HeatmapView: View {
             .foregroundStyle(r.map { $0 < 80 ? Color.red : Color.primary } ?? Color.secondary)
     }
 
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter(); formatter.dateFormat = "M/d"; return formatter
+    }()
+
     private func md(_ d: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "M/d"
-        return f.string(from: d)
+        Self.dayFormatter.string(from: d)
     }
 }

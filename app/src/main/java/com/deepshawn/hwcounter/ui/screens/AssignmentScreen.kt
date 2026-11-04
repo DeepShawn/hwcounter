@@ -69,6 +69,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -135,18 +136,31 @@ import java.util.Locale
 fun rememberTts(): (String) -> Unit {
     val ctx = LocalContext.current
     val holder = remember { arrayOfNulls<TextToSpeech>(1) }
+    val pending = remember { arrayOfNulls<String>(1) }
+    val ready = remember { booleanArrayOf(false) }
+    val disposed = remember { booleanArrayOf(false) }
     DisposableEffect(Unit) {
-        var tts: TextToSpeech? = null
-        tts = TextToSpeech(ctx.applicationContext) { st ->
-            if (st == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.CHINA
-                tts?.setSpeechRate(0.95f)
+        onDispose { disposed[0] = true; holder[0]?.stop(); holder[0]?.shutdown(); holder[0] = null }
+    }
+    return remember(ctx) {
+        { text ->
+            pending[0] = text
+            if (holder[0] == null) {
+                holder[0] = TextToSpeech(ctx.applicationContext) { status ->
+                    if (!disposed[0] && status == TextToSpeech.SUCCESS) {
+                        holder[0]?.language = Locale.CHINA
+                        holder[0]?.setSpeechRate(0.95f)
+                        ready[0] = true
+                        pending[0]?.let { holder[0]?.speak(it, TextToSpeech.QUEUE_FLUSH, null, "hw") }
+                        pending[0] = null
+                    }
+                }
+            } else if (ready[0]) {
+                holder[0]?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "hw")
+                pending[0] = null
             }
         }
-        holder[0] = tts
-        onDispose { tts?.stop(); tts?.shutdown() }
     }
-    return { text -> holder[0]?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "hw") }
 }
 
 @Composable
@@ -191,12 +205,14 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
         return
     }
     val settings = data.settings
+    val readOnly by vm.readOnly.collectAsStateWithLifecycle()
     val sm = c.summary(a)
     var filter by remember { mutableStateOf(Filter.ALL) }
     var query by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
-    var batch by remember { mutableStateOf(false) }
-    val selected = remember { mutableStateOf(setOf<String>()) }
+    var batch by remember(c.id, a.id, readOnly) { mutableStateOf(false) }
+    val selected = remember(c.id, a.id, readOnly) { mutableStateOf(setOf<String>()) }
+    var scoreFor by remember(c.id, a.id, readOnly) { mutableStateOf<List<String>?>(null) }
     var sheetFor by remember { mutableStateOf<Student?>(null) }
     var menu by remember { mutableStateOf(false) }
     var photoSheet by remember { mutableStateOf(false) }
@@ -275,7 +291,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                 else -> GridCells.Adaptive(if (extra.compact) 92.dp else 108.dp)
             },
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 120.dp),
+            contentPadding = PaddingValues(bottom = if (batch) 230.dp else 120.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -407,9 +423,6 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                         val miss = c.students.filter { (a.statuses[it.id] ?: HwStatus.NONE) in setOf(HwStatus.MISSING, HwStatus.NONE) }
                         speak(if (miss.isEmpty()) "全部同学都交齐了，真棒！" else "还有${miss.size}位同学没交作业：" + miss.joinToString("，") { it.name } + "。请尽快上交。")
                     }
-                    ActionChip(if (batch) "退出批量" else "批量操作", Icons.Filled.Checklist) {
-                        batch = !batch; selected.value = emptySet()
-                    }
                 }
             }
             if (myDraft != null) item(span = { GridItemSpan(maxLineSpan) }) {
@@ -461,7 +474,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
             if (searching) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     TextField(
-                        query, { query = it },
+                        query, { query = it; selected.value = emptySet() },
                         placeholder = { Text("搜索姓名或学号") },
                         leadingIcon = { Icon(Icons.Filled.Search, null) },
                         trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, null) } },
@@ -478,7 +491,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Filter.entries.forEach { f ->
                             val n = c.students.count { f.match(a.statuses[it.id] ?: HwStatus.NONE) }
-                            com.deepshawn.hwcounter.ui.components.Chip2("${f.label} $n", f == filter, { filter = f })
+                            com.deepshawn.hwcounter.ui.components.Chip2("${f.label} $n", f == filter, { filter = f; selected.value = emptySet() })
                         }
                     }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -486,6 +499,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                             if (batch) "已选 ${selected.value.size} 人 · 点击选择" else "点击切换 已交/未登记 · 长按更多",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
                         )
+                        if (!readOnly) TextButton(enabled = c.students.isNotEmpty(), onClick = { batch = !batch; selected.value = emptySet() }) { Text(if (batch) "退出多选" else "多选") }
                         LayoutToggle(settings.layout) { l -> vm.updateSettings { it.copy(layout = l) } }
                     }
                 }
@@ -579,7 +593,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
 
         // 批量操作栏
         AnimatedVisibility(
-            visible = batch,
+            visible = batch && !readOnly,
             enter = slideInVertically { it },
             exit = slideOutVertically { it },
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -594,7 +608,9 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                         Text("批量 · ${selected.value.size} 人", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                         Text("全选", color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { selected.value = students.map { it.id }.toSet() }.padding(6.dp))
                         Text("清除", color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { selected.value = emptySet() }.padding(6.dp))
+                        TextButton(onClick = { batch = false; selected.value = emptySet() }) { Text("取消") }
                     }
+                    FilledTonalButton(enabled = selected.value.isNotEmpty(), onClick = { scoreFor = selected.value.toList() }, modifier = Modifier.fillMaxWidth()) { Text("批量加减分") }
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         HwStatus.entries.forEach { st ->
                             StatusButton(st) {
@@ -613,6 +629,14 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
 
     sheetFor?.let { s ->
         StudentSheet(vm, data, c, a, s) { sheetFor = null }
+    }
+    scoreFor?.takeIf { !readOnly }?.let { ids ->
+        val targets = c.students.filter { it.id in ids }
+        if (targets.isNotEmpty()) ScoreDialog(targets, settings.quickReasons, { scoreFor = null }, initialReason = "作业：${a.title}") { delta, reason ->
+            vm.addScore(targets.map { it.id }, delta, reason)
+            kit.undoable("${targets.size} 人 ${delta.signed()} 分")
+            selected.value = emptySet(); batch = false
+        }
     }
     if (photoSheet) PhotoSourceSheet({ photoSheet = false }, { photoSheet = false; photo.takePhoto() }, { photoSheet = false; photo.pickGallery() })
     if (edit) {

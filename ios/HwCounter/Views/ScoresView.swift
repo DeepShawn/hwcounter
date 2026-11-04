@@ -1,6 +1,6 @@
 import SwiftUI
 
-private struct ScoreRequest: Identifiable {
+struct ScoreRequest: Identifiable {
     let id = newId()
     let classId: String
     let studentIds: [String]
@@ -187,6 +187,7 @@ struct ScoreSheet: View {
     let students: [Student]
     let classId: String
     var onSaved: () -> Void = {}
+    var initialReason: String = ""
     @State private var delta = 1.0
     @State private var reason = ""
 
@@ -247,5 +248,6 @@ struct ScoreSheet: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("关闭") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
+        .onAppear { reason = initialReason }
     }
 }

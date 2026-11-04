@@ -48,12 +48,11 @@ final class Store: ObservableObject {
 
     // ---------- 草稿 ----------
     private static func loadDrafts() -> [Draft] {
-        guard let d = try? Data(contentsOf: draftFile) else { return [] }
-        return (try? JSONDecoder().decode([Draft].self, from: d)) ?? []
+        LocalJSONFile.read([Draft].self, from: draftFile) ?? []
     }
     private func setDrafts(_ list: [Draft]) {
         drafts = list
-        if let bytes = try? JSONEncoder().encode(list) { try? bytes.write(to: Store.draftFile, options: .atomic) }
+        LocalJSONFile.write(list, to: Store.draftFile)
     }
     func addDraft(_ d: Draft) { setDrafts([d] + drafts) }
     func addDrafts(_ ds: [Draft]) { setDrafts(ds + drafts) }
@@ -103,8 +102,7 @@ final class Store: ObservableObject {
 
     // ---------- 本机文件 ----------
     private static func read(_ url: URL) -> AppData? {
-        guard let d = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(AppData.self, from: d)
+        LocalJSONFile.read(AppData.self, from: url)
     }
     private static func loadMain() -> AppData { read(file) ?? AppData() }
     private static func loadPreview() -> AppData {
@@ -113,8 +111,7 @@ final class Store: ObservableObject {
         return p
     }
     private static func write(_ d: AppData, to url: URL) {
-        guard let bytes = try? JSONEncoder().encode(d) else { return }
-        try? bytes.write(to: url, options: .atomic)
+        LocalJSONFile.write(d, to: url)
     }
 
     // ---------- 提示 ----------

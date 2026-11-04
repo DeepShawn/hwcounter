@@ -1,7 +1,7 @@
-import { h, render } from '../vendor/preact.module.js';
-import { useState, useEffect, useMemo, useRef, useCallback } from '../vendor/hooks.module.js';
+import { h, render, Component } from '../vendor/preact.module.js';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
-import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, resetStudentScores, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
+import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, addStudentScores, resetStudentScores, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
 import { api, session, meta, setMeta, syncOnce, pushAs, merge, hashData, withLocalKey } from './cloud.js';
 import { createVoiceParser } from './voice.js';
 import { xlsx, ST } from './xlsx.js';
@@ -284,9 +284,13 @@ function AssignView({ s, id, back, open }) {
   const c = currentClass(data); const a = c?.assignments.find((x) => x.id === id);
   const [filter, setFilter] = useState('ALL'); const [q, setQ] = useState(''); const [sheet, setSheet] = useState(null); const [edit, setEdit] = useState(false);
   const [view, setView] = useState(c?.seating ? 'seat' : 'card'); const [pick, setPick] = useState(new Set()); const [multi, setMulti] = useState(false);
+  const [scoreIds, setScoreIds] = useState(null);
+  const press = useRef({ timer: 0, held: false });
   const [typed, setTyped] = useState(''); const [typedAs, setTypedAs] = useState('SUBMITTED'); const [typedRes, setTypedRes] = useState(null);
   const lastRate = useRef(null);
   const rate = a ? summary(c, a).rate : 0; const expected = a ? summary(c, a).expected : 0;
+  useEffect(() => () => clearTimeout(press.current.timer), []);
+  useEffect(() => { setPick(new Set()); setMulti(false); setScoreIds(null); }, [c?.id, id, s.readOnly]);
   useEffect(() => { if (!a) back(); }, [a]);
   // 交齐时庆祝（hooks 必须在任何提前 return 之前）
   useEffect(() => { if (lastRate.current != null && rate >= 1 && lastRate.current < 1 && expected > 0) { say('🎉 全员交齐！'); beep(); } lastRate.current = rate; }, [rate]);
@@ -305,10 +309,12 @@ function AssignView({ s, id, back, open }) {
     if (sure.length) say(`已登记 ${sure.length} 人为“${STATUS[typedAs].label}”：${sure.map(nm).join('、')}`, true); else if (!amb.length) say('没有认出名单里的同学');
     setTyped('');
   };
-  const togglePick = (ids) => setPick((p) => { const n = new Set(p); const all = ids.every((i) => n.has(i)); ids.forEach((i) => (all ? n.delete(i) : n.add(i))); return n; });
+  const togglePick = (ids) => { if (!s.readOnly) setPick((p) => { const n = new Set(p); const all = ids.every((i) => n.has(i)); ids.forEach((i) => (all ? n.delete(i) : n.add(i))); return n; }); };
+  const cancelPick = () => { setMulti(false); setPick(new Set()); };
+  const picked = c.students.filter((st) => pick.has(st.id));
+  const scoreTargets = c.students.filter((st) => scoreIds?.includes(st.id));
   const filters = { ALL: ['全部', () => true], NONE: ['未登记', (x) => x === 'NONE'], MISSING: ['未交', (x) => x === 'MISSING' || x === 'NONE'], DONE: ['已交', (x) => ['SUBMITTED', 'EXCELLENT', 'LATE'].includes(x)], LEAVE: ['请假', (x) => x === 'LEAVE'] };
   const list = c.students.filter((st) => filters[filter][1](a.statuses[st.id] || 'NONE') && (!q || st.name.includes(q) || st.no.includes(q)));
-  let pressTimer = 0;
   const exportX = () => {
     const rows = [[{ v: '学号', s: ST.HEADER }, { v: '姓名', s: ST.HEADER }, { v: '状态', s: ST.HEADER }, { v: '本次分值', s: ST.HEADER }, { v: '备注', s: ST.HEADER }]];
     const styleOf = { SUBMITTED: ST.GREEN, EXCELLENT: ST.GOLD, LATE: ST.YELLOW, MISSING: ST.RED, LEAVE: ST.BLUE, NONE: 0 };
@@ -321,7 +327,7 @@ function AssignView({ s, id, back, open }) {
       [['MISSING', '❌ 未交'], ['NONE', '⏳ 未登记'], ['LATE', '🐢 迟交'], ['LEAVE', '🏖️ 请假'], ['EXCELLENT', '🌟 优秀']].map(([k, l]) => names(k) && `${l}：${names(k)}`).filter(Boolean).join('\n');
     try { if (navigator.share) await navigator.share({ text: t }); else { await navigator.clipboard.writeText(t); say('已复制，可粘贴到家长群'); } } catch { /* 取消 */ }
   };
-  return html`<div class="page">
+  return html`<div class=${'page assignment-page' + (multi || picked.length ? ' selection-page' : '')}>
     <div class="hero">
       <div class="row"><button class="icon-btn light" onClick=${back}>←</button>
         <div class="grow" onClick=${() => setEdit(true)}><div class="muted-light small">${a.subject} · ${fmtDate(a.createdAt)}</div><div class="hero-title">${a.title}</div></div></div>
@@ -349,35 +355,46 @@ function AssignView({ s, id, back, open }) {
       ${typedRes.left && html`<div class="muted">没认出：${typedRes.left}</div>`}
     </div>`}
     <div class="toolbar">
+      ${!s.readOnly && html`<button class=${'chip' + (multi ? ' on' : '')} disabled=${!c.students.length} onClick=${() => { if (multi) cancelPick(); else { setMulti(true); setPick(new Set()); } }}>${multi ? '退出多选' : '☑️ 多选'}</button>`}
       ${c.seating && html`<button class=${'chip' + (view === 'seat' ? ' on' : '')} onClick=${() => { setView(view === 'seat' ? 'card' : 'seat'); setPick(new Set()); }}>🪑 座位表</button>`}
-      ${Object.entries(filters).map(([k, [l, f]]) => html`<button class=${'chip' + (k === filter ? ' on' : '')} onClick=${() => setFilter(k)}>${l} ${c.students.filter((st) => f(a.statuses[st.id] || 'NONE')).length}</button>`)}
-      <input class="input small-input" placeholder="搜索" value=${q} onInput=${(e) => setQ(e.target.value)} />
+      ${Object.entries(filters).map(([k, [l, f]]) => html`<button class=${'chip' + (k === filter ? ' on' : '')} onClick=${() => { setFilter(k); setPick(new Set()); }}>${l} ${c.students.filter((st) => f(a.statuses[st.id] || 'NONE')).length}</button>`)}
+      <input class="input small-input" placeholder="搜索" value=${q} onInput=${(e) => { setQ(e.target.value); setPick(new Set()); }} />
     </div>
-    ${!(view === 'seat' && c.seating) && html`<div class="muted small pad">${s.readOnly ? '预览模式：只能查看，登录后可登记' : '点一下切换 已交/未登记 · 长按（或右键）设置状态、加减分、备注'}</div>`}
+    ${!(view === 'seat' && c.seating) && html`<div class="muted small pad">${s.readOnly ? '预览模式：只能查看，登录后可登记' : multi ? '点击学生选择或取消，再在下方批量登记状态或加减分' : '点一下切换 已交/未登记 · 长按（或右键）设置状态、加减分、备注'}</div>`}
     ${view === 'seat' && c.seating ? html`
-      <div class="muted tiny pad">${s.readOnly ? '' : '点座位切换 已交/未登记；点“排”“列”或开启多选，可整排/整列一起登记'}${!s.readOnly && html` <button class=${'chip' + (multi ? ' on' : '')} onClick=${() => { setMulti(!multi); setPick(new Set()); }}>☑️ 多选</button>`}</div>
+      <div class="muted tiny pad">${s.readOnly ? '' : multi ? '点击学生选择或取消；下方可批量登记状态或加减分' : '点座位切换 已交/未登记；点“排”“列”或开启多选，可整排/整列一起登记'}</div>
       <${SeatChart} seating=${c.seating} students=${c.students} sel=${(k, st) => st && pick.has(st.id)}
         cell=${(st) => { if (!st) return { body: '' }; const x = a.statuses[st.id] || 'NONE'; return { style: x === 'NONE' ? {} : { background: STATUS[x].color + '33', borderColor: STATUS[x].color }, body: html`<b>${st.name}</b><span class="tiny" style=${{ color: STATUS[x].color }}>${STATUS[x].label}</span>`, onMenu: () => setSheet(st) }; }}
         onCell=${(k, st) => { if (!st) return; if (multi || pick.size) { togglePick([st.id]); return; } const x = a.statuses[st.id] || 'NONE'; setStatus([st.id], x === 'NONE' || x === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}
-        onRow=${(r) => { if (s.readOnly) return; const g = seatingToGrid(c.seating, c.students); togglePick(g[r].filter(Boolean)); }}
-        onCol=${(col) => { if (s.readOnly) return; const g = seatingToGrid(c.seating, c.students); togglePick(g.map((row) => row[col]).filter(Boolean)); }} />
-      ${(() => { const un = c.students.filter((x) => c.seating.seats[x.id] == null); return un.length ? html`<div class="muted tiny pad">未入座：${un.map((x) => html`<button class="chip" onClick=${() => { const v = a.statuses[x.id] || 'NONE'; setStatus([x.id], v === 'NONE' || v === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}>${x.name} · ${STATUS[a.statuses[x.id] || 'NONE'].label}</button>`)}</div>` : ''; })()}
-      ${pick.size > 0 && !s.readOnly && html`<div class="pickbar"><b>已选 ${pick.size} 人</b>
-        ${['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'LEAVE', 'NONE'].map((k) => html`<button class="chip" style=${{ borderColor: STATUS[k].color, color: STATUS[k].color }} onClick=${() => { setStatus([...pick], k); say(`已将 ${pick.size} 人设为“${STATUS[k].label}”`, true); setPick(new Set()); }}>${STATUS[k].label}</button>`)}
-        <button class="chip" onClick=${() => setPick(new Set())}>取消</button></div>`}
+        onRow=${(r) => { if (s.readOnly) return; setMulti(true); const g = seatingToGrid(c.seating, c.students); togglePick(g[r].filter(Boolean)); }}
+        onCol=${(col) => { if (s.readOnly) return; setMulti(true); const g = seatingToGrid(c.seating, c.students); togglePick(g.map((row) => row[col]).filter(Boolean)); }} />
+      ${(() => { const un = c.students.filter((x) => c.seating.seats[x.id] == null); return un.length ? html`<div class="muted tiny pad">未入座：${un.map((x) => html`<button class=${'chip' + (pick.has(x.id) ? ' on' : '')} onClick=${() => { if (multi || pick.size) { togglePick([x.id]); return; } const v = a.statuses[x.id] || 'NONE'; setStatus([x.id], v === 'NONE' || v === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}>${x.name} · ${STATUS[a.statuses[x.id] || 'NONE'].label}</button>`)}</div>` : ''; })()}
     ` : html`
     <div class="grid">${list.map((st) => { const x = a.statuses[st.id] || 'NONE'; const d = ruleOf(rules, x); return html`
-      <div class="stu" style=${x === 'NONE' ? {} : { background: STATUS[x].color + '26', borderColor: STATUS[x].color + '66' }}
-        onClick=${() => { if (pressTimer === -1) { pressTimer = 0; return; } setStatus([st.id], x === 'NONE' || x === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}
-        onContextMenu=${(e) => { e.preventDefault(); setSheet(st); }}
-        onTouchStart=${() => { pressTimer = setTimeout(() => { pressTimer = -1; setSheet(st); }, 500); }}
-        onTouchEnd=${() => { if (pressTimer > 0) clearTimeout(pressTimer); }} onTouchMove=${() => { if (pressTimer > 0) clearTimeout(pressTimer); }}>
+      <button type="button" key=${st.id} class=${'stu' + (pick.has(st.id) ? ' sel' : '')} aria-pressed=${multi ? pick.has(st.id) : undefined} style=${x === 'NONE' ? {} : { background: STATUS[x].color + '26', borderColor: STATUS[x].color + '66' }}
+        onClick=${() => { if (press.current.held) { press.current.held = false; return; } if (multi || pick.size) { togglePick([st.id]); return; } setStatus([st.id], x === 'NONE' || x === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}
+        onContextMenu=${(e) => { e.preventDefault(); if (!multi) setSheet(st); }}
+        onPointerDown=${(e) => { clearTimeout(press.current.timer); press.current.held = false; if (!multi && e.button === 0) press.current.timer = setTimeout(() => { press.current.held = true; setSheet(st); }, 500); }}
+        onPointerUp=${() => clearTimeout(press.current.timer)} onPointerLeave=${() => clearTimeout(press.current.timer)} onPointerCancel=${() => clearTimeout(press.current.timer)}>
+        ${multi && html`<span class="selection-check" aria-hidden="true">${pick.has(st.id) ? '✓' : '○'}</span>`}
         <${Avatar} name=${st.name} />
         <div class="stu-name">${st.name}</div><div class="muted tiny">${st.no}</div>
         <div class="tiny" style=${{ color: STATUS[x].color, fontWeight: 700 }}>${STATUS[x].label}${d ? ` ${signed(d)}` : ''}</div>
         ${a.comments[st.id] && html`<div class="tiny muted">💬 ${a.comments[st.id]}</div>`}
-      </div>`; })}</div>
+      </button>`; })}</div>
     `}
+    ${!s.readOnly && (multi || picked.length > 0) && html`<div class="pickbar assignment-pickbar" aria-label="作业批量操作">
+      <b class="grow" aria-live="polite">已选 ${picked.length} 人</b>
+      <button class="chip" onClick=${() => setPick(new Set(list.map((st) => st.id)))}>全选当前筛选</button>
+      <button class="chip" onClick=${() => setPick(new Set())}>清空选择</button><button class="chip" onClick=${cancelPick}>取消</button>
+      <div class="chips">${['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'LEAVE', 'NONE'].map((k) => html`<button class="chip" disabled=${!picked.length} style=${{ borderColor: STATUS[k].color, color: STATUS[k].color }} onClick=${() => { setStatus(picked.map((st) => st.id), k); say(`已将 ${picked.length} 人设为“${STATUS[k].label}”`, true); setPick(new Set()); }}>${STATUS[k].label}</button>`)}</div>
+      <button class="btn" disabled=${!picked.length} onClick=${() => setScoreIds(picked.map((st) => st.id))}>批量加减分</button>
+    </div>`}
+    ${!s.readOnly && scoreTargets.length > 0 && html`<${ScoreEntryDialog} students=${scoreTargets} reasons=${data.settings.quickReasons} initialReason=${`作业：${a.title}`} onClose=${() => setScoreIds(null)} onSave=${(delta, reason) => {
+      if (s.readOnly) return;
+      update((d) => mapClass(d, c.id, (k) => addStudentScores(k, scoreTargets.map((st) => st.id), delta, reason)));
+      say(`${scoreTargets.length} 人 ${signed(delta)} 分`, true); setScoreIds(null); cancelPick();
+    }} />`}
     ${!c.students.length && html`<div class="empty">👥 名单为空，去“名单”页导入</div>`}
     ${sheet && html`<${StudentSheet} s=${s} c=${c} a=${a} st=${sheet} onClose=${() => setSheet(null)} setStatus=${setStatus} />`}
     ${edit && html`<${AssignDialog} initial=${a} subjects=${data.settings.subjects} onClose=${() => setEdit(false)} onSave=${(title, subject) => { update((d) => mapClass(d, c.id, (k) => ({ ...k, assignments: k.assignments.map((x) => (x.id === a.id ? { ...x, title, subject } : x)) }))); setEdit(false); }} />`}
@@ -632,26 +649,37 @@ function StudentEdit({ st, onClose, onSave, onDelete }) {
 }
 
 // ---------------- 积分 ----------------
+function ScoreEntryDialog({ students, reasons, initialReason = '', onClose, onSave }) {
+  const [value, setValue] = useState('1'); const [reason, setReason] = useState(initialReason);
+  const delta = Number(value); const valid = value.trim() !== '' && Number.isFinite(delta) && delta !== 0;
+  return html`<${Modal} title=${`给 ${students.length === 1 ? students[0].name : students.length + ' 人'} 加减分`} onClose=${onClose}>
+    <div class="score-targets muted small">${students.map((st) => `${st.no} ${st.name}`).join('、')}</div>
+    <div class="chips center">${[-5, -2, -1, 1, 2, 5].map((v) => html`<button class=${'chip' + (v === delta ? ' on' : '')} onClick=${() => setValue(String(v))}>${signed(v)}</button>`)}</div>
+    <label>每人分值（负数为扣分）<input class="input" type="number" step="0.5" value=${value} onInput=${(e) => setValue(e.target.value)} /></label>
+    <input class="input" placeholder="原因" value=${reason} onInput=${(e) => setReason(e.target.value)} />
+    <div class="chips">${reasons.map((r) => html`<button class=${'chip' + (r === reason ? ' on' : '')} onClick=${() => setReason(r)}>${r}</button>`)}</div>
+    <div class="actions"><button class="btn ghost" onClick=${onClose}>取消</button><button class="btn" disabled=${!valid || !students.length} onClick=${() => { if (valid && students.length) onSave(delta, reason.trim() || (delta > 0 ? '表现加分' : '扣分')); }}>确定</button></div>
+  </${Modal}>`;
+}
+
 function Scores({ s }) {
   const { data, update, say } = s; const c = currentClass(data); const rules = data.settings.rules;
-  const [targetIds, setTargetIds] = useState(null); const [val, setVal] = useState(1); const [reason, setReason] = useState('');
+  const [targetIds, setTargetIds] = useState(null);
   const [selecting, setSelecting] = useState(false); const [selected, setSelected] = useState(new Set());
   const [resetIds, setResetIds] = useState(null); const [baseOpen, setBaseOpen] = useState(false); const [scoreValue, setScoreValue] = useState('');
   useEffect(() => { setSelecting(false); setSelected(new Set()); setTargetIds(null); setResetIds(null); setBaseOpen(false); }, [c?.id, s.readOnly]);
   if (!c) return html`<div class="page"><div class="empty">🏆 还没有班级</div></div>`;
-  const stats = studentStats(c, rules).sort((x, y) => y.score - x.score);
+  const stats = [...studentStats(c, rules)].sort((x, y) => y.score - x.score);
   const picked = c.students.filter((st) => selected.has(st.id));
   const targets = c.students.filter((st) => targetIds?.includes(st.id));
   const resetTargets = c.students.filter((st) => resetIds?.includes(st.id));
   const validScoreValue = scoreValue.trim() !== '' && Number.isFinite(Number(scoreValue));
   const openReset = (ids) => { setResetIds(ids); setScoreValue(String(rules.initial)); };
-  const openScore = (ids) => { setTargetIds(ids); setVal(1); setReason(''); };
+  const openScore = (ids) => setTargetIds(ids);
   const cancelSelection = () => { setSelecting(false); setSelected(new Set()); };
-  const saveScore = () => {
-    const delta = Number(val);
+  const saveScore = (delta, reason) => {
     if (s.readOnly || !targets.length || !Number.isFinite(delta) || delta === 0) return;
-    const ids = new Set(targets.map((st) => st.id)); const time = Date.now();
-    update((d) => mapClass(d, c.id, (k) => ({ ...k, scores: [...k.scores, ...k.students.filter((st) => ids.has(st.id)).map((st) => ({ id: newId(), studentId: st.id, delta, reason: reason.trim() || (delta > 0 ? '表现加分' : '扣分'), time }))] })));
+    update((d) => mapClass(d, c.id, (k) => addStudentScores(k, targets.map((st) => st.id), delta, reason)));
     say(`${targets.length === 1 ? targets[0].name : targets.length + ' 人'} ${signed(delta)} 分`, true);
     setTargetIds(null); cancelSelection();
   };
@@ -692,14 +720,7 @@ function Scores({ s }) {
       <button class="chip" disabled=${!picked.length} onClick=${() => openReset(picked.map((st) => st.id))}>重置分数</button>
       <button class="chip" onClick=${cancelSelection}>取消</button>
     </div>`}
-    ${!s.readOnly && targets.length > 0 && html`<${Modal} title=${`给 ${targets.length === 1 ? targets[0].name : targets.length + ' 人'} 加减分`} onClose=${() => setTargetIds(null)}>
-      <div class="score-targets muted small">${targets.map((st) => `${st.no} ${st.name}`).join('、')}</div>
-      <div class="chips center">${[-5, -2, -1, 1, 2, 5].map((v) => html`<button class=${'chip' + (v === val ? ' on' : '')} onClick=${() => setVal(v)}>${signed(v)}</button>`)}</div>
-      <label>每人分值（负数为扣分）<input class="input" type="number" step="0.5" value=${val} onInput=${(e) => setVal(e.target.value)} /></label>
-      <input class="input" placeholder="原因" value=${reason} onInput=${(e) => setReason(e.target.value)} />
-      <div class="chips">${data.settings.quickReasons.map((r) => html`<button class=${'chip' + (r === reason ? ' on' : '')} onClick=${() => setReason(r)}>${r}</button>`)}</div>
-      <div class="actions"><button class="btn ghost" onClick=${() => setTargetIds(null)}>取消</button><button class="btn" disabled=${!Number.isFinite(Number(val)) || Number(val) === 0} onClick=${saveScore}>确定</button></div>
-    </${Modal}>`}
+    ${!s.readOnly && targets.length > 0 && html`<${ScoreEntryDialog} students=${targets} reasons=${data.settings.quickReasons} onClose=${() => setTargetIds(null)} onSave=${saveScore} />`}
     ${!s.readOnly && baseOpen && html`<${Modal} title="修改基准分" onClose=${() => setBaseOpen(false)}>
       <p class="muted small">适用于所有班级。只修改计分基准，历史加减分继续计入，未交次数和记录保留。</p>
       <label>基准分<input class="input" type="number" step="0.5" value=${scoreValue} onInput=${(e) => setScoreValue(e.target.value)} /></label>
@@ -814,15 +835,38 @@ function Heatmap({ s, open }) {
     <div class="card">
       <div class="heat-legend">${STATUS_KEYS.map((k) => html`<span><i style=${{ background: STATUS[k].color, opacity: k === 'NONE' ? 0.3 : 0.9 }}></i>${STATUS[k].label}</span>`)}</div>
       <div class="muted tiny">每行一位同学，每格一次作业，点格子进入该次作业</div>
-      <div class="heat-wrap"><table class="heat">
-        <thead><tr><th class="heat-name"></th>${recent.map((a) => html`<th title=${`${fmtDate(a.createdAt)} ${a.subject} ${a.title}`} onClick=${() => open({ view: 'assign', id: a.id })}>${md(a.createdAt)}</th>`)}<th>交齐率</th></tr></thead>
-        <tbody>${c.students.map((st) => { const r = rate(st); return html`<tr>
-          <td class="heat-name">${st.name}</td>
-          ${recent.map((a) => { const k = a.statuses[st.id] || 'NONE'; return html`<td><button class="heat-cell" title=${`${st.name} · ${a.title}：${STATUS[k].label}`} style=${{ background: STATUS[k].color, opacity: k === 'NONE' ? 0.25 : 0.9 }} onClick=${() => open({ view: 'assign', id: a.id })}></button></td>`; })}
-          <td class=${'heat-rate' + (r !== null && r < 80 ? ' low' : '')}>${r === null ? '—' : r + '%'}</td></tr>`; })}</tbody>
-      </table></div>
+      <${HeatmapTable} students=${c.students} recent=${recent} open=${open} md=${md} rate=${rate} />
     </div>
   </div>`;
+}
+
+function HeatmapTable({ students, recent, open, md, rate }) {
+  const rowHeight = 26; const overscan = 5;
+  const wrap = useRef(null); const frame = useRef(0);
+  const [scrollRow, setScrollRow] = useState(0);
+  const [height, setHeight] = useState(Math.min(640, window.innerHeight * 0.68));
+  useEffect(() => {
+    const observer = new ResizeObserver(() => setHeight(wrap.current?.clientHeight || 640));
+    observer.observe(wrap.current);
+    return () => { observer.disconnect(); cancelAnimationFrame(frame.current); };
+  }, []);
+  const start = Math.min(Math.max(0, students.length - 1), Math.max(0, scrollRow - overscan));
+  const end = Math.min(students.length, scrollRow + Math.ceil(height / rowHeight) + overscan);
+  const visible = students.slice(start, end);
+  return html`<div class="heat-wrap heat-viewport" ref=${wrap} onScroll=${() => {
+    if (frame.current) return;
+    frame.current = requestAnimationFrame(() => { frame.current = 0; setScrollRow(Math.floor((wrap.current?.scrollTop || 0) / rowHeight)); });
+  }}><table class="heat">
+        <thead><tr><th class="heat-name"></th>${recent.map((a) => html`<th title=${`${fmtDate(a.createdAt)} ${a.subject} ${a.title}`} onClick=${() => open({ view: 'assign', id: a.id })}>${md(a.createdAt)}</th>`)}<th>交齐率</th></tr></thead>
+        <tbody>
+          ${start > 0 && html`<tr aria-hidden="true" style=${{ height: start * rowHeight + 'px' }}><td colspan=${recent.length + 2}></td></tr>`}
+          ${visible.map((st) => { const r = rate(st); return html`<tr key=${st.id} class="heat-student-row">
+          <td class="heat-name">${st.name}</td>
+          ${recent.map((a) => { const k = a.statuses[st.id] || 'NONE'; return html`<td><button class="heat-cell" title=${`${st.name} · ${a.title}：${STATUS[k].label}`} style=${{ background: STATUS[k].color, opacity: k === 'NONE' ? 0.25 : 0.9 }} onClick=${() => open({ view: 'assign', id: a.id })}></button></td>`; })}
+          <td class=${'heat-rate' + (r !== null && r < 80 ? ' low' : '')}>${r === null ? '—' : r + '%'}</td></tr>`; })}
+          ${end < students.length && html`<tr aria-hidden="true" style=${{ height: (students.length - end) * rowHeight + 'px' }}><td colspan=${recent.length + 2}></td></tr>`}
+        </tbody>
+      </table></div>`;
 }
 
 // ---------------- 统计名单导出 ----------------
@@ -1072,9 +1116,27 @@ function StatTable({ s, draftId, back, open, replace }) {
 }
 
 // ---------------- 外壳 ----------------
+const TAB_PAGES = { home: Home, roster: Roster, heat: Heatmap, scores: Scores, settings: Settings };
+
+// Keep visited tabs and their scroll/filter state; freeze hidden pages until they become active.
+class TabContent extends Component {
+  shouldComponentUpdate(next) {
+    if (!next.active) return false;
+    return next.s.data !== this.renderedData || next.s.drafts !== this.renderedDrafts ||
+      next.s.readOnly !== this.renderedReadOnly || (next.page === 'settings' && next.s.sync !== this.renderedSync);
+  }
+  render({ page, s, open }) {
+    this.renderedData = s.data; this.renderedDrafts = s.drafts; this.renderedReadOnly = s.readOnly; this.renderedSync = s.sync;
+    return h(TAB_PAGES[page], { s, open });
+  }
+}
+
 function App() {
   const s = useStore();
   const [tab, setTab] = useState('home'); const [stack, setStack] = useState([]);
+  const [visited, setVisited] = useState(['home']);
+  const positions = useRef(new Map());
+  const activePage = useRef('home');
   const open = (r) => { if (['voice', 'draft', 'drafts', 'stattable'].includes(r.view) && s.readOnly) { s.say('👀 预览模式：登录后才能登记'); return; } setStack((x) => [...x, r]); };
   const back = () => setStack((x) => x.slice(0, -1));
   const [p1, p2] = PALETTES[s.data.settings.theme] || PALETTES.mint;
@@ -1089,11 +1151,26 @@ function App() {
   else if (top?.view === 'stattable') body = html`<${StatTable} s=${s} draftId=${top.draftId} back=${back} open=${open} replace=${(r) => setStack((x) => [...x.slice(0, -1), r])} />`;
   // 预览模式不显示名单页（热力图照常显示）
   const curTab = s.readOnly && tab === 'roster' ? 'home' : tab;
+  const pageKey = top ? `${top.view}:${top.id || ''}` : curTab;
+  useEffect(() => {
+    if (!top) setVisited((xs) => xs.includes(curTab) ? xs : [...xs, curTab]);
+  }, [curTab, !!top]);
+  useLayoutEffect(() => {
+    activePage.current = pageKey;
+    window.scrollTo(0, positions.current.get(pageKey) || 0);
+    const rememberPosition = () => positions.current.set(activePage.current, window.scrollY);
+    window.addEventListener('scroll', rememberPosition, { passive: true });
+    return () => window.removeEventListener('scroll', rememberPosition);
+  }, [pageKey]);
   const tabs = [['home', '🏠', '首页'], ...(s.readOnly ? [] : [['roster', '👥', '名单']]), ['heat', '🔥', '热力图'], ['scores', '🏆', '积分'], ['settings', '⚙️', '设置']];
-  if (!top) body = { home: html`<${Home} s=${s} open=${open} />`, roster: html`<${Roster} s=${s} />`, heat: html`<${Heatmap} s=${s} open=${open} />`, scores: html`<${Scores} s=${s} />`, settings: html`<${Settings} s=${s} />` }[curTab];
   return html`<div class="app">
     ${s.readOnly && html`<div class="ro-banner" onClick=${() => { setStack([]); setTab('settings'); }}>👀 预览模式 · 只读　<b>登录后可修改 ›</b></div>`}
-    <main>${body}</main>
+    <main>
+      ${[...new Set([...visited, curTab])].filter((k) => !(s.readOnly && k === 'roster')).map((k) => html`<section key=${`${s.readOnly ? 'preview' : 'edit'}:${k}`} class="tab-page" hidden=${!!top || curTab !== k}>
+        <${TabContent} page=${k} active=${!top && curTab === k} s=${s} open=${open} />
+      </section>`)}
+      ${top && html`<section key=${pageKey} class="detail-page">${body}</section>`}
+    </main>
     ${!top && html`<nav class="tabs">${tabs.map(([k, i, l]) => html`<button class=${curTab === k ? 'on' : ''} onClick=${() => setTab(k)}><span>${i}</span>${l}</button>`)}</nav>`}
     ${s.sync.email && s.sync.busy && html`<div class="sync-pill">☁️ 同步中…</div>`}
     ${s.toast && html`<div class="toast">${s.toast.msg}${s.toast.undoable && html`<button onClick=${s.doUndo}>撤销</button>`}</div>`}

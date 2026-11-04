@@ -63,6 +63,19 @@ main { padding-bottom: 90px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; padding: 6px 14px; }
 @media (min-width: 900px) { .grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); } }
 .stu { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 6px; text-align: center; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transition: transform .1s; }
+.stu { position: relative; color: inherit; font: inherit; }
+.stu.sel { outline: 3px solid var(--g1); outline-offset: 1px; }
+.selection-check { position: absolute; top: 4px; left: 6px; color: var(--g1); font-weight: 800; }
+.assignment-pickbar .chips { flex-basis: 100%; margin: 0; }
+.detail-page .pickbar { bottom: calc(12px + env(safe-area-inset-bottom)); }
+.app:has(.selection-page) .toast { bottom: calc(250px + env(safe-area-inset-bottom)); }
+.tab-page[hidden] { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .detail-page { animation: page-enter 140ms ease-out; }
+  @keyframes page-enter { from { opacity: .65; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+}
+.tab-page .card.assign { content-visibility: auto; contain-intrinsic-size: auto 54px; }
+.tab-page .score-row { content-visibility: auto; contain-intrinsic-size: auto 38px; }
 .stu:active { transform: scale(.96); }
 .stu .avatar { margin: 0 auto 4px; }
 .stu-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -74,7 +87,7 @@ main { padding-bottom: 90px; }
 .score-check { width: 22px; height: 22px; flex: none; border: 2px solid var(--muted); border-radius: 50%; display: grid; place-items: center; }
 .selected .score-check { border-color: var(--g1); background: var(--g1); color: #fff; }
 .score-targets { max-height: 100px; overflow-y: auto; }
-.app:has(.scores-selecting) .toast { bottom: calc(210px + env(safe-area-inset-bottom)); }
+.app:has(.tab-page:not([hidden]) .scores-selecting) .toast { bottom: calc(210px + env(safe-area-inset-bottom)); }
 .chip:disabled { opacity: .45; cursor: default; }
 .podium { display: flex; justify-content: center; align-items: flex-end; gap: 10px; margin-top: 14px; }
 .pod { display: flex; flex-direction: column; align-items: center; width: 90px; }
@@ -109,6 +122,10 @@ textarea.input { resize: vertical; }
 .heat-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; margin-bottom: 6px; }
 .heat-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
 .heat-wrap { overflow-x: auto; margin-top: 8px; -webkit-overflow-scrolling: touch; }
+.heat-viewport { max-height: min(68vh, 640px); overflow: auto; }
+.heat-viewport .heat { border-spacing: 3px 0; }
+.heat-viewport th { position: sticky; top: 0; background: var(--card); z-index: 2; }
+.heat-student-row { height: 26px; }
 .heat { border-collapse: separate; border-spacing: 3px; font-size: 12px; }
 .heat th { font-weight: 600; color: var(--muted); font-size: 10px; cursor: pointer; white-space: nowrap; }
 .heat td { padding: 0; }

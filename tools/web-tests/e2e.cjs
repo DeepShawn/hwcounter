@@ -70,6 +70,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check((await page.textContent('.grid .stu:nth-child(2)')) === before, '预览模式点学生不会改变状态');
   check(await page.isVisible('text=预览模式：登录后才能修改'), '预览模式点学生提示需要登录');
   check(!(await page.textContent('.hero')).includes(':'), '作业日期不显示具体时间');
+  check(await page.getByRole('button', { name: '☑️ 多选', exact: true }).count() === 0, '预览模式不显示作业多选操作');
   await page.screenshot({ path: `${OUT}/2-preview-assignment.png` });
   await page.click('.hero .icon-btn');
 
@@ -180,6 +181,44 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.click('.typed button');
   await page.waitForTimeout(200);
   check((await page.locator('.seat-grid .seat').nth(0).textContent()).includes('未交') && (await page.locator('.seat-grid .seat').nth(1).textContent()).includes('未交'), '空格连续输入 zjy lzh → 两人都登记');
+  await page.click('.hero .icon-btn');
+
+  // 作业名单：卡片模式也可多选，选择本身不改登记，批量加减分独立于作业状态。
+  await page.click('text=练习册 P32');
+  await page.click('.toolbar .chip:visible:has-text("座位表")');
+  const assignmentBefore = await page.evaluate(() => JSON.parse(localStorage.getItem('hw.data')).classes[0]);
+  const assignmentStudent = (name) => page.locator('.assignment-page .grid .stu').filter({ hasText: name });
+  await page.getByRole('button', { name: '☑️ 多选', exact: true }).click();
+  check(await page.getByRole('button', { name: '批量加减分', exact: true }).isDisabled(), '作业多选未选人时不可批量加减分');
+  await assignmentStudent('张锦宇').click(); await assignmentStudent('李子涵').click();
+  await assignmentStudent('张锦宇').click(); await assignmentStudent('张锦宇').click();
+  check(await page.locator('.assignment-page .stu[aria-pressed=true]').count() === 2 && JSON.stringify((await page.evaluate(() => JSON.parse(localStorage.getItem('hw.data')).classes[0])).assignments) === JSON.stringify(assignmentBefore.assignments), '作业卡片点选只改变选择，不改变提交状态');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: `${OUT}/5d-assignment-multi-phone.png` });
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '手机作业多选操作栏不会横向溢出');
+  await page.setViewportSize({ width: 1024, height: 1366 });
+  await page.getByRole('button', { name: '批量加减分', exact: true }).click();
+  check((await page.inputValue('.modal input[placeholder="原因"]')) === '作业：练习册 P32', '作业批量积分自动带上作业名称');
+  await page.getByRole('button', { name: '取消', exact: true }).last().click();
+  check(await page.locator('.assignment-page .stu[aria-pressed=true]').count() === 2, '取消作业批量积分后保留选择');
+  await page.getByRole('button', { name: '批量加减分', exact: true }).click();
+  await page.fill('.modal input[type=number]', '-1.5');
+  await page.getByRole('button', { name: '确定', exact: true }).click();
+  await page.waitForSelector('.modal', { state: 'hidden' });
+  const assignmentScored = await page.evaluate(() => JSON.parse(localStorage.getItem('hw.data')).classes[0]);
+  const assignmentAdded = assignmentScored.scores.slice(assignmentBefore.scores.length);
+  check(assignmentAdded.length === 2 && assignmentAdded.every((e) => e.delta === -1.5 && e.reason === '作业：练习册 P32') && assignmentAdded.map((e) => e.studentId).sort().join() === 's1,s2', '作业批量扣分只影响所选学生，每人一条流水');
+  check(JSON.stringify(assignmentScored.assignments) === JSON.stringify(assignmentBefore.assignments), '额外加减分保留作业状态和未交次数');
+  await page.click('.toast button:has-text("撤销")');
+  await page.getByRole('button', { name: '☑️ 多选', exact: true }).click();
+  await page.fill('.assignment-page input[placeholder="搜索"]', '张');
+  await page.getByRole('button', { name: '全选当前筛选', exact: true }).click();
+  check(await page.locator('.assignment-page .stu[aria-pressed=true]').count() === 1, '作业全选只选择当前筛选的学生');
+  await page.locator('.assignment-pickbar').getByRole('button', { name: '优秀', exact: true }).click();
+  const assignmentRegistered = await page.evaluate(() => JSON.parse(localStorage.getItem('hw.data')).classes[0]);
+  check(assignmentRegistered.assignments[0].statuses.s1 === 'EXCELLENT' && assignmentRegistered.assignments[0].statuses.s2 === assignmentBefore.assignments[0].statuses.s2, '作业批量登记只修改所选学生');
+  await page.click('.toast button:has-text("撤销")');
+  await page.locator('.assignment-pickbar').getByRole('button', { name: '取消', exact: true }).click();
   await page.click('.hero .icon-btn');
 
   // 5d) 点击多选 → 批量加减分；取消、零分校验和整批撤销
@@ -304,7 +343,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.click('text=练习册 P32');
   await page.click('.toolbar .chip:has-text("在草稿里登记")');
   await page.waitForSelector('.draft-hero');
-  await page.click('.toolbar .chip:has-text("座位表")');
+  await page.click('.toolbar .chip:visible:has-text("座位表")');
   await page.click('.grid .stu:has-text("王芳")');
   const before5d = db.row.data.classes[0].assignments.find((a) => a.id === 'a1').statuses.s3;
   await page.click('.draft-bar button:has-text("定时上传")');
