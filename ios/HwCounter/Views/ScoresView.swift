@@ -19,24 +19,33 @@ struct ScoresView: View {
     @State private var selected: Set<String> = []
     @State private var exportURL: URL? = nil
     @State private var scoreValueRequest: ScoreValueRequest? = nil
+    @AppStorage("scoresSortByNo") private var byNumber = false
 
     var body: some View {
         Group {
             if let c = store.data.currentClass, !c.students.isEmpty {
-                let stats = c.stats(store.data.rules).sorted { $0.score > $1.score }
+                let ranked = c.stats(store.data.rules).sorted { $0.score > $1.score }
+                let stats = byNumber ? ranked.sorted { compareStudentNumbers($0.student.no, $1.student.no) < 0 } : ranked
+                let ranks = Dictionary(uniqueKeysWithValues: ranked.enumerated().map { ($0.element.id, $0.offset + 1) })
                 let picked = c.students.filter { selected.contains($0.id) }
                 List {
                     Section {
-                        podium(Array(stats.prefix(3)))
+                        podium(Array(ranked.prefix(3)))
                         Text("基准分：\(fmtNum(store.data.rules.initial))").font(.caption).foregroundStyle(.secondary)
                     }
-                    Section(selecting ? "点击学生选择或取消" : "排行（点学生加减分）") {
+                    Section {
+                        Picker("积分排序", selection: $byNumber) {
+                            Text("按积分").tag(false)
+                            Text("按学号").tag(true)
+                        }.pickerStyle(.segmented)
+                    }
+                    Section(selecting ? "点击学生选择或取消" : byNumber ? "学号升序（行首为积分名次）" : "排行（点学生加减分）") {
                         ForEach(Array(stats.enumerated()), id: \.element.id) { i, st in
                             Button {
                                 if selecting {
                                     if selected.contains(st.id) { selected.remove(st.id) } else { selected.insert(st.id) }
                                 } else { scoreRequest = ScoreRequest(classId: c.id, studentIds: [st.id]) }
-                            } label: { row(i + 1, st) }
+                            } label: { row(ranks[st.id] ?? i + 1, st) }
                             .buttonStyle(.plain)
                             .listRowBackground(selecting && selected.contains(st.id) ? Color.accentColor.opacity(0.12) : Color(uiColor: .secondarySystemGroupedBackground))
                             .accessibilityValue(selecting ? (selected.contains(st.id) ? "已选" : "未选") : fmtNum(st.score))

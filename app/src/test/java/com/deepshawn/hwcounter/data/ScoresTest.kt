@@ -4,6 +4,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ScoresTest {
+    @Test fun studentNumbersUseNaturalOrderWithoutOverflow() {
+        val cases = listOf(
+            listOf("10", "2", "1") to listOf("1", "2", "10"),
+            listOf("010", "2", "001") to listOf("001", "2", "010"),
+            listOf("A10", "a2", "A1") to listOf("A1", "a2", "A10"),
+            listOf("90071992547409931", "90071992547409930", "2") to listOf("2", "90071992547409930", "90071992547409931"),
+            listOf("", "10", " 2 ") to listOf(" 2 ", "10", ""),
+        )
+        for ((input, expected) in cases) assertEquals(expected, input.sortedWith(::compareStudentNumbers))
+        assertEquals(0, compareStudentNumbers("02", "2"))
+    }
+
     private val rules = ScoreRules()
     private fun fixture() = SchoolClass(
         name = "一班", students = listOf(Student(id = "s1", no = "01", name = "张三"), Student(id = "s2", no = "02", name = "李四")),

@@ -1,9 +1,24 @@
 // node --test tools/web-tests/scores.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultRules, summary, studentStats, addStudentScores, resetStudentScores } from '../../web/js/model.js';
+import { defaultRules, summary, studentStats, compareStudentNumbers, addStudentScores, resetStudentScores } from '../../web/js/model.js';
 
 const rules = defaultRules();
+
+test('学号自然排序处理数字、前导零、字母、超长学号和空值，不修改原名单', () => {
+  for (const [input, expected] of [
+    [['10', '2', '1'], ['1', '2', '10']],
+    [['010', '2', '001'], ['001', '2', '010']],
+    [['A10', 'a2', 'A1'], ['A1', 'a2', 'A10']],
+    [['90071992547409931', '90071992547409930', '2'], ['2', '90071992547409930', '90071992547409931']],
+    [['', '10', ' 2 '], [' 2 ', '10', '']],
+  ]) {
+    const original = [...input];
+    assert.deepEqual([...input].sort(compareStudentNumbers), expected);
+    assert.deepEqual(input, original);
+  }
+  assert.equal(compareStudentNumbers('02', '2'), 0);
+});
 const fixture = () => ({
   id: 'c1', name: '一班',
   students: [{ id: 's1', no: '01', name: '张三' }, { id: 's2', no: '02', name: '李四' }],

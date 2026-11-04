@@ -1,7 +1,7 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
-import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, addStudentScores, resetStudentScores, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
+import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, compareStudentNumbers, addStudentScores, resetStudentScores, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
 import { api, session, meta, setMeta, syncOnce, pushAs, merge, hashData, withLocalKey } from './cloud.js';
 import { createVoiceParser } from './voice.js';
 import { xlsx, ST } from './xlsx.js';
@@ -665,11 +665,15 @@ function ScoreEntryDialog({ students, reasons, initialReason = '', onClose, onSa
 function Scores({ s }) {
   const { data, update, say } = s; const c = currentClass(data); const rules = data.settings.rules;
   const [targetIds, setTargetIds] = useState(null);
+  const [byNumber, setByNumber] = useState(() => { try { return localStorage.getItem('hw.scores.sort') === 'number'; } catch { return false; } });
   const [selecting, setSelecting] = useState(false); const [selected, setSelected] = useState(new Set());
   const [resetIds, setResetIds] = useState(null); const [baseOpen, setBaseOpen] = useState(false); const [scoreValue, setScoreValue] = useState('');
   useEffect(() => { setSelecting(false); setSelected(new Set()); setTargetIds(null); setResetIds(null); setBaseOpen(false); }, [c?.id, s.readOnly]);
   if (!c) return html`<div class="page"><div class="empty">🏆 还没有班级</div></div>`;
-  const stats = [...studentStats(c, rules)].sort((x, y) => y.score - x.score);
+  const ranked = [...studentStats(c, rules)].sort((x, y) => y.score - x.score);
+  const ranks = new Map(ranked.map((st, i) => [st.student.id, i + 1]));
+  const stats = byNumber ? [...ranked].sort((x, y) => compareStudentNumbers(x.student.no, y.student.no)) : ranked;
+  const setOrder = (value) => { setByNumber(value); try { localStorage.setItem('hw.scores.sort', value ? 'number' : 'score'); } catch { /* local preference only */ } };
   const picked = c.students.filter((st) => selected.has(st.id));
   const targets = c.students.filter((st) => targetIds?.includes(st.id));
   const resetTargets = c.students.filter((st) => resetIds?.includes(st.id));
@@ -689,13 +693,13 @@ function Scores({ s }) {
     const head = ['学号', '姓名', ...assigns.map((a) => `${fmtDate(a.createdAt)} ${a.subject} ${a.title}`), '已交', '迟交', '未交', '积分'].map((v) => ({ v, s: ST.HEADER }));
     const byId = Object.fromEntries(studentStats(c, rules).map((x) => [x.student.id, x]));
     const rows = [head, ...c.students.map((st) => { const x = byId[st.id]; return [st.no, st.name, ...assigns.map((a) => { const k = a.statuses[st.id] || 'NONE'; return { v: STATUS[k].label, s: styleOf[k] }; }), x.submitted, x.late, x.missing, x.score]; })];
-    const rank = [['名次', '学号', '姓名', '积分'].map((v) => ({ v, s: ST.HEADER })), ...stats.map((x, i) => [i + 1, x.student.no, x.student.name, x.score])];
+    const rank = [['名次', '学号', '姓名', '积分'].map((v) => ({ v, s: ST.HEADER })), ...ranked.map((x, i) => [i + 1, x.student.no, x.student.name, x.score])];
     const log = [['日期', '学号', '姓名', '分值', '原因'].map((v) => ({ v, s: ST.HEADER })), ...[...c.scores].sort((a, b) => b.time - a.time).map((e) => { const st = c.students.find((x) => x.id === e.studentId); return st ? [fmtDate(e.time), st.no, st.name, { v: e.delta, s: e.delta >= 0 ? ST.GREEN : ST.RED }, e.reason] : null; }).filter(Boolean)];
     download(xlsx([{ name: '作业统计', rows }, { name: '各次统计名单', rows: classStatRows(c, fmtDate) }, { name: '积分榜', rows: rank }, { name: '积分明细', rows: log }]), `${c.name}_作业统计.xlsx`);
   };
   return html`<div class=${'page' + (selecting ? ' scores-selecting' : '')}>
     <div class="hero"><div class="hero-title">积分榜</div><div class="muted-light small">基准 ${fmtNum(rules.initial)} · 未交 ${signed(rules.missing)} · 迟交 ${signed(rules.late)} · 优秀 ${signed(rules.excellent)}</div>
-      ${stats.length >= 3 && html`<div class="podium">${[1, 0, 2].map((i) => html`<div class=${'pod p' + i}><div>${['🥇', '🥈', '🥉'][i]}</div><${Avatar} name=${stats[i].student.name} size=${i ? 44 : 54} /><div class="small">${stats[i].student.name}</div><div class="pod-bar"><b>${fmtNum(stats[i].score)}</b></div></div>`)}</div>`}
+      ${ranked.length >= 3 && html`<div class="podium">${[1, 0, 2].map((i) => html`<div class=${'pod p' + i}><div>${['🥇', '🥈', '🥉'][i]}</div><${Avatar} name=${ranked[i].student.name} size=${i ? 44 : 54} /><div class="small">${ranked[i].student.name}</div><div class="pod-bar"><b>${fmtNum(ranked[i].score)}</b></div></div>`)}</div>`}
     </div>
     <div class="toolbar"><button class="chip" onClick=${exportAll}>📊 导出全班 Excel</button>
       <button class="chip" onClick=${() => download(xlsx([{ name: '各次统计名单', rows: classStatRows(c, fmtDate) }]), `${c.name}_各次作业统计名单.xlsx`)}>📋 各次统计名单</button>
@@ -703,6 +707,11 @@ function Scores({ s }) {
       <button class="chip" onClick=${() => { setScoreValue(String(rules.initial)); setBaseOpen(true); }}>修改基准分</button>
       <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => openReset(c.students.map((st) => st.id))}>重置全班分数</button>
       <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => { update((d) => mapClass(d, c.id, (k) => ({ ...k, scores: [...k.scores, ...k.students.map((x) => ({ id: newId(), studentId: x.id, delta: 1, reason: '全班表现好', time: Date.now() }))] }))); say('全班 +1 🎉', true); }}>🎉 全班 +1</button>`}</div>
+    <div class="toolbar" aria-label="积分排序">
+      <button class=${'chip' + (!byNumber ? ' on' : '')} aria-pressed=${!byNumber} onClick=${() => setOrder(false)}>按积分</button>
+      <button class=${'chip' + (byNumber ? ' on' : '')} aria-pressed=${byNumber} onClick=${() => setOrder(true)}>按学号</button>
+      <span class="muted tiny">${byNumber ? '学号从小到大 · 行首为积分名次' : '积分从高到低'}</span>
+    </div>
     ${selecting && html`<div class="muted small pad">点击学生选择或取消，再点击“批量加减分”</div>`}
     ${stats.map((x, i) => html`<button key=${x.student.id} type="button" class=${'card row score-row' + (selecting && selected.has(x.student.id) ? ' selected' : '')}
       aria-pressed=${selecting ? selected.has(x.student.id) : undefined} onClick=${() => {
@@ -710,7 +719,7 @@ function Scores({ s }) {
         if (selecting) setSelected((prev) => { const next = new Set(prev); if (next.has(x.student.id)) next.delete(x.student.id); else next.add(x.student.id); return next; });
         else openScore([x.student.id]);
       }}>
-      ${selecting ? html`<span class="score-check" aria-hidden="true">${selected.has(x.student.id) ? '✓' : ''}</span>` : html`<b class="idx">${i + 1}</b>`}
+      ${selecting ? html`<span class="score-check" aria-hidden="true">${selected.has(x.student.id) ? '✓' : ''}</span>` : html`<b class="idx">${ranks.get(x.student.id)}</b>`}
       <${Avatar} name=${x.student.name} size=${36} /><div class="grow"><b>${x.student.name}</b><div class="muted tiny">${x.student.no} · 交${x.submitted} · 迟${x.late} · 缺${x.missing}</div></div><b class="score">${fmtNum(x.score)}</b></button>`)}
     ${selecting && html`<div class="pickbar" aria-label="批量积分操作">
       <b class="grow" aria-live="polite">已选 ${picked.length} 人</b>
