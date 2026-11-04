@@ -104,6 +104,9 @@ sealed interface Route {
     data class Voice(val assignmentId: String) : Route
     data class StudentDetail(val id: String) : Route
     data object Seating : Route
+    data class Draft(val id: String) : Route
+    data object Drafts : Route
+    data class StatTable(val draftId: String?) : Route
 }
 
 class Nav(private val stack: MutableList<Route>, private val canOpen: (Route) -> Boolean = { true }) {
@@ -172,7 +175,8 @@ fun App(vm: AppViewModel, data: AppData) {
     // 预览模式下，只用于登记/计数的页面不让进
     val nav = remember {
         Nav(stack) { r ->
-            val editOnly = r is Route.Recognize || r is Route.Live || r is Route.Voice || r is Route.Spine || r is Route.Stack || r is Route.Paper || r is Route.Seating
+            val editOnly = r is Route.Recognize || r is Route.Live || r is Route.Voice || r is Route.Spine || r is Route.Stack || r is Route.Paper || r is Route.Seating ||
+                r is Route.Draft || r is Route.Drafts || r is Route.StatTable
             when {
                 editOnly && vm.readOnly.value -> { vm.notices.tryEmit("👀 预览模式：登录后才能使用"); false }
                 // 预览模式不显示名单页（统计/热力图照常显示）
@@ -267,6 +271,9 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         is Route.Voice -> VoiceScreen(vm, data, route.assignmentId)
         is Route.StudentDetail -> StudentDetailScreen(vm, data, route.id)
         Route.Seating -> SeatingScreen(vm, data)
+        is Route.Draft -> com.deepshawn.hwcounter.ui.screens.DraftScreen(vm, data, route.id)
+        Route.Drafts -> com.deepshawn.hwcounter.ui.screens.DraftListScreen(vm, data)
+        is Route.StatTable -> com.deepshawn.hwcounter.ui.screens.StatTableScreen(vm, data, route.draftId)
     }
 }
 

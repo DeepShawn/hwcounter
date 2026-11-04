@@ -19,9 +19,9 @@ object SeatingLogic {
     private val FRONT = Regex("讲台|黑板|讲桌|前门|講台")
     private fun canon(s: String) = s.trim().uppercase().replace(Regex("\\s+"), "")
 
-    private class Hit(val s: Student, val at: Int, val len: Int)
+    internal class Hit(val s: Student, val at: Int, val len: Int)
 
-    private class SeatMatcher(students: List<Student>) {
+    internal class SeatMatcher(students: List<Student>) {
         val byNo = students.filter { it.no.isNotBlank() }.associateBy { canon(it.no) }
         val byName = LinkedHashMap<String, Student>().apply { students.forEach { if (it.name.isNotEmpty() && it.name !in this) put(it.name, it) } }
         val names = byName.keys.filter { it.length >= 2 }.sortedByDescending { it.length }

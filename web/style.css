@@ -69,6 +69,13 @@ main { padding-bottom: 90px; }
 .avatar { border-radius: 50%; color: #fff; font-weight: 800; display: grid; place-items: center; flex: none; }
 .idx { width: 26px; text-align: center; color: var(--muted); }
 .score { font-size: 20px; color: var(--g1); }
+.score-row { width: calc(100% - 28px); text-align: left; color: inherit; font: inherit; }
+.score-row.selected { border-color: var(--g1); background: color-mix(in srgb, var(--g1) 12%, var(--card)); }
+.score-check { width: 22px; height: 22px; flex: none; border: 2px solid var(--muted); border-radius: 50%; display: grid; place-items: center; }
+.selected .score-check { border-color: var(--g1); background: var(--g1); color: #fff; }
+.score-targets { max-height: 100px; overflow-y: auto; }
+.app:has(.scores-selecting) .toast { bottom: calc(210px + env(safe-area-inset-bottom)); }
+.chip:disabled { opacity: .45; cursor: default; }
 .podium { display: flex; justify-content: center; align-items: flex-end; gap: 10px; margin-top: 14px; }
 .pod { display: flex; flex-direction: column; align-items: center; width: 90px; }
 .pod-bar { width: 100%; border-radius: 12px 12px 0 0; background: rgba(255,255,255,.3); display: grid; place-items: start center; padding-top: 6px; margin-top: 4px; }
@@ -125,3 +132,18 @@ textarea.input { resize: vertical; }
 .typed select.input { width: auto; }
 .pickbar { position: sticky; bottom: 70px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 10px; margin: 8px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.15); z-index: 4; }
 .chip.danger { color: #f0475a; }
+
+/* 草稿 / 统计表 */
+.draft-note { background: #fff8e1; border-color: #ffe08a; color: #5c4400; cursor: pointer; font-size: 13px; }
+:root[data-theme="dark"] .draft-note { background: #33290f; border-color: #5c4a14; color: #ffe08a; }
+.draft-hero { background: linear-gradient(135deg, #8a6cff, var(--g2)); }
+.draft-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.draft-bar .btn { padding: 9px 14px; }
+.draft-card .actions { margin-top: 8px; }
+.draft-card .row { cursor: pointer; }
+.ring.dark { background: var(--chip); }
+.ring.dark::before { background: conic-gradient(var(--g1) calc(var(--p) * 100%), var(--line) 0); }
+.stat-row { align-items: flex-start; }
+.stat-line { padding: 4px 0; border-bottom: 1px solid var(--line); }
+.stat-line:last-child { border-bottom: 0; }
+.stat-sel { width: auto; margin: 0; padding: 4px 8px; font-weight: 700; }

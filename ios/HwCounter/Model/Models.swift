@@ -298,6 +298,17 @@ extension SchoolClass {
 
     struct Stat: Identifiable { let student: Student; let score: Double; let submitted: Int; let late: Int; let missing: Int; var id: String { student.id } }
 
+    /// 新增调整流水，保留历史加减分、作业状态和未交次数。
+    func resettingScores(_ rules: Rules, ids: [String], target: Double) -> SchoolClass {
+        guard target.isFinite else { return self }
+        let selected = Set(ids)
+        var result = self
+        result.scores += stats(rules).filter { selected.contains($0.id) && $0.score != target }.map {
+            ScoreEntry(studentId: $0.id, delta: target - $0.score, reason: "重置分数至 \(fmtNum(target))")
+        }
+        return result
+    }
+
     func stats(_ rules: Rules) -> [Stat] {
         var manual: [String: Double] = [:]
         for e in scores { manual[e.studentId, default: 0] += e.delta }

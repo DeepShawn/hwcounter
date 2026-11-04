@@ -157,6 +157,16 @@ data class StudentStat(
 
 fun SchoolClass.statusOf(a: Assignment, s: Student): HwStatus = a.statuses[s.id] ?: HwStatus.NONE
 
+/** 新增调整流水，不删除历史加减分，也不修改作业及未交次数。 */
+fun SchoolClass.resetStudentScores(rules: ScoreRules, studentIds: Collection<String>, target: Double): SchoolClass {
+    if (!target.isFinite()) return this
+    val ids = studentIds.toSet()
+    val entries = studentStats(rules).filter { it.student.id in ids && it.score != target }.map {
+        ScoreEntry(studentId = it.student.id, delta = target - it.score, reason = "重置分数至 ${target.fmt()}")
+    }
+    return if (entries.isEmpty()) this else copy(scores = scores + entries)
+}
+
 fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
     val manual = scores.groupBy { it.studentId }.mapValues { e -> e.value.sumOf { it.delta } }
     return students.map { st ->

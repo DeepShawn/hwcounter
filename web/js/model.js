@@ -59,6 +59,15 @@ export function studentStats(c, rules) {
   });
 }
 
+/** 通过一条调整记录重置积分，保留原有流水、作业状态及未交次数。 */
+export function resetStudentScores(c, rules, studentIds, target) {
+  if (!Number.isFinite(target)) return c;
+  const ids = new Set(studentIds); const time = Date.now();
+  const entries = studentStats(c, rules).filter((st) => ids.has(st.student.id) && st.score !== target)
+    .map((st) => ({ id: newId(), studentId: st.student.id, delta: target - st.score, reason: `重置分数至 ${fmtNum(target)}`, time }));
+  return entries.length ? { ...c, scores: [...c.scores, ...entries] } : c;
+}
+
 export const fmtNum = (x) => { const r = Math.round(x * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1); };
 export const signed = (x) => (x > 0 ? '+' : '') + fmtNum(x);
 /** 作业只显示年月日 */

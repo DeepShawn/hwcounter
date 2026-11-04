@@ -13,8 +13,8 @@ android {
         applicationId = "com.deepshawn.hwcounter"
         minSdk = 26
         targetSdk = 34
-        versionCode = 14
-        versionName = "1.2.0"
+        versionCode = 16
+        versionName = "1.4.0"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -68,6 +68,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     val composeBom = platform("androidx.compose:compose-bom:2024.09.03")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")

@@ -50,7 +50,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
 (async () => {
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}/`;
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {});
   const ctx = await browser.newContext({ viewport: { width: 1024, height: 1366 }, deviceScaleFactor: 1, hasTouch: true, userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' });
   await ctx.route('https://beasxxexggnjcocdbtdl.supabase.co/**', mock);
   const page = await ctx.newPage();
@@ -182,6 +182,144 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check((await page.locator('.seat-grid .seat').nth(0).textContent()).includes('未交') && (await page.locator('.seat-grid .seat').nth(1).textContent()).includes('未交'), '空格连续输入 zjy lzh → 两人都登记');
   await page.click('.hero .icon-btn');
 
+  // 5d) 点击多选 → 批量加减分；取消、零分校验和整批撤销
+  await page.click('.tabs button:has-text("积分")');
+  const readClass = () => page.evaluate(() => JSON.parse(localStorage.getItem('hw.data')).classes[0]);
+  const scoreRow = (name) => page.locator('.score-row').filter({ hasText: name });
+  const initialClass = await readClass();
+  await page.getByRole('button', { name: '☑️ 多选', exact: true }).click();
+  check(await page.getByRole('button', { name: '批量加减分', exact: true }).isDisabled(), '未选学生时不能批量加减分');
+  await scoreRow('张锦宇').click(); await scoreRow('王芳').click();
+  await scoreRow('张锦宇').click(); await scoreRow('张锦宇').click();
+  check((await page.textContent('.pickbar')).includes('已选 2 人') && await page.locator('.score-row[aria-pressed=true]').count() === 2, '点学生切换勾选，重复点选不会重复计数');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: `${OUT}/5d-phone-batch-scores.png` });
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '手机多选操作栏不会横向溢出');
+  await page.getByRole('button', { name: '批量加减分', exact: true }).click();
+  check((await page.textContent('.modal .score-targets')).includes('张锦宇') && (await page.textContent('.modal .score-targets')).includes('王芳') && !(await page.textContent('.modal .score-targets')).includes('李子涵'), '确认窗口仅展示选中学生');
+  await page.getByRole('button', { name: '取消', exact: true }).last().click();
+  check(JSON.stringify((await readClass()).scores) === JSON.stringify(initialClass.scores) && await page.locator('.score-row[aria-pressed=true]').count() === 2, '取消打分保留选择且不写入积分');
+  await page.getByRole('button', { name: '批量加减分', exact: true }).click();
+  await page.fill('.modal input[type=number]', '0');
+  check(await page.getByRole('button', { name: '确定', exact: true }).isDisabled(), '零分不可提交');
+  await page.fill('.modal input[type=number]', '2');
+  await page.fill('.modal input[placeholder="原因"]', '批量课堂表现');
+  await page.getByRole('button', { name: '确定', exact: true }).click();
+  await page.waitForSelector('.modal', { state: 'hidden' });
+  let scored = await readClass(); let added = scored.scores.slice(initialClass.scores.length);
+  check(added.length === 2 && added.every((e) => e.delta === 2 && e.reason === '批量课堂表现') && added.map((e) => e.studentId).sort().join() === 's1,s3', '统一加2分只影响两位选中学生，各写一条流水');
+  check(JSON.stringify(scored.assignments) === JSON.stringify(initialClass.assignments) && !(await page.locator('.pickbar').count()), '批量打分保留作业状态并退出多选');
+  await page.click('.toast button:has-text("撤销")');
+  check(JSON.stringify((await readClass()).scores) === JSON.stringify(initialClass.scores), '一次撤销整批加分');
+  await page.getByRole('button', { name: '☑️ 多选', exact: true }).click();
+  await page.getByRole('button', { name: '全选', exact: true }).click();
+  check(await page.locator('.score-row[aria-pressed=true]').count() === initialClass.students.length, '全选选中全班');
+  await page.getByRole('button', { name: '清空选择', exact: true }).click();
+  check(await page.locator('.score-row[aria-pressed=true]').count() === 0, '清空选择不影响积分');
+  await scoreRow('张锦宇').click(); await scoreRow('王芳').click();
+  await page.getByRole('button', { name: '批量加减分', exact: true }).click();
+  await page.fill('.modal input[type=number]', '-1.5');
+  await page.getByRole('button', { name: '确定', exact: true }).click();
+  await page.waitForSelector('.modal', { state: 'hidden' });
+  scored = await readClass(); added = scored.scores.slice(initialClass.scores.length);
+  check(added.length === 2 && added.every((e) => e.delta === -1.5 && e.reason === '扣分'), '支持统一扣小数分及默认理由');
+
+  // 5e) 基准100改0：保留手动积分和未交次数；重置分数保留历史
+  const beforeBase = await scoreRow('张锦宇').locator('.score').textContent();
+  const beforeMissing = await scoreRow('张锦宇').locator('.muted').textContent();
+  await page.getByRole('button', { name: '修改基准分', exact: true }).click();
+  await page.fill('.modal input[type=number]', '');
+  check(await page.getByRole('button', { name: '保存', exact: true }).isDisabled(), '空白基准不能保存');
+  await page.fill('.modal input[type=number]', '0');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await page.waitForSelector('.modal', { state: 'hidden' });
+  check(Number(await scoreRow('张锦宇').locator('.score').textContent()) === Number(beforeBase) - 100 && JSON.stringify((await readClass()).scores) === JSON.stringify(scored.scores), '基准100改0仅平移积分，原始加减分流水完整保留');
+  check(await scoreRow('张锦宇').locator('.muted').textContent() === beforeMissing, '修改基准保留未交次数');
+  await page.click('.toast button:has-text("撤销")');
+  check(await scoreRow('张锦宇').locator('.score').textContent() === beforeBase, '修改基准可撤销');
+  const unselectedScore = await scoreRow('王芳').locator('.score').textContent();
+  await page.getByRole('button', { name: '☑️ 多选', exact: true }).click();
+  await scoreRow('张锦宇').click(); await scoreRow('李子涵').click();
+  await page.getByRole('button', { name: '重置分数', exact: true }).click();
+  await page.fill('.modal input[type=number]', '0');
+  await page.getByRole('button', { name: '确认重置', exact: true }).click();
+  await page.waitForSelector('.modal', { state: 'hidden' });
+  let reset = await readClass();
+  check(await scoreRow('张锦宇').locator('.score').textContent() === '0' && await scoreRow('李子涵').locator('.score').textContent() === '0' && await scoreRow('王芳').locator('.score').textContent() === unselectedScore, '重置选中学生至0分，未选中的学生不变');
+  check(JSON.stringify(reset.scores.slice(0, scored.scores.length)) === JSON.stringify(scored.scores) && JSON.stringify(reset.assignments) === JSON.stringify(initialClass.assignments) && await scoreRow('张锦宇').locator('.muted').textContent() === beforeMissing, '重置保留原有加减分、作业备注及未交次数');
+  await page.click('.toast button:has-text("撤销")');
+  check(JSON.stringify((await readClass()).scores) === JSON.stringify(scored.scores), '重置可整批撤销');
+  await page.getByRole('button', { name: '重置全班分数', exact: true }).click();
+  await page.fill('.modal input[type=number]', '0');
+  await page.getByRole('button', { name: '确认重置', exact: true }).click();
+  await page.waitForSelector('.modal', { state: 'hidden' });
+  reset = await readClass();
+  check((await page.locator('.score-row .score').allTextContents()).every((v) => v === '0') && reset.scores.slice(scored.scores.length).every((e) => e.reason === '重置分数至 0'), '全班重置至0分，并新增可追溯的重置流水');
+  await page.setViewportSize({ width: 1024, height: 1366 });
+  await page.screenshot({ path: `${OUT}/5e-reset-scores.png` });
+  await page.waitForTimeout(5000);
+  check(JSON.stringify(db.row.data.classes[0].scores) === JSON.stringify(reset.scores), '批量积分及重置流水自动同步');
+  await page.reload();
+  await page.click('.tabs button:has-text("积分")');
+  check((await page.locator('.score-row .score').allTextContents()).every((v) => v === '0') && JSON.stringify((await readClass()).scores) === JSON.stringify(reset.scores), '刷新后重置分数及原有流水保留');
+
+  // 5c) 统计表识别（粘贴）→ 存为新作业草稿 → 只在本机 → 上传
+  await page.click('.tabs button:has-text("首页")');
+  await page.waitForTimeout(4500); // 等上一步的自动同步完成
+  const cloudAssigns = db.row.data.classes[0].assignments.length; const vDraft0 = db.row.version;
+  await page.click('.qa:has-text("统计表识别")');
+  await page.click('button:has-text("📋 粘贴")');
+  await page.fill('.modal textarea', '学号\t姓名\t11月1日 默写\n34\t张锦宇\t√\n49\t李子涵\t×\n12\t王芳\t优\n50\t新同学\t假\n99\t路人甲\t√');
+  await page.click('.modal button:has-text("识别")');
+  await page.waitForSelector('.stat-sum');
+  const sumText = await page.textContent('.stat-sum');
+  check(sumText.includes('认出 4 人') && sumText.includes('1 行没对上') && sumText.includes('未交：李子涵'), '统计表识别：认出 4 人、1 行名单外、未交名单');
+  check(sumText.includes('交齐率 67%'), `统计：2/3 交齐率 67%（请假不计应交）`);
+  await page.screenshot({ path: `${OUT}/5d-stat-table.png` });
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text("导出统计名单 Excel")')]);
+  const dlPath = `${OUT}/stat-list.xlsx`; await dl.saveAs(dlPath);
+  const { readXlsx } = await import('../../web/js/stats.js');
+  const wbRows = await readXlsx(fs.readFileSync(dlPath));
+  check(wbRows.some((r) => r[0] === '未交' && r[3] === '李子涵'), `导出统计名单 Excel（${dl.suggestedFilename()}）`);
+  await page.click('button:has-text("存为新作业草稿")');
+  await page.waitForSelector('.modal-title:has-text("编辑作业")');
+  check((await page.inputValue('.modal input')) === '11月1日 默写', '表头自动作为作业名');
+  await page.click('.modal button:has-text("保存")');
+  await page.waitForSelector('.draft-hero');
+  check((await page.textContent('.draft-hero')).includes('只保存在本机'), '进入草稿页');
+  await page.click('.seat-grid .seat:has-text("李子涵")');
+  await page.waitForTimeout(5500);
+  check(db.row.data.classes[0].assignments.length === cloudAssigns && db.row.version === vDraft0, '草稿不会自动上传到云端');
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('hw.drafts')));
+  check(stored.length === 1 && stored[0].statuses.s2 === 'SUBMITTED' && stored[0].statuses.s9 === 'LEAVE', '草稿保存在本机（含刚才的修改）');
+  await page.screenshot({ path: `${OUT}/5e-draft.png` });
+  await page.click('.draft-bar button:has-text("上传")');
+  await page.waitForTimeout(1500);
+  const up = db.row.data.classes[0].assignments.find((a) => a.title === '11月1日 默写');
+  check(up && up.statuses.s1 === 'SUBMITTED' && up.statuses.s2 === 'SUBMITTED' && up.statuses.s3 === 'EXCELLENT' && db.row.version > vDraft0, '上传草稿 → 云端出现新作业和登记');
+  check((await page.evaluate(() => JSON.parse(localStorage.getItem('hw.drafts')))).length === 0, '上传后草稿删除');
+
+  // 5d) 已有作业 → 在草稿里登记 → 定时上传
+  await page.waitForSelector('text=练习册 P32');
+  await page.click('text=练习册 P32');
+  await page.click('.toolbar .chip:has-text("在草稿里登记")');
+  await page.waitForSelector('.draft-hero');
+  await page.click('.toolbar .chip:has-text("座位表")');
+  await page.click('.grid .stu:has-text("王芳")');
+  const before5d = db.row.data.classes[0].assignments.find((a) => a.id === 'a1').statuses.s3;
+  await page.click('.draft-bar button:has-text("定时上传")');
+  await page.fill('.modal input[type=datetime-local]', '2020-01-01T08:00');
+  await page.click('.modal button:has-text("确定")');
+  check((await page.textContent('.draft-bar')).includes('自动上传'), '设置定时上传');
+  await page.click('.hero .icon-btn');
+  check(await page.isVisible('.draft-note'), '作业页提示有未上传的草稿');
+  await page.click('.hero .icon-btn');
+  check((await page.textContent('.qa:has-text("草稿箱")')).includes('1'), '首页草稿箱显示 1 份');
+  await page.waitForFunction(() => !(JSON.parse(localStorage.getItem('hw.drafts')) || []).length, null, { timeout: 20000 });
+  await page.waitForTimeout(1500);
+  const after5d = db.row.data.classes[0].assignments.find((a) => a.id === 'a1').statuses.s3;
+  check(before5d !== after5d && after5d === (!before5d || before5d === 'MISSING' ? 'SUBMITTED' : undefined), `到时间自动上传（王芳 ${before5d} → ${after5d}）`);
+
   // 6) 修改密码（旧密码校验 + 两次新密码一致）
   await page.click('.tabs button:has-text("设置")');
   await page.click('button:has-text("修改密码")');
@@ -201,6 +339,8 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.waitForSelector('.ro-banner');
   check(true, '退出登录后回到预览模式');
   check(!(await page.isVisible('.tabs button:has-text("名单")')), '退出后“名单”页隐藏');
+  await page.click('.tabs button:has-text("积分")');
+  check(await page.getByRole('button', { name: '☑️ 多选', exact: true }).count() === 0 && await page.getByRole('button', { name: '重置全班分数', exact: true }).count() === 0 && await page.getByRole('button', { name: '修改基准分', exact: true }).count() === 0, '预览模式隐藏批量打分、重置和修改基准入口');
 
   // 8) 手机尺寸截图
   await page.setViewportSize({ width: 390, height: 844 });
