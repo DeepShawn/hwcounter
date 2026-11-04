@@ -67,13 +67,15 @@ main { padding-bottom: 90px; }
 .stu.sel { outline: 3px solid var(--g1); outline-offset: 1px; }
 .selection-check { position: absolute; top: 4px; left: 6px; color: var(--g1); font-weight: 800; }
 .assignment-pickbar .chips { flex-basis: 100%; margin: 0; }
+.detail-page .pickbar { bottom: calc(12px + env(safe-area-inset-bottom)); }
 .app:has(.selection-page) .toast { bottom: calc(250px + env(safe-area-inset-bottom)); }
 .tab-page[hidden] { display: none; }
 @media (prefers-reduced-motion: no-preference) {
   .detail-page { animation: page-enter 140ms ease-out; }
   @keyframes page-enter { from { opacity: .65; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 }
-.tab-page .card.assign, .tab-page .score-row { content-visibility: auto; contain-intrinsic-size: auto 90px; }
+.tab-page .card.assign { content-visibility: auto; contain-intrinsic-size: auto 54px; }
+.tab-page .score-row { content-visibility: auto; contain-intrinsic-size: auto 38px; }
 .stu:active { transform: scale(.96); }
 .stu .avatar { margin: 0 auto 4px; }
 .stu-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

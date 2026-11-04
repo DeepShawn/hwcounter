@@ -360,14 +360,14 @@ function AssignView({ s, id, back, open }) {
       ${Object.entries(filters).map(([k, [l, f]]) => html`<button class=${'chip' + (k === filter ? ' on' : '')} onClick=${() => { setFilter(k); setPick(new Set()); }}>${l} ${c.students.filter((st) => f(a.statuses[st.id] || 'NONE')).length}</button>`)}
       <input class="input small-input" placeholder="搜索" value=${q} onInput=${(e) => { setQ(e.target.value); setPick(new Set()); }} />
     </div>
-    ${!(view === 'seat' && c.seating) && html`<div class="muted small pad">${s.readOnly ? '预览模式：只能查看，登录后可登记' : '点一下切换 已交/未登记 · 长按（或右键）设置状态、加减分、备注'}</div>`}
+    ${!(view === 'seat' && c.seating) && html`<div class="muted small pad">${s.readOnly ? '预览模式：只能查看，登录后可登记' : multi ? '点击学生选择或取消，再在下方批量登记状态或加减分' : '点一下切换 已交/未登记 · 长按（或右键）设置状态、加减分、备注'}</div>`}
     ${view === 'seat' && c.seating ? html`
       <div class="muted tiny pad">${s.readOnly ? '' : multi ? '点击学生选择或取消；下方可批量登记状态或加减分' : '点座位切换 已交/未登记；点“排”“列”或开启多选，可整排/整列一起登记'}</div>
       <${SeatChart} seating=${c.seating} students=${c.students} sel=${(k, st) => st && pick.has(st.id)}
         cell=${(st) => { if (!st) return { body: '' }; const x = a.statuses[st.id] || 'NONE'; return { style: x === 'NONE' ? {} : { background: STATUS[x].color + '33', borderColor: STATUS[x].color }, body: html`<b>${st.name}</b><span class="tiny" style=${{ color: STATUS[x].color }}>${STATUS[x].label}</span>`, onMenu: () => setSheet(st) }; }}
         onCell=${(k, st) => { if (!st) return; if (multi || pick.size) { togglePick([st.id]); return; } const x = a.statuses[st.id] || 'NONE'; setStatus([st.id], x === 'NONE' || x === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}
-        onRow=${(r) => { if (s.readOnly) return; const g = seatingToGrid(c.seating, c.students); togglePick(g[r].filter(Boolean)); }}
-        onCol=${(col) => { if (s.readOnly) return; const g = seatingToGrid(c.seating, c.students); togglePick(g.map((row) => row[col]).filter(Boolean)); }} />
+        onRow=${(r) => { if (s.readOnly) return; setMulti(true); const g = seatingToGrid(c.seating, c.students); togglePick(g[r].filter(Boolean)); }}
+        onCol=${(col) => { if (s.readOnly) return; setMulti(true); const g = seatingToGrid(c.seating, c.students); togglePick(g.map((row) => row[col]).filter(Boolean)); }} />
       ${(() => { const un = c.students.filter((x) => c.seating.seats[x.id] == null); return un.length ? html`<div class="muted tiny pad">未入座：${un.map((x) => html`<button class=${'chip' + (pick.has(x.id) ? ' on' : '')} onClick=${() => { if (multi || pick.size) { togglePick([x.id]); return; } const v = a.statuses[x.id] || 'NONE'; setStatus([x.id], v === 'NONE' || v === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}>${x.name} · ${STATUS[a.statuses[x.id] || 'NONE'].label}</button>`)}</div>` : ''; })()}
     ` : html`
     <div class="grid">${list.map((st) => { const x = a.statuses[st.id] || 'NONE'; const d = ruleOf(rules, x); return html`

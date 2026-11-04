@@ -193,6 +193,10 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await assignmentStudent('张锦宇').click(); await assignmentStudent('李子涵').click();
   await assignmentStudent('张锦宇').click(); await assignmentStudent('张锦宇').click();
   check(await page.locator('.assignment-page .stu[aria-pressed=true]').count() === 2 && JSON.stringify((await page.evaluate(() => JSON.parse(localStorage.getItem('hw.data')).classes[0])).assignments) === JSON.stringify(assignmentBefore.assignments), '作业卡片点选只改变选择，不改变提交状态');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: `${OUT}/5d-assignment-multi-phone.png` });
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), '手机作业多选操作栏不会横向溢出');
+  await page.setViewportSize({ width: 1024, height: 1366 });
   await page.getByRole('button', { name: '批量加减分', exact: true }).click();
   check((await page.inputValue('.modal input[placeholder="原因"]')) === '作业：练习册 P32', '作业批量积分自动带上作业名称');
   await page.getByRole('button', { name: '取消', exact: true }).last().click();
