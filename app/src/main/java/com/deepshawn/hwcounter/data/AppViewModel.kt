@@ -52,6 +52,66 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         if (!sync.loggedIn) viewModelScope.launch { refreshPreview() }
+        // 定时上传草稿：每 15 秒检查一次（App 在后台但进程还在时也会执行；进程被杀则下次打开立即补传）
+        viewModelScope.launch {
+            delay(1500)
+            while (true) { uploadDueDrafts(); delay(15_000) }
+        }
+    }
+
+    // ---------- 草稿：只保存在本机（drafts.json），不进云端快照 ----------
+    private val draftFile = File(app.filesDir, "drafts.json")
+    private val _drafts: MutableStateFlow<List<Draft>> = MutableStateFlow(
+        runCatching { json.decodeFromString<List<Draft>>(draftFile.readText()) }.getOrDefault(emptyList())
+    )
+    val drafts: StateFlow<List<Draft>> = _drafts.asStateFlow()
+
+    private fun setDrafts(list: List<Draft>) {
+        _drafts.value = list
+        val text = json.encodeToString(list)
+        viewModelScope.launch(Dispatchers.IO) { runCatching { draftFile.writeText(text) } }
+    }
+
+    fun addDraft(d: Draft) = setDrafts(listOf(d) + _drafts.value)
+    fun addDrafts(ds: List<Draft>) = setDrafts(ds + _drafts.value)
+    fun editDraft(id: String, f: (Draft) -> Draft) = setDrafts(_drafts.value.map { if (it.id == id) f(it).copy(updatedAt = System.currentTimeMillis()) else it })
+    fun deleteDraft(id: String) = setDrafts(_drafts.value.filterNot { it.id == id })
+
+    /** 草稿里改状态 */
+    fun setDraftStatus(id: String, studentIds: Collection<String>, status: HwStatus) = editDraft(id) { d ->
+        val m = d.statuses.toMutableMap()
+        studentIds.forEach { if (status == HwStatus.NONE) m.remove(it) else m[it] = status }
+        d.copy(statuses = m)
+    }
+
+    fun setDraftComment(id: String, studentId: String, text: String) = editDraft(id) { d ->
+        val m = d.comments.toMutableMap()
+        if (text.isBlank()) m.remove(studentId) else m[studentId] = text
+        d.copy(comments = m)
+    }
+
+    /** 上传草稿：写进作业 → 立即同步到云端。返回成功上传的份数 */
+    fun uploadDrafts(ids: Collection<String>, why: String = ""): Int {
+        if (!sync.loggedIn || _readOnly.value) { notices.tryEmit("请先在“设置”里登录，才能上传到云端"); return 0 }
+        val list = _drafts.value.filter { it.id in ids }
+        var d = _data.value
+        val done = ArrayList<String>(); val errs = ArrayList<String>()
+        for (dr in list) runCatching { d = com.deepshawn.hwcounter.recog.StatTable.applyDraft(d, dr); done += dr.id }.onFailure { errs += "${dr.title.ifBlank { "草稿" }}：${it.message}" }
+        if (done.isNotEmpty()) {
+            val next = d
+            update { next }
+            setDrafts(_drafts.value.filterNot { it.id in done })
+            viewModelScope.launch { runCatching { sync.syncNow() } }
+            notices.tryEmit("$why☁️ 已上传 ${done.size} 份草稿" + if (errs.isNotEmpty()) "；" + errs.joinToString("；") else "")
+        } else if (errs.isNotEmpty()) notices.tryEmit(errs.joinToString("；"))
+        return done.size
+    }
+
+    private fun uploadDueDrafts() {
+        if (!sync.loggedIn || _readOnly.value) return
+        val now = System.currentTimeMillis()
+        val due = _drafts.value.filter { (it.scheduledAt ?: Long.MAX_VALUE) <= now }.map { it.id }
+        if (due.isNotEmpty()) uploadDrafts(due, "⏰ 定时")
     }
 
     private fun loadPreview(): AppData {
@@ -89,6 +149,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onResume() {
         if (sync.loggedIn) sync.onResume() else viewModelScope.launch { refreshPreview() }
+        uploadDueDrafts()
     }
 
     private fun load(): AppData {

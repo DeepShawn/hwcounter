@@ -85,6 +85,7 @@ object Exporter {
             }
             rowCells(sumRow)
         }
+        if (onlyAssignment == null) x.sheet("各次统计名单") { classStatRows(c) }
         x.sheet("积分榜") {
             widths = listOf(8.0, 12.0, 10.0, 10.0, 8.0, 8.0, 8.0, 10.0)
             row(*listOf("名次", "学号", "姓名", "小组", "已交", "迟交", "未交", "积分").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) }.toTypedArray())
@@ -128,6 +129,79 @@ object Exporter {
         }
         x.write(out)
     }
+
+    private val ORDER = listOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE, HwStatus.MISSING, HwStatus.LEAVE, HwStatus.NONE)
+    private fun pct(x: Float): String { val r = Math.round(x * 1000) / 10.0; return (if (r == Math.floor(r)) r.toLong().toString() else r.toString()) + "%" }
+    private fun hdr(vararg v: String) = v.map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) }
+
+    /** 全班各次作业：一行一次作业（应交、已交、交齐率、未交/迟交/请假/未登记名单） */
+    private fun XlsxWriter.Sheet.classStatRows(c: SchoolClass) {
+        widths = listOf(14.0, 8.0, 20.0, 7.0, 7.0, 9.0, 9.0, 30.0, 20.0, 20.0, 24.0)
+        rowCells(hdr("日期", "科目", "作业", "应交", "已交", "交齐率", "未交人数", "未交名单", "迟交名单", "请假名单", "未登记名单"))
+        for (a in c.assignments.sortedBy { it.createdAt }) {
+            val t = com.deepshawn.hwcounter.recog.StatTable.tally(c.students, a.statuses)
+            fun names(k: HwStatus) = t.lists[k].orEmpty().joinToString("、") { it.name }
+            rowCells(listOf(
+                XlsxWriter.Cell(fullFmt.format(Date(a.createdAt))), XlsxWriter.Cell(a.subject), XlsxWriter.Cell(a.title),
+                XlsxWriter.Cell(t.expected), XlsxWriter.Cell(t.handedIn),
+                XlsxWriter.Cell(pct(t.rate), if (t.rate >= 1f) XlsxWriter.Style.GREEN else if (t.rate < 0.8f) XlsxWriter.Style.RED else XlsxWriter.Style.NORMAL),
+                XlsxWriter.Cell(t.count(HwStatus.MISSING)), XlsxWriter.Cell(names(HwStatus.MISSING)), XlsxWriter.Cell(names(HwStatus.LATE)),
+                XlsxWriter.Cell(names(HwStatus.LEAVE)), XlsxWriter.Cell(names(HwStatus.NONE)),
+            ))
+        }
+    }
+
+    /** 只导出“各次统计名单” */
+    fun writeClassStatList(c: SchoolClass, out: OutputStream) {
+        val x = XlsxWriter()
+        x.sheet("各次统计名单") { classStatRows(c) }
+        x.write(out)
+    }
+
+    /**
+     * 统计名单（一次作业 / 草稿 / 识别结果）：统计汇总 + 分类名单 + 明细。三端同样的三张表。
+     */
+    fun writeStatList(c: SchoolClass, title: String, subject: String, createdAt: Long, statuses: Map<String, HwStatus>, comments: Map<String, String>, out: OutputStream) {
+        val t = com.deepshawn.hwcounter.recog.StatTable.tally(c.students, statuses)
+        val n = c.students.size
+        val x = XlsxWriter()
+        x.sheet("统计汇总") {
+            freezeRows = 0
+            widths = listOf(20.0, 10.0, 10.0, 60.0)
+            rowCells(listOf(XlsxWriter.Cell("班级", XlsxWriter.Style.HEADER), XlsxWriter.Cell(c.name)))
+            rowCells(listOf(XlsxWriter.Cell("作业", XlsxWriter.Style.HEADER), XlsxWriter.Cell(listOf(subject, title).filter { it.isNotBlank() }.joinToString(" "))))
+            rowCells(listOf(XlsxWriter.Cell("日期", XlsxWriter.Style.HEADER), XlsxWriter.Cell(fullFmt.format(Date(createdAt)))))
+            rowCells(listOf(XlsxWriter.Cell("应交", XlsxWriter.Style.HEADER), XlsxWriter.Cell(t.expected)))
+            rowCells(listOf(XlsxWriter.Cell("已交（含优秀、迟交）", XlsxWriter.Style.HEADER), XlsxWriter.Cell(t.handedIn)))
+            rowCells(listOf(XlsxWriter.Cell("交齐率", XlsxWriter.Style.HEADER), XlsxWriter.Cell(pct(t.rate))))
+            row()
+            rowCells(hdr("状态", "人数", "占比", "名单"))
+            for (k in ORDER) rowCells(listOf(
+                XlsxWriter.Cell(k.label, styleOf(k)), XlsxWriter.Cell(t.count(k)), XlsxWriter.Cell(if (n > 0) pct(t.count(k).toFloat() / n) else "0%"),
+                XlsxWriter.Cell(t.lists[k].orEmpty().joinToString("、") { it.name }),
+            ))
+        }
+        x.sheet("分类名单") {
+            widths = ORDER.map { 16.0 }
+            rowCells(ORDER.map { XlsxWriter.Cell("${it.label}（${t.count(it)}）", XlsxWriter.Style.HEADER) })
+            val h = ORDER.maxOf { t.count(it) }
+            for (i in 0 until h) rowCells(ORDER.map { k -> t.lists[k].orEmpty().getOrNull(i)?.let { s -> XlsxWriter.Cell(if (s.no.isNotBlank()) "${s.no} ${s.name}" else s.name, styleOf(k)) } ?: XlsxWriter.Cell(null) })
+        }
+        x.sheet("明细") {
+            widths = listOf(12.0, 10.0, 10.0, 8.0, 30.0)
+            rowCells(hdr("学号", "姓名", "小组", "状态", "备注"))
+            for (s in c.students) {
+                val k = statuses[s.id] ?: HwStatus.NONE
+                rowCells(listOf(XlsxWriter.Cell(s.no), XlsxWriter.Cell(s.name), XlsxWriter.Cell(s.group), XlsxWriter.Cell(k.label, styleOf(k)), XlsxWriter.Cell(comments[s.id] ?: "")))
+            }
+        }
+        x.write(out)
+    }
+
+    /** 写统计名单到导出目录并返回文件（用于分享） */
+    fun statListFile(ctx: Context, c: SchoolClass, title: String, subject: String, createdAt: Long, statuses: Map<String, HwStatus>, comments: Map<String, String> = emptyMap()): File =
+        File(exportDir(ctx), "${listOf(subject, title).filter { it.isNotBlank() }.joinToString("_").ifBlank { "作业" }}_统计名单_${fileStamp()}.xlsx".replace(Regex("[\\\\/:*?\"<>|]"), "_"))
+            .also { f -> f.outputStream().use { writeStatList(c, title, subject, createdAt, statuses, comments, it) } }
 
     fun csv(c: SchoolClass, a: Assignment, rules: ScoreRules): String = buildString {
         append('﻿')

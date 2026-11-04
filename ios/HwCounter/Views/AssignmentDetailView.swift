@@ -14,6 +14,7 @@ struct AssignmentDetailView: View {
     @State private var typed = ""
     @State private var typedAs: HwStatus = .SUBMITTED
     @State private var ambiguous: [VoiceMatch] = []
+    @State private var openDraft: IdBox? = nil
 
     var body: some View {
         if let c = store.data.currentClass, let a = c.assignments.first(where: { $0.id == assignmentId }) {
@@ -29,6 +30,13 @@ struct AssignmentDetailView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header(c, a, s)
+                if !store.readOnly, let dr = store.drafts.first(where: { $0.assignmentId == a.id }) {
+                    Button { openDraft = IdBox(id: dr.id) } label: {
+                        Text("📝 这次作业有一份未上传的草稿（改动 \(StatTable.changes(dr).count) 人），上传后才会写进这里 · 打开 ›").font(.callout)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                            .background(Color.yellow.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+                    }.buttonStyle(.plain)
+                }
                 if !store.readOnly { actions(a); typedBar(c, a) }
                 HStack {
                     if c.seating != nil {
@@ -58,12 +66,17 @@ struct AssignmentDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { exportURL = Exporter.assignmentCSV(c, a) } label: { Label("导出", systemImage: "square.and.arrow.up") }
+                Menu {
+                    Button { exportURL = Xlsx.file("\(a.subject)_\(a.title)_统计名单", Xlsx.statListSheets(c, title: a.title, subject: a.subject, date: a.date, statuses: a.statuses, comments: a.comments)) } label: { Label("统计名单 Excel", systemImage: "list.bullet.rectangle") }
+                    Button { exportURL = Xlsx.file("\(c.name)_各次作业统计名单", [Xlsx.classStatSheet(c)]) } label: { Label("全班各次统计名单 Excel", systemImage: "tablecells") }
+                    Button { exportURL = Exporter.assignmentCSV(c, a) } label: { Label("本次 CSV", systemImage: "doc.text") }
+                } label: { Label("导出", systemImage: "square.and.arrow.up") }
             }
         }
         .sheet(item: $picked) { st in StudentStatusSheet(assignmentId: a.id, student: st) }
         .sheet(isPresented: $showVoice) { VoiceSheet(assignmentId: a.id) }
         .sheet(isPresented: $showPhoto) { PhotoRecognizeSheet(assignmentId: a.id) }
+        .sheet(item: $openDraft) { b in NavigationStack { DraftDetailView(draftId: b.id) } }
         .sheet(item: Binding(get: { exportURL.map { ShareFile(url: $0) } }, set: { exportURL = $0?.url })) { f in ShareSheet(items: [f.url]) }
     }
 
@@ -93,6 +106,10 @@ struct AssignmentDetailView: View {
             HStack(spacing: 10) {
                 ActionButton(icon: "camera.viewfinder", title: "拍照识别") { showPhoto = true }
                 ActionButton(icon: "waveform", title: "语音登记") { showVoice = true }
+                ActionButton(icon: "square.and.pencil", title: store.drafts.contains { $0.assignmentId == a.id } ? "打开草稿" : "草稿登记") {
+                    if let dr = store.drafts.first(where: { $0.assignmentId == a.id }) { openDraft = IdBox(id: dr.id) }
+                    else if let c = store.data.currentClass { let d = StatTable.newDraft(c, a); store.addDraft(d); openDraft = IdBox(id: d.id) }
+                }
                 ActionButton(icon: "xmark.circle", title: "其余记未交") { store.fillRemaining(a.id, .MISSING); store.say("其余学生已记为未交") }
                 ActionButton(icon: "checkmark.circle", title: "其余记已交") { store.fillRemaining(a.id, .SUBMITTED); store.say("其余学生已记为已交") }
             }

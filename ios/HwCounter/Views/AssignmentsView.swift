@@ -4,6 +4,9 @@ struct AssignmentsView: View {
     @EnvironmentObject var store: Store
     @State private var creating = false
     @State private var query = ""
+    @State private var showDrafts = false
+    @State private var showStatTable = false
+    @State private var openDraft: IdBox? = nil
 
     var body: some View {
         Group {
@@ -42,9 +45,28 @@ struct AssignmentsView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button { creating = true } label: { Label("布置作业", systemImage: "plus") }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showStatTable = true } label: { Label("统计表识别", systemImage: "tablecells") }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showDrafts = true } label: { Label(store.drafts.isEmpty ? "草稿箱" : "草稿箱 \(store.drafts.count)", systemImage: "tray.full") }
+                }
             }
         }
-        .sheet(isPresented: $creating) { NewAssignmentSheet() }
+        .safeAreaInset(edge: .top) {
+            if !store.readOnly, let c = store.data.currentClass, store.drafts.contains(where: { $0.classId == c.id }) {
+                Button { showDrafts = true } label: {
+                    Text("🗂️ 有 \(store.drafts.filter { $0.classId == c.id }.count) 份草稿只保存在本机，还没上传 · 查看 ›").font(.callout)
+                        .frame(maxWidth: .infinity).padding(10)
+                        .background(Color.yellow.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain).padding(.horizontal)
+            }
+        }
+        .sheet(isPresented: $creating) { NewAssignmentSheet { id in openDraft = IdBox(id: id) } }
+        .sheet(isPresented: $showDrafts) { DraftListView() }
+        .sheet(isPresented: $showStatTable) { StatTableView { id in openDraft = IdBox(id: id) } }
+        .sheet(item: $openDraft) { b in NavigationStack { DraftDetailView(draftId: b.id) } }
         .refreshable { if store.readOnly { await store.refreshPreview() } else { await store.runSync() } }
     }
 }
@@ -84,13 +106,24 @@ struct AssignmentCard: View {
 struct NewAssignmentSheet: View {
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) var dismiss
+    /// 存为草稿后打开它
+    var onDraft: ((String) -> Void)? = nil
     @State private var title = ""
     @State private var subject = ""
+    @State private var asDraft = false
 
     var body: some View {
         NavigationStack {
             Form {
                 TextField("作业名称，如 数学练习册 P12", text: $title)
+                Section {
+                    Toggle(isOn: $asDraft) {
+                        VStack(alignment: .leading) {
+                            Text("📝 先存为草稿")
+                            Text("登记只保存在本机，确认后再手动上传或定时上传").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 Section("科目") {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack {
@@ -110,10 +143,18 @@ struct NewAssignmentSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("创建") {
+                    Button(asDraft ? "创建草稿" : "创建") {
                         let t = title.trimmingCharacters(in: .whitespaces)
-                        store.createAssignment(title: t.isEmpty ? "\(subject.isEmpty ? "" : subject)作业 \(fmtDate(Date()))" : t, subject: subject)
-                        dismiss()
+                        let name = t.isEmpty ? "\(subject.isEmpty ? "" : subject)作业 \(fmtDate(Date()))" : t
+                        if asDraft, let c = store.data.currentClass {
+                            let d = StatTable.newDraft(c, nil, title: name, subject: subject)
+                            store.addDraft(d); dismiss()
+                            store.say("📝 已建草稿：只保存在本机，登记完再上传")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { onDraft?(d.id) }
+                        } else {
+                            store.createAssignment(title: name, subject: subject)
+                            dismiss()
+                        }
                     }
                 }
             }
