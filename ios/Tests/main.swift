@@ -246,5 +246,20 @@ do {
     total += 1
     if persisted["version"] == 30 { pass += 1; print("✓ 进入后台前可等待最新数据落盘") }
 }
+do {
+    let cases: [([String], [String])] = [
+        (["10", "2", "1"], ["1", "2", "10"]),
+        (["010", "2", "001"], ["001", "2", "010"]),
+        (["A10", "a2", "A1"], ["A1", "a2", "A10"]),
+        (["90071992547409931", "90071992547409930", "2"], ["2", "90071992547409930", "90071992547409931"]),
+        (["", "10", " 2 "], [" 2 ", "10", ""]),
+    ]
+    for (input, expected) in cases {
+        total += 1
+        if input.sorted(by: { compareStudentNumbers($0, $1) < 0 }) == expected { pass += 1; print("✓ 学号自然排序：\(expected)") }
+    }
+    total += 1
+    if compareStudentNumbers("02", "2") == 0 { pass += 1; print("✓ 前导零不改变学号的数字顺序") }
+}
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

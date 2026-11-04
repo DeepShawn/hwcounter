@@ -52,9 +52,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -69,6 +71,7 @@ import com.deepshawn.hwcounter.data.StudentStat
 import com.deepshawn.hwcounter.data.fmt
 import com.deepshawn.hwcounter.data.signed
 import com.deepshawn.hwcounter.data.studentStats
+import com.deepshawn.hwcounter.data.compareStudentNumbers
 import com.deepshawn.hwcounter.ui.LocalKit
 import com.deepshawn.hwcounter.ui.Route
 import com.deepshawn.hwcounter.ui.components.Avatar
@@ -83,6 +86,9 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
     val rules = data.settings.rules
     val readOnly by vm.readOnly.collectAsState()
     var mode by remember { mutableIntStateOf(0) }
+    val ctx = LocalContext.current
+    val preferences = remember(ctx) { ctx.getSharedPreferences("display", android.content.Context.MODE_PRIVATE) }
+    var byNumber by rememberSaveable { mutableStateOf(preferences.getBoolean("scoresSortByNo", false)) }
     var selecting by remember(c.id, readOnly) { mutableStateOf(false) }
     var selected by remember(c.id, readOnly) { mutableStateOf(setOf<String>()) }
     var scoreFor by remember(c.id, readOnly) { mutableStateOf<List<String>?>(null) }
@@ -90,6 +96,8 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
     var resetFor by remember(c.id, readOnly) { mutableStateOf<List<String>?>(null) }
     var editBase by remember(c.id, readOnly) { mutableStateOf(false) }
     val stats = remember(c, rules) { c.studentStats(rules).sortedByDescending { it.score } }
+    val personalStats = remember(stats, byNumber) { if (byNumber) stats.sortedWith { x, y -> compareStudentNumbers(x.student.no, y.student.no) } else stats }
+    val ranks = remember(stats) { stats.mapIndexed { i, st -> st.student.id to i + 1 }.toMap() }
     val selectedIds = c.students.filter { it.id in selected }.map { it.id }
 
     Box(Modifier.fillMaxSize()) {
@@ -123,6 +131,17 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
                         SegmentedButton(selected = mode == i, onClick = { mode = i; selecting = false; selected = emptySet() }, shape = SegmentedButtonDefaults.itemShape(i, 3)) { Text(t) }
                     }
                 }
+                if (mode == 0) {
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        listOf("按积分", "按学号").forEachIndexed { i, label ->
+                            SegmentedButton(selected = byNumber == (i == 1), onClick = {
+                                byNumber = i == 1
+                                preferences.edit().putBoolean("scoresSortByNo", byNumber).apply()
+                            }, shape = SegmentedButtonDefaults.itemShape(i, 2)) { Text(label) }
+                        }
+                    }
+                    if (byNumber) Text("学号从小到大 · 行首为积分名次", modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (mode == 0 && !readOnly) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(if (selecting) "点击学生选择或取消" else "点学生加减分，或开启多选", modifier = Modifier.weight(1f), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -131,8 +150,8 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
                 }
             }
             when (mode) {
-                0 -> itemsIndexed(stats, key = { _, s -> s.student.id }) { i, st ->
-                    RankRow(i + 1, st, selecting, st.student.id in selected, valueText = st.score.fmt(), sub = "交${st.submitted} · 迟${st.late} · 缺${st.missing}",
+                0 -> itemsIndexed(personalStats, key = { _, s -> s.student.id }) { _, st ->
+                    RankRow(ranks.getValue(st.student.id), st, selecting, st.student.id in selected, valueText = st.score.fmt(), sub = "${st.student.no} · 交${st.submitted} · 迟${st.late} · 缺${st.missing}",
                         onClick = {
                             if (selecting) selected = if (st.student.id in selected) selected - st.student.id else selected + st.student.id
                             else if (readOnly) kit.nav.push(Route.StudentDetail(st.student.id))

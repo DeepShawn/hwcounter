@@ -2,8 +2,29 @@ package com.deepshawn.hwcounter.data
 
 import kotlinx.serialization.Serializable
 import java.util.UUID
+import java.util.Locale
 
 fun newId(): String = UUID.randomUUID().toString().replace("-", "").take(16)
+
+private val studentNumberParts = Regex("[0-9]+|[^0-9]+")
+
+/** 学号按自然顺序比较，不转换为数值，避免长学号溢出。空学号排在最后。 */
+fun compareStudentNumbers(left: String, right: String): Int {
+    val a = left.trim().lowercase(Locale.ROOT)
+    val b = right.trim().lowercase(Locale.ROOT)
+    if (a.isEmpty() || b.isEmpty()) return if (a == b) 0 else if (a.isEmpty()) 1 else -1
+    val xs = studentNumberParts.findAll(a).map { it.value }.toList()
+    val ys = studentNumberParts.findAll(b).map { it.value }.toList()
+    for (i in 0 until minOf(xs.size, ys.size)) {
+        var x = xs[i]; var y = ys[i]
+        if (x[0] in '0'..'9' && y[0] in '0'..'9') {
+            x = x.trimStart('0').ifEmpty { "0" }; y = y.trimStart('0').ifEmpty { "0" }
+            if (x.length != y.length) return x.length.compareTo(y.length)
+        }
+        if (x != y) return x.compareTo(y)
+    }
+    return xs.size.compareTo(ys.size)
+}
 
 /** 作业提交状态 */
 @Serializable

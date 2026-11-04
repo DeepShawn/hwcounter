@@ -9,6 +9,31 @@ func newId() -> String {
 
 func nowMillis() -> Int64 { Int64(Date().timeIntervalSince1970 * 1000) }
 
+private let studentNumberParts = try! NSRegularExpression(pattern: "[0-9]+|[^0-9]+")
+
+/// 自然学号顺序；不转为数值，保留长学号精度，空学号排在最后。
+func compareStudentNumbers(_ left: String, _ right: String) -> Int {
+    let a = left.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let b = right.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if a.isEmpty || b.isEmpty { return a == b ? 0 : a.isEmpty ? 1 : -1 }
+    func parts(_ value: String) -> [String] {
+        studentNumberParts.matches(in: value, range: NSRange(value.startIndex..., in: value)).compactMap {
+            Range($0.range, in: value).map { String(value[$0]) }
+        }
+    }
+    let xs = parts(a), ys = parts(b)
+    for (leftPart, rightPart) in zip(xs, ys) {
+        var x = leftPart, y = rightPart
+        if let firstX = x.utf8.first, let firstY = y.utf8.first, (48...57).contains(firstX), (48...57).contains(firstY) {
+            x = String(x.drop(while: { $0 == "0" })); y = String(y.drop(while: { $0 == "0" }))
+            if x.isEmpty { x = "0" }; if y.isEmpty { y = "0" }
+            if x.count != y.count { return x.count < y.count ? -1 : 1 }
+        }
+        if x != y { return x < y ? -1 : 1 }
+    }
+    return xs.count == ys.count ? 0 : xs.count < ys.count ? -1 : 1
+}
+
 enum HwStatus: String, CaseIterable, Identifiable {
     case NONE, SUBMITTED, EXCELLENT, LATE, MISSING, LEAVE
     var id: String { rawValue }

@@ -43,6 +43,22 @@ export const ruleOf = (rules, s) => (s === 'NONE' || !s ? 0 : rules[{ SUBMITTED:
 const summaryCache = new WeakMap();
 const statsCache = new WeakMap();
 
+/** Natural student-number order, without converting digit runs to imprecise numbers. */
+export function compareStudentNumbers(left, right) {
+  const a = String(left ?? '').trim().toLowerCase(); const b = String(right ?? '').trim().toLowerCase();
+  if (!a || !b) return a === b ? 0 : !a ? 1 : -1;
+  const xs = a.match(/[0-9]+|[^0-9]+/g); const ys = b.match(/[0-9]+|[^0-9]+/g);
+  for (let i = 0; i < Math.min(xs.length, ys.length); i++) {
+    let x = xs[i]; let y = ys[i];
+    if (/^[0-9]/.test(x) && /^[0-9]/.test(y)) {
+      x = x.replace(/^0+(?=\d)/, ''); y = y.replace(/^0+(?=\d)/, '');
+      if (x.length !== y.length) return x.length - y.length;
+    }
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return xs.length - ys.length;
+}
+
 export function summary(c, a) {
   let assignments = summaryCache.get(c.students);
   if (!assignments) { assignments = new WeakMap(); summaryCache.set(c.students, assignments); }

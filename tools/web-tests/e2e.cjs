@@ -226,9 +226,16 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   const readClass = () => page.evaluate(() => JSON.parse(localStorage.getItem('hw.data')).classes[0]);
   const scoreRow = (name) => page.locator('.score-row').filter({ hasText: name });
   const initialClass = await readClass();
+  const originalPodium = await page.locator('.podium').textContent();
+  await page.getByRole('button', { name: '按学号', exact: true }).click();
+  check((await page.locator('.score-row .grow > b').allTextContents()).join('|') === '王芳|张锦宇|李子涵|新同学', '积分可按学号从小到大排列');
+  check(await page.locator('.podium').textContent() === originalPodium && (await page.locator('.score-row .idx').allTextContents()).join() === '2,3,4,1', '切换学号排序保留真实积分名次及前三名');
+  check(JSON.stringify((await readClass()).scores) === JSON.stringify(initialClass.scores), '切换排序不修改积分记录');
   await page.getByRole('button', { name: '☑️ 多选', exact: true }).click();
   check(await page.getByRole('button', { name: '批量加减分', exact: true }).isDisabled(), '未选学生时不能批量加减分');
   await scoreRow('张锦宇').click(); await scoreRow('王芳').click();
+  await page.getByRole('button', { name: '按积分', exact: true }).click();
+  check(await scoreRow('张锦宇').getAttribute('aria-pressed') === 'true' && await scoreRow('王芳').getAttribute('aria-pressed') === 'true', '多选时切换排序仍保留选中学生');
   await scoreRow('张锦宇').click(); await scoreRow('张锦宇').click();
   check((await page.textContent('.pickbar')).includes('已选 2 人') && await page.locator('.score-row[aria-pressed=true]').count() === 2, '点学生切换勾选，重复点选不会重复计数');
   await page.setViewportSize({ width: 390, height: 844 });
