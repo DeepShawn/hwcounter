@@ -34,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.deepshawn.hwcounter.data.activeScoreReset
+import com.deepshawn.hwcounter.data.scoreBoundaryIndex
 import com.deepshawn.hwcounter.data.AppData
 import com.deepshawn.hwcounter.data.AppViewModel
 import com.deepshawn.hwcounter.data.HwStatus
@@ -60,6 +62,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
     val rules = data.settings.rules
     val assigns = remember(c) { c.assignments.sortedBy { it.createdAt } }
     val recent = assigns.takeLast(10)
+    val boundary = c.scoreBoundaryIndex(recent)
     val stats = remember(c, rules) { c.studentStats(rules) }
     val dateFmt = remember { SimpleDateFormat("M/d", Locale.CHINA) }
     val summaries = remember(c.students, c.assignments) { assigns.associate { it.id to c.summary(it) } }
@@ -143,16 +146,29 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
         // 热力图
         item { AppCard(Modifier.padding(horizontal = 16.dp)) {
             SectionTitle("🔥 作业热力图（最近 ${recent.size} 次）")
+            ScorePeriodBanner(c)
+            if (c.activeScoreReset != null && boundary < 0) Text("积分重置起点在当前显示范围之外，作业历史仍完整保留", fontSize = 12.sp, color = Color(0xFFAD6800))
             Text("每行一位同学，每格一次作业，点击格子进入该次作业", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
             Column(Modifier.horizontalScroll(rememberScrollState())) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Spacer(Modifier.width(56.dp))
+                    recent.forEachIndexed { index, a ->
+                        if (index == boundary) Box(Modifier.width(3.dp).height(32.dp).background(Color(0xFFF59F00)))
+                        Column(Modifier.width(36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (index == boundary) Text("积分重置", fontSize = 8.sp, color = Color(0xFFAD6800))
+                            Text(dateFmt.format(Date(a.createdAt)), fontSize = 9.sp)
+                        }
+                    }
+                }
                 c.students.forEach { s ->
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 1.5.dp)) {
                         Text(s.name, Modifier.width(56.dp), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        recent.forEach { a ->
+                        recent.forEachIndexed { index, a ->
+                            if (index == boundary) Box(Modifier.width(3.dp).height(21.dp).background(Color(0xFFF59F00)))
                             val st = a.statuses[s.id] ?: HwStatus.NONE
                             Box(
-                                Modifier.padding(1.5.dp).size(18.dp).clip(MaterialTheme.shapes.extraSmall)
+                                Modifier.width(36.dp).padding(horizontal = 9.dp, vertical = 1.5.dp).size(18.dp).clip(MaterialTheme.shapes.extraSmall)
                                     .background(statusColor(st).copy(alpha = if (st == HwStatus.NONE) 0.25f else 0.9f))
                                     .clickable { kit.nav.push(Route.Assign(a.id)) },
                             )

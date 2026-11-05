@@ -1,7 +1,7 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
-import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, compareStudentNumbers, addStudentScores, resetStudentScores, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
+import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, compareStudentNumbers, addStudentScores, resetStudentScores, currentScoreReset, assignmentCounts, scoreEntryCounts, startScorePeriod, restoreScoreHistory, scoreBoundaryIndex, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
 import { api, session, meta, setMeta, syncOnce, pushAs, merge, hashData, withLocalKey } from './cloud.js';
 import { createVoiceParser } from './voice.js';
 import { xlsx, ST } from './xlsx.js';
@@ -211,7 +211,9 @@ function Home({ s, open }) {
       <button class="btn" onClick=${() => setNewClass(true)}>＋ 新建班级</button></div>
     ${newClass && html`<${ClassDialog} onClose=${() => setNewClass(false)} onSave=${(name, emoji) => { const nc = { id: newId(), name, emoji, students: [], assignments: [], scores: [] }; update((d) => ({ ...d, classes: [...d.classes, nc], currentClassId: nc.id })); setNewClass(false); }} />`}
   </div>`;
-  const sorted = [...c.assignments].sort((a, b) => (b.pinned - a.pinned) || b.createdAt - a.createdAt);
+  const period = currentScoreReset(c);
+  const sorted = [...c.assignments].sort((a, b) => Number(assignmentCounts(c, b, period)) - Number(assignmentCounts(c, a, period)) || (b.pinned - a.pinned) || b.createdAt - a.createdAt);
+  const historyIndex = sorted.findIndex((a) => !assignmentCounts(c, a, period));
   return html`<div class="page">
     <div class="hero">
       <div class="row">
@@ -235,7 +237,9 @@ function Home({ s, open }) {
     </div>`}
     ${!s.readOnly && s.drafts.some((x) => x.classId === c.id) && html`<div class="card draft-note" onClick=${() => open({ view: 'drafts' })}>🗂️ 有 ${s.drafts.filter((x) => x.classId === c.id).length} 份草稿只保存在本机，还没上传 <b>查看 ›</b></div>`}
     ${!sorted.length && html`<div class="empty">📭 还没有作业，点“新建作业”开始</div>`}
-    ${sorted.map((a) => { const sm = summary(c, a); return html`
+    ${period && html`<${ScorePeriodNotice} c=${c} />`}
+    ${sorted.map((a, i) => { const sm = summary(c, a); return html`
+      ${period && i === historyIndex && html`<${ScorePeriodDivider} reset=${period} />`}
       <div class="card assign" onClick=${() => open({ view: 'assign', id: a.id })}>
         <div class="subj" style=${{ background: subjectColor(a.subject) + '22', color: subjectColor(a.subject) }}>${(a.subject || '作')[0]}</div>
         <div class="grow">
@@ -245,6 +249,7 @@ function Home({ s, open }) {
         </div>
         <div class="right"><b>${sm.handedIn}/${sm.expected}</b><div class="muted small">${Math.round(sm.rate * 100)}%</div></div>
       </div>`; })}
+    ${period && historyIndex < 0 && html`<${ScorePeriodDivider} reset=${period} />`}
     ${newAssign && html`<${AssignDialog} subjects=${data.settings.subjects} allowDraft=${!afterNew} onClose=${() => { setNewAssign(false); setAfterNew(null); }} onSave=${(title, subject, asDraft) => {
       setNewAssign(false);
       if (asDraft) { const dr = makeDraft(c, null, { title, subject }); s.setDrafts((xs) => [dr, ...xs]); open({ view: 'draft', id: dr.id }); say('📝 已建草稿：只保存在本机，登记完再上传'); return; }
@@ -336,6 +341,7 @@ function AssignView({ s, id, back, open }) {
         <div class="chips light">${['SUBMITTED', 'MISSING', 'NONE', 'LATE', 'LEAVE', 'EXCELLENT'].map((k) => html`<span class="chip">${STATUS[k].label} ${sm.counts[k]}</span>`)}</div>
       </div>
     </div>
+    ${currentScoreReset(c) && html`<div class="score-period-note pad">${assignmentCounts(c, a) ? `↦ 本轮计分作业${a.id === currentScoreReset(c).assignmentId ? ' · 积分重置起点（含本次）' : ''}` : '历史作业：保留全部登记和未交次数，不参与本轮自动计分'}</div>`}
     <div class="toolbar">
       ${!s.readOnly && html`<button class="chip" onClick=${() => open({ view: 'voice', id: a.id })}>🎙️ 语音登记</button>`}
       ${!s.readOnly && html`<button class="chip" onClick=${() => { if (confirm(`将 ${sm.counts.NONE} 名未登记的同学标记为“未交”？`)) { setStatus(c.students.filter((st) => !a.statuses[st.id]).map((st) => st.id), 'MISSING'); say(`已标记 ${sm.counts.NONE} 人未交`, true); } }}>☑️ 剩余标未交</button>`}
@@ -599,7 +605,7 @@ function Roster({ s }) {
   const doImport = (mode) => {
     const r = pending; setPending(null);
     if (mode === 'new' || !c) { const nc = { id: newId(), name: r.className || '新班级', emoji: '🎒', students: r.students, assignments: [], scores: [] }; update((d) => ({ ...d, classes: [...d.classes, nc], currentClassId: nc.id })); say(`已创建班级，共 ${r.students.length} 人`); return; }
-    if (mode === 'replace') { update((d) => mapClass(d, c.id, (k) => ({ ...k, name: r.className || k.name, students: r.students, assignments: [], scores: [] }))); say(`已替换为 ${r.students.length} 人`, true); return; }
+    if (mode === 'replace') { update((d) => mapClass(d, c.id, (k) => ({ ...k, name: r.className || k.name, students: r.students, assignments: [], scores: [], scoreResets: [] }))); say(`已替换为 ${r.students.length} 人`, true); return; }
     update((d) => mapClass(d, c.id, (k) => { const byNo = new Map(k.students.map((x) => [x.no, x])); const merged = k.students.map((o) => { const n = r.students.find((x) => x.no === o.no); return n ? { ...o, name: n.name, group: n.group || o.group, gender: n.gender || o.gender } : o; }); return { ...k, students: [...merged, ...r.students.filter((x) => !byNo.has(x.no))] }; }));
     say(`已合并 ${r.students.length} 人`, true);
   };
@@ -649,6 +655,30 @@ function StudentEdit({ st, onClose, onSave, onDelete }) {
 }
 
 // ---------------- 积分 ----------------
+function ScorePeriodNotice({ c }) {
+  const reset = currentScoreReset(c);
+  return reset && html`<div class="card score-period-notice" role="note"><b>↦ 本轮积分起点</b><div>${fmtDate(reset.startAt)} · ${reset.assignmentTitle}（含本次）</div><div class="muted tiny">旧作业与未交次数保留，积分按本轮范围计算</div></div>`;
+}
+function ScorePeriodDivider({ reset }) {
+  return html`<div class="score-period-divider" role="separator" aria-label="积分重置分界"><b>积分重置分界</b><span>${fmtDate(reset.startAt)} · ${reset.assignmentTitle} 起计分；下方为历史作业</span></div>`;
+}
+function ScorePeriodDialog({ c, initial, onClose, onSave, onRestore }) {
+  const reset = currentScoreReset(c);
+  const ordered = [...c.assignments].sort((a, b) => b.createdAt - a.createdAt);
+  const [selected, setSelected] = useState(ordered.some((a) => a.id === reset?.assignmentId) ? reset.assignmentId : ordered[0]?.id || '');
+  const [keepManual, setKeepManual] = useState(reset?.keepManualSinceStart ?? true);
+  return html`<${Modal} title="按作业重置积分" onClose=${onClose}>
+    <p>仅影响本班积分。所选作业及之后的作业重新计分（含本次），全部作业、状态、备注、未交次数和积分流水保留。</p>
+    <label>从哪次作业开始<select class="input" aria-label="计分起点作业" value=${selected} onChange=${(e) => setSelected(e.target.value)}>
+      ${ordered.map((a) => html`<option value=${a.id}>${fmtDate(a.createdAt)} · ${a.subject} ${a.title}</option>`)}
+    </select></label>
+    <label class="row"><input type="checkbox" checked=${keepManual} onChange=${(e) => setKeepManual(e.target.checked)} />保留起点日期之后的手动加减分</label>
+    <p class="muted small">${keepManual ? '手动分按记录时间计算；此前的分数重置调整不带入新一轮。' : '重置前的手动分仅保留流水，不再计入；重置后的新加减分继续累计。'}</p>
+    <p class="muted small">本轮以当前基准 ${fmtNum(initial)} 分起算，仍可通过“修改基准分”调整。</p>
+    <div class="actions">${reset && html`<button class="btn ghost" onClick=${onRestore}>恢复全部历史计分</button>`}<button class="btn ghost" onClick=${onClose}>取消</button><button class="btn" disabled=${!selected} onClick=${() => onSave(selected, keepManual)}>应用积分起点</button></div>
+  </${Modal}>`;
+}
+
 function ScoreEntryDialog({ students, reasons, initialReason = '', onClose, onSave }) {
   const [value, setValue] = useState('1'); const [reason, setReason] = useState(initialReason);
   const delta = Number(value); const valid = value.trim() !== '' && Number.isFinite(delta) && delta !== 0;
@@ -668,7 +698,8 @@ function Scores({ s }) {
   const [byNumber, setByNumber] = useState(() => { try { return localStorage.getItem('hw.scores.sort') === 'number'; } catch { return false; } });
   const [selecting, setSelecting] = useState(false); const [selected, setSelected] = useState(new Set());
   const [resetIds, setResetIds] = useState(null); const [baseOpen, setBaseOpen] = useState(false); const [scoreValue, setScoreValue] = useState('');
-  useEffect(() => { setSelecting(false); setSelected(new Set()); setTargetIds(null); setResetIds(null); setBaseOpen(false); }, [c?.id, s.readOnly]);
+  const [periodOpen, setPeriodOpen] = useState(false);
+  useEffect(() => { setSelecting(false); setSelected(new Set()); setTargetIds(null); setResetIds(null); setBaseOpen(false); setPeriodOpen(false); }, [c?.id, s.readOnly]);
   if (!c) return html`<div class="page"><div class="empty">🏆 还没有班级</div></div>`;
   const ranked = [...studentStats(c, rules)].sort((x, y) => y.score - x.score);
   const ranks = new Map(ranked.map((st, i) => [st.student.id, i + 1]));
@@ -694,17 +725,19 @@ function Scores({ s }) {
     const byId = Object.fromEntries(studentStats(c, rules).map((x) => [x.student.id, x]));
     const rows = [head, ...c.students.map((st) => { const x = byId[st.id]; return [st.no, st.name, ...assigns.map((a) => { const k = a.statuses[st.id] || 'NONE'; return { v: STATUS[k].label, s: styleOf[k] }; }), x.submitted, x.late, x.missing, x.score]; })];
     const rank = [['名次', '学号', '姓名', '积分'].map((v) => ({ v, s: ST.HEADER })), ...ranked.map((x, i) => [i + 1, x.student.no, x.student.name, x.score])];
-    const log = [['日期', '学号', '姓名', '分值', '原因'].map((v) => ({ v, s: ST.HEADER })), ...[...c.scores].sort((a, b) => b.time - a.time).map((e) => { const st = c.students.find((x) => x.id === e.studentId); return st ? [fmtDate(e.time), st.no, st.name, { v: e.delta, s: e.delta >= 0 ? ST.GREEN : ST.RED }, e.reason] : null; }).filter(Boolean)];
+    const log = [['日期', '学号', '姓名', '分值', '原因', '计入本轮'].map((v) => ({ v, s: ST.HEADER })), ...[...c.scores].sort((a, b) => b.time - a.time).map((e) => { const st = c.students.find((x) => x.id === e.studentId); return st ? [fmtDate(e.time), st.no, st.name, { v: e.delta, s: e.delta >= 0 ? ST.GREEN : ST.RED }, e.reason, scoreEntryCounts(c, e) ? '是' : '历史记录'] : null; }).filter(Boolean)];
     download(xlsx([{ name: '作业统计', rows }, { name: '各次统计名单', rows: classStatRows(c, fmtDate) }, { name: '积分榜', rows: rank }, { name: '积分明细', rows: log }]), `${c.name}_作业统计.xlsx`);
   };
   return html`<div class=${'page' + (selecting ? ' scores-selecting' : '')}>
     <div class="hero"><div class="hero-title">积分榜</div><div class="muted-light small">基准 ${fmtNum(rules.initial)} · 未交 ${signed(rules.missing)} · 迟交 ${signed(rules.late)} · 优秀 ${signed(rules.excellent)}</div>
       ${ranked.length >= 3 && html`<div class="podium">${[1, 0, 2].map((i) => html`<div class=${'pod p' + i}><div>${['🥇', '🥈', '🥉'][i]}</div><${Avatar} name=${ranked[i].student.name} size=${i ? 44 : 54} /><div class="small">${ranked[i].student.name}</div><div class="pod-bar"><b>${fmtNum(ranked[i].score)}</b></div></div>`)}</div>`}
     </div>
+    <${ScorePeriodNotice} c=${c} />
     <div class="toolbar"><button class="chip" onClick=${exportAll}>📊 导出全班 Excel</button>
       <button class="chip" onClick=${() => download(xlsx([{ name: '各次统计名单', rows: classStatRows(c, fmtDate) }]), `${c.name}_各次作业统计名单.xlsx`)}>📋 各次统计名单</button>
       ${!s.readOnly && html`<button class=${'chip' + (selecting ? ' on' : '')} disabled=${!c.students.length} onClick=${() => { if (selecting) cancelSelection(); else setSelecting(true); }}>${selecting ? '退出多选' : '☑️ 多选'}</button>
       <button class="chip" onClick=${() => { setScoreValue(String(rules.initial)); setBaseOpen(true); }}>修改基准分</button>
+      <button class="chip" disabled=${(!c.assignments.length && !currentScoreReset(c)) || selecting} onClick=${() => setPeriodOpen(true)}>按作业重置积分</button>
       <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => openReset(c.students.map((st) => st.id))}>重置全班分数</button>
       <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => { update((d) => mapClass(d, c.id, (k) => ({ ...k, scores: [...k.scores, ...k.students.map((x) => ({ id: newId(), studentId: x.id, delta: 1, reason: '全班表现好', time: Date.now() }))] }))); say('全班 +1 🎉', true); }}>🎉 全班 +1</button>`}</div>
     <div class="toolbar" aria-label="积分排序">
@@ -730,6 +763,12 @@ function Scores({ s }) {
       <button class="chip" onClick=${cancelSelection}>取消</button>
     </div>`}
     ${!s.readOnly && targets.length > 0 && html`<${ScoreEntryDialog} students=${targets} reasons=${data.settings.quickReasons} onClose=${() => setTargetIds(null)} onSave=${saveScore} />`}
+    ${!s.readOnly && periodOpen && html`<${ScorePeriodDialog} c=${c} initial=${rules.initial} onClose=${() => setPeriodOpen(false)} onSave=${(assignmentId, keepManual) => {
+      update((d) => mapClass(d, c.id, (k) => startScorePeriod(k, assignmentId, keepManual)));
+      setPeriodOpen(false); say('已设置积分起点，作业和未交次数均保留', true);
+    }} onRestore=${() => {
+      update((d) => mapClass(d, c.id, restoreScoreHistory)); setPeriodOpen(false); say('已恢复全部历史计分，作业未改变', true);
+    }} />`}
     ${!s.readOnly && baseOpen && html`<${Modal} title="修改基准分" onClose=${() => setBaseOpen(false)}>
       <p class="muted small">适用于所有班级。只修改计分基准，历史加减分继续计入，未交次数和记录保留。</p>
       <label>基准分<input class="input" type="number" step="0.5" value=${scoreValue} onInput=${(e) => setScoreValue(e.target.value)} /></label>
@@ -837,19 +876,22 @@ function Heatmap({ s, open }) {
   const { data } = s; const c = currentClass(data);
   if (!c || !c.assignments.length || !c.students.length) return html`<div class="page"><div class="hero"><div class="hero-title">🔥 作业热力图</div></div><div class="empty">📈 布置并登记几次作业后，这里会出现全班热力图</div></div>`;
   const recent = [...c.assignments].sort((x, y) => x.createdAt - y.createdAt).slice(-30);
+  const boundary = scoreBoundaryIndex(c, recent);
   const md = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
   const rate = (st) => { let got = 0; let need = 0; for (const a of recent) { const k = a.statuses[st.id] || 'NONE'; if (k === 'LEAVE' || k === 'NONE') continue; need++; if (k === 'SUBMITTED' || k === 'EXCELLENT' || k === 'LATE') got++; } return need ? Math.round((got / need) * 100) : null; };
   return html`<div class="page">
     <div class="hero"><div class="hero-title">🔥 作业热力图</div><div class="muted-light">${c.emoji} ${c.name} · 最近 ${recent.length} 次作业</div></div>
+    <${ScorePeriodNotice} c=${c} />
     <div class="card">
       <div class="heat-legend">${STATUS_KEYS.map((k) => html`<span><i style=${{ background: STATUS[k].color, opacity: k === 'NONE' ? 0.3 : 0.9 }}></i>${STATUS[k].label}</span>`)}</div>
       <div class="muted tiny">每行一位同学，每格一次作业，点格子进入该次作业</div>
-      <${HeatmapTable} students=${c.students} recent=${recent} open=${open} md=${md} rate=${rate} />
+      ${currentScoreReset(c) && boundary < 0 && html`<div class="score-period-divider small">积分重置起点在当前显示范围之外；作业历史仍完整保留</div>`}
+      <${HeatmapTable} students=${c.students} recent=${recent} open=${open} md=${md} rate=${rate} boundary=${boundary} />
     </div>
   </div>`;
 }
 
-function HeatmapTable({ students, recent, open, md, rate }) {
+function HeatmapTable({ students, recent, open, md, rate, boundary = -1 }) {
   const rowHeight = 26; const overscan = 5;
   const wrap = useRef(null); const frame = useRef(0);
   const [scrollRow, setScrollRow] = useState(0);
@@ -866,12 +908,12 @@ function HeatmapTable({ students, recent, open, md, rate }) {
     if (frame.current) return;
     frame.current = requestAnimationFrame(() => { frame.current = 0; setScrollRow(Math.floor((wrap.current?.scrollTop || 0) / rowHeight)); });
   }}><table class="heat">
-        <thead><tr><th class="heat-name"></th>${recent.map((a) => html`<th title=${`${fmtDate(a.createdAt)} ${a.subject} ${a.title}`} onClick=${() => open({ view: 'assign', id: a.id })}>${md(a.createdAt)}</th>`)}<th>交齐率</th></tr></thead>
+        <thead><tr><th class="heat-name"></th>${recent.map((a, i) => html`<th class=${i === boundary ? 'score-boundary' : ''} title=${`${i === boundary ? '积分重置起点（含本次） · ' : ''}${fmtDate(a.createdAt)} ${a.subject} ${a.title}`} onClick=${() => open({ view: 'assign', id: a.id })}>${i === boundary && html`<span class="period-mark">积分重置</span>`}${md(a.createdAt)}</th>`)}<th>交齐率</th></tr></thead>
         <tbody>
           ${start > 0 && html`<tr aria-hidden="true" style=${{ height: start * rowHeight + 'px' }}><td colspan=${recent.length + 2}></td></tr>`}
           ${visible.map((st) => { const r = rate(st); return html`<tr key=${st.id} class="heat-student-row">
           <td class="heat-name">${st.name}</td>
-          ${recent.map((a) => { const k = a.statuses[st.id] || 'NONE'; return html`<td><button class="heat-cell" title=${`${st.name} · ${a.title}：${STATUS[k].label}`} style=${{ background: STATUS[k].color, opacity: k === 'NONE' ? 0.25 : 0.9 }} onClick=${() => open({ view: 'assign', id: a.id })}></button></td>`; })}
+          ${recent.map((a, i) => { const k = a.statuses[st.id] || 'NONE'; return html`<td class=${i === boundary ? 'score-boundary' : ''}><button class="heat-cell" title=${`${st.name} · ${a.title}：${STATUS[k].label}`} style=${{ background: STATUS[k].color, opacity: k === 'NONE' ? 0.25 : 0.9 }} onClick=${() => open({ view: 'assign', id: a.id })}></button></td>`; })}
           <td class=${'heat-rate' + (r !== null && r < 80 ? ' low' : '')}>${r === null ? '—' : r + '%'}</td></tr>`; })}
           ${end < students.length && html`<tr aria-hidden="true" style=${{ height: (students.length - end) * rowHeight + 'px' }}><td colspan=${recent.length + 2}></td></tr>`}
         </tbody>

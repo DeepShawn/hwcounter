@@ -34,6 +34,7 @@ export function normalizeData(d) {
     students: (c.students || []).map((s) => ({ id: newId(), group: '', gender: '', note: '', longLeave: false, ...s })),
     assignments: (c.assignments || []).map((a) => ({ id: newId(), subject: '', createdAt: Date.now(), statuses: {}, comments: {}, countedBooks: null, pinned: false, ...a })),
     scores: (c.scores || []).map((e) => ({ id: newId(), time: Date.now(), ...e })),
+    scoreResets: c.scoreResets || [],
   }));
   return out;
 }
@@ -77,11 +78,13 @@ export function studentStats(c, rules) {
   if (!byRules) { byRules = new WeakMap(); statsCache.set(c, byRules); }
   if (byRules.has(rules)) return byRules.get(rules);
   const manual = {};
-  for (const e of c.scores) manual[e.studentId] = (manual[e.studentId] || 0) + e.delta;
+  const reset = currentScoreReset(c);
+  for (const e of c.scores) if (scoreEntryCounts(c, e, reset)) manual[e.studentId] = (manual[e.studentId] || 0) + e.delta;
+  const counted = new Set(c.assignments.filter((a) => assignmentCounts(c, a, reset)).map((a) => a.id));
   const result = c.students.map((st) => {
     const counts = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
     let auto = 0;
-    for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; auto += ruleOf(rules, s); }
+    for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; if (counted.has(a.id)) auto += ruleOf(rules, s); }
     return { student: st, score: rules.initial + auto + (manual[st.id] || 0), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING };
   });
   byRules.set(rules, result);
@@ -100,8 +103,38 @@ export function resetStudentScores(c, rules, studentIds, target) {
   if (!Number.isFinite(target)) return c;
   const ids = new Set(studentIds); const time = Date.now();
   const entries = studentStats(c, rules).filter((st) => ids.has(st.student.id) && st.score !== target)
-    .map((st) => ({ id: newId(), studentId: st.student.id, delta: target - st.score, reason: `重置分数至 ${fmtNum(target)}`, time }));
+    .map((st) => ({ id: newId(), studentId: st.student.id, delta: target - st.score, reason: `重置分数至 ${fmtNum(target)}`, time, kind: 'reset' }));
   return entries.length ? { ...c, scores: [...c.scores, ...entries] } : c;
+}
+
+export function currentScoreReset(c) {
+  const latest = (c.scoreResets || []).reduce((best, r) => !best || r.time > best.time || (r.time === best.time && r.id > best.id) ? r : best, null);
+  return latest?.assignmentId ? latest : null;
+}
+const isResetAdjustment = (e) => e.kind === 'reset' || /^重置分数至 [+-]?[0-9]+(?:\.[0-9]+)?$/.test(e.reason);
+export function assignmentCounts(c, a, reset = currentScoreReset(c)) {
+  return !reset || (a.createdAt >= reset.startAt && !(reset.excludedAssignmentIds || []).includes(a.id));
+}
+export function scoreEntryCounts(c, e, reset = currentScoreReset(c)) {
+  return !reset || (!(reset.ignoredScoreIds || []).includes(e.id) && !(isResetAdjustment(e) && e.time < reset.time) && e.time >= (reset.keepManualSinceStart === false ? reset.time : reset.startAt));
+}
+export function startScorePeriod(c, assignmentId, keepManualSinceStart = true, time = Date.now()) {
+  const ordered = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt);
+  const index = ordered.findIndex((a) => a.id === assignmentId);
+  if (index < 0) return c;
+  const a = ordered[index];
+  const reset = { id: newId(), assignmentId, assignmentTitle: a.title, startAt: a.createdAt, time, keepManualSinceStart,
+    excludedAssignmentIds: ordered.slice(0, index).filter((x) => x.createdAt === a.createdAt).map((x) => x.id),
+    ignoredScoreIds: c.scores.filter((e) => e.time >= time && (!keepManualSinceStart || isResetAdjustment(e))).map((e) => e.id) };
+  return { ...c, scoreResets: [...(c.scoreResets || []), reset] };
+}
+export function restoreScoreHistory(c, time = Date.now()) {
+  return { ...c, scoreResets: [...(c.scoreResets || []), { id: newId(), assignmentId: null, assignmentTitle: '', startAt: 0, time, keepManualSinceStart: true, excludedAssignmentIds: [], ignoredScoreIds: [] }] };
+}
+export function scoreBoundaryIndex(c, assignments) {
+  const reset = currentScoreReset(c);
+  return reset ? assignments.findIndex((a, i) => assignmentCounts(c, a, reset) &&
+    (a.id === reset.assignmentId || (i > 0 && !assignmentCounts(c, assignments[i - 1], reset)))) : -1;
 }
 
 export const fmtNum = (x) => { const r = Math.round(x * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1); };

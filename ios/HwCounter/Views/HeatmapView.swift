@@ -9,15 +9,24 @@ struct HeatmapView: View {
         Group {
             if let c = store.data.currentClass, !c.assignments.isEmpty, !c.students.isEmpty {
                 let recent = Array(c.assignments.sorted { $0.createdAt < $1.createdAt }.suffix(30))
+                let boundary = c.scoreBoundaryIndex(recent)
                 ScrollView([.horizontal, .vertical]) {
                     LazyVStack(alignment: .leading, spacing: 4) {
+                        ScorePeriodBanner(c: c).frame(maxWidth: 420)
+                        if c.activeScoreReset != nil && boundary == nil {
+                            Text("积分重置起点在当前显示范围之外，作业历史仍完整保留").font(.caption).foregroundStyle(.orange)
+                        }
                         legend.padding(.bottom, 8)
                         Text("滚动查看全班名单，点格子进入该次作业").font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
                         HStack(spacing: 4) {
                             Text("").frame(width: 72)
-                            ForEach(recent) { a in
+                            ForEach(Array(recent.enumerated()), id: \.element.id) { index, a in
+                                if index == boundary { Rectangle().fill(.orange).frame(width: 3, height: 34) }
                                 NavigationLink(value: a.id) {
-                                    Text(md(a.date)).font(.system(size: 9)).foregroundStyle(.secondary).frame(width: cell)
+                                    VStack(spacing: 2) {
+                                        if index == boundary { Text("积分重置").font(.system(size: 8)).foregroundStyle(.orange) }
+                                        Text(md(a.date)).font(.system(size: 9)).foregroundStyle(.secondary)
+                                    }.frame(width: cell)
                                 }
                             }
                             Text("交齐率").font(.caption2).foregroundStyle(.secondary).frame(width: 54)
@@ -25,7 +34,8 @@ struct HeatmapView: View {
                         ForEach(c.students) { st in
                             HStack(spacing: 4) {
                                 Text(st.name).font(.caption).lineLimit(1).frame(width: 72, alignment: .leading)
-                                ForEach(recent) { a in
+                                ForEach(Array(recent.enumerated()), id: \.element.id) { index, a in
+                                    if index == boundary { Rectangle().fill(.orange).frame(width: 3, height: cell) }
                                     let status = a.status(st.id)
                                     NavigationLink(value: a.id) {
                                         RoundedRectangle(cornerRadius: 5)

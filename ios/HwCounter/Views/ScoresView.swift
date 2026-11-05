@@ -19,6 +19,7 @@ struct ScoresView: View {
     @State private var selected: Set<String> = []
     @State private var exportURL: URL? = nil
     @State private var scoreValueRequest: ScoreValueRequest? = nil
+    @State private var periodClass: IdBox? = nil
     @AppStorage("scoresSortByNo") private var byNumber = false
 
     var body: some View {
@@ -29,6 +30,7 @@ struct ScoresView: View {
                 let ranks = Dictionary(uniqueKeysWithValues: ranked.enumerated().map { ($0.element.id, $0.offset + 1) })
                 let picked = c.students.filter { selected.contains($0.id) }
                 List {
+                    if c.activeScoreReset != nil { Section { ScorePeriodBanner(c: c) } }
                     Section {
                         podium(Array(ranked.prefix(3)))
                         Text("基准分：\(fmtNum(store.data.rules.initial))").font(.caption).foregroundStyle(.secondary)
@@ -58,6 +60,8 @@ struct ScoresView: View {
                             if !store.readOnly {
                                 Button(selecting ? "退出多选" : "多选") { selecting.toggle(); selected.removeAll() }
                                 Menu {
+                                    Button("按作业重置积分") { periodClass = IdBox(id: c.id) }
+                                        .disabled(selecting || (c.assignments.isEmpty && c.activeScoreReset == nil))
                                     Button("修改基准分") { scoreValueRequest = ScoreValueRequest(classId: nil, studentIds: []) }
                                     Button("重置全班分数") { scoreValueRequest = ScoreValueRequest(classId: c.id, studentIds: c.students.map(\.id)) }
                                         .disabled(selecting)
@@ -101,8 +105,9 @@ struct ScoresView: View {
         .sheet(item: $scoreValueRequest) { request in
             ScoreValueSheet(request: request, initial: store.data.rules.initial) { cancelSelection() }
         }
-        .onChange(of: store.data.currentClass?.id) { _ in cancelSelection(); scoreRequest = nil; scoreValueRequest = nil }
-        .onChange(of: store.readOnly) { _ in cancelSelection(); scoreRequest = nil; scoreValueRequest = nil }
+        .sheet(item: $periodClass) { request in ScorePeriodSheet(classId: request.id) }
+        .onChange(of: store.data.currentClass?.id) { _ in cancelSelection(); scoreRequest = nil; scoreValueRequest = nil; periodClass = nil }
+        .onChange(of: store.readOnly) { _ in cancelSelection(); scoreRequest = nil; scoreValueRequest = nil; periodClass = nil }
     }
 
     private func cancelSelection() { selecting = false; selected.removeAll() }
@@ -243,7 +248,12 @@ struct ScoreSheet: View {
                     if entries.isEmpty { Text("还没有手动加减分").foregroundStyle(.secondary) }
                     ForEach(entries) { e in
                         HStack {
-                            Text(e.reason)
+                            VStack(alignment: .leading) {
+                                Text(e.reason)
+                                if store.data.classes.first(where: { $0.id == classId })?.countsTowardScore(e) == false {
+                                    Text("历史，不计入本轮").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
                             Spacer()
                             Text(fmtDate(Date(timeIntervalSince1970: Double(e.time) / 1000))).font(.caption).foregroundStyle(.secondary)
                             Text(signed(e.delta)).bold().foregroundStyle(e.delta >= 0 ? .green : .red)

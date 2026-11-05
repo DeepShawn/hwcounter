@@ -73,6 +73,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.deepshawn.hwcounter.data.countsTowardScore
 import com.deepshawn.hwcounter.data.AppData
 import com.deepshawn.hwcounter.data.AppViewModel
 import com.deepshawn.hwcounter.data.HwStatus
@@ -427,7 +428,7 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
                 Text(e.delta.signed(), fontWeight = FontWeight.Black, color = if (e.delta >= 0) statusColor(HwStatus.SUBMITTED) else statusColor(HwStatus.MISSING), modifier = Modifier.width(52.dp))
                 Column(Modifier.weight(1f)) {
                     Text(e.reason)
-                    Text(fmt.format(Date(e.time)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text((if (c.countsTowardScore(e)) "" else "历史，不计入本轮 · ") + fmt.format(Date(e.time)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = { vm.removeScore(e.id); kit.undoable("已撤回该条积分") }) { Icon(Icons.Filled.Close, "删除", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
@@ -437,7 +438,7 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
                 Text(d.signed(), fontWeight = FontWeight.Black, color = if (d >= 0) statusColor(HwStatus.SUBMITTED) else statusColor(HwStatus.MISSING), modifier = Modifier.width(52.dp))
                 Column(Modifier.weight(1f)) {
                     Text("${a.subject}「${a.title}」${st.label}")
-                    Text("自动计分 · ${fmt.format(Date(a.createdAt))}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${if (c.countsTowardScore(a)) "自动计分" else "历史，不计入本轮"} · ${fmt.format(Date(a.createdAt))}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

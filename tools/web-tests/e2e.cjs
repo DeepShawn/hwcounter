@@ -394,6 +394,65 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.screenshot({ path: `${OUT}/6-phone-preview.png` });
 
   check(errors.length === 0, `页面无 JS 报错${errors.length ? '：' + errors.join(' | ') : ''}`);
+  // 独立账号上下文：按作业重置、撤销、重开、标线、历史恢复与云端往返。
+  const periodData = {version:1,currentClassId:'period-class',settings:{},classes:[{
+    id:'period-class',name:'重置回归班',emoji:'📚',students:[{id:'p1',no:'01',name:'张三'},{id:'p2',no:'02',name:'李四'}],
+    assignments:[
+      {id:'old',title:'上轮作业',subject:'数学',createdAt:1000,statuses:{p1:'MISSING',p2:'MISSING'},comments:{p1:'备注保留'},pinned:true},
+      {id:'start',title:'本轮第一回',subject:'数学',createdAt:2000,statuses:{p1:'EXCELLENT',p2:'MISSING'},comments:{}},
+      {id:'next',title:'本轮第二回',subject:'语文',createdAt:3000,statuses:{p1:'LATE',p2:'SUBMITTED'},comments:{}}
+    ],scores:[{id:'old-manual',studentId:'p1',delta:3,reason:'上轮表现',time:1500},{id:'new-manual',studentId:'p1',delta:2,reason:'本轮表现',time:2500}]
+  }]};
+  db.row = {...db.row,data:periodData,version:30};
+  const pc = await browser.newContext({viewport:{width:1024,height:900}});
+  await pc.route('https://beasxxexggnjcocdbtdl.supabase.co/**', mock);
+  await pc.addInitScript(() => localStorage.setItem('hw.cloud.session', JSON.stringify({access_token:'tok',refresh_token:'ref',expires_at:Date.now()+3600000,email:'period@test.local',user_id:'u-owner'})));
+  const pp = await pc.newPage(); pp.on('pageerror',e=>errors.push(e.message));
+  await pp.goto(base); await pp.waitForSelector('.assign:has-text("上轮作业")');
+  const localClass = () => pp.evaluate(() => JSON.parse(localStorage.getItem('hw.data')).classes[0]);
+  await pp.click('.tabs button:has-text("积分")');
+  await pp.waitForSelector('.score-row');
+  const score = name => pp.locator('.score-row:visible').filter({hasText:name}).locator('.score').textContent();
+  check(await score('张三') === '103' && (await pp.locator('.score-row:visible').filter({hasText:'李四'}).textContent()).includes('缺2'), '重置前积分与历史未交次数正确');
+  const applyPeriod = async keep => {
+    await pp.getByRole('button',{name:'按作业重置积分',exact:true}).click();
+    await pp.getByLabel('计分起点作业').selectOption('start');
+    await pp.locator('.modal input[type=checkbox]').setChecked(keep);
+    await pp.getByRole('button',{name:'应用积分起点',exact:true}).click();
+    await pp.waitForSelector('.score-period-notice:visible');
+  };
+  await pp.getByRole('button',{name:'按作业重置积分',exact:true}).click();
+  await pp.getByLabel('计分起点作业').selectOption('start');
+  await pp.locator('.modal').getByRole('button',{name:'取消',exact:true}).click();
+  check(!(await localClass()).scoreResets.length, '取消积分起点不改数据');
+  await applyPeriod(true);
+  check(await score('张三') === '102' && await score('李四') === '98', '所选作业含本次，起点后的手动分继续计入');
+  check((await pp.locator('.score-row:visible').filter({hasText:'李四'}).textContent()).includes('缺2'), '积分重置不清除历史未交次数');
+  const afterPeriod = await localClass();
+  check(JSON.stringify(afterPeriod.assignments.map(a=>[a.id,a.statuses,a.comments])) === JSON.stringify(periodData.classes[0].assignments.map(a=>[a.id,a.statuses,a.comments])) && afterPeriod.scores.length === 2, '积分重置完整保留原作业、状态、备注及手动分记录');
+  await pp.locator('.toast').getByRole('button',{name:'撤销',exact:true}).click();
+  check(await score('张三') === '103' && !(await localClass()).scoreResets.length, '撤销积分起点可还原分数');
+  await applyPeriod(true);
+  await pp.click('.tabs button:has-text("首页")');
+  const cards = await pp.locator('.assign:visible').allTextContents();
+  check(cards.length === 3 && cards.at(-1).includes('上轮作业') && await pp.getByRole('separator',{name:'积分重置分界'}).isVisible(), '作业列表保留全部作业，历史置顶作业也位于重置分割线之后');
+  await pp.screenshot({path:`${OUT}/7-score-period-assignments.png`});
+  await pp.click('.tabs button:has-text("热力图")');
+  await pp.waitForSelector('.heat');
+  check(await pp.locator('.heat .heat-cell').count() === 6 && await pp.locator('.heat th.score-boundary').count() === 1 && await pp.locator('.heat td.score-boundary').count() === 2, '热力图保留全部历史格，起点表头及每个学生行均有分割线');
+  await pp.screenshot({path:`${OUT}/8-score-period-heatmap.png`});
+  await pp.waitForTimeout(5500);
+  check(db.row.data.classes[0].scoreResets?.at(-1)?.assignmentId === 'start', '积分起点随既有 Supabase JSON 快照同步');
+  await pp.reload(); await pp.click('.tabs button:has-text("积分")'); await pp.waitForSelector('.score-row');
+  check(await score('张三') === '102' && await pp.locator('.score-period-notice:visible').count() === 1, '刷新并从云端读取后计分范围保留');
+  await applyPeriod(false); check(await score('张三') === '100', '可选择仅保留手动分流水、不结转旧手动分');
+  await pp.getByRole('button',{name:'按作业重置积分',exact:true}).click();
+  await pp.getByRole('button',{name:'恢复全部历史计分',exact:true}).click();
+  check(await score('张三') === '103', '恢复全部历史计分还原原分数');
+  await pp.click('.tabs button:has-text("热力图")');
+  check(await pp.locator('.heat .score-boundary').count() === 0 && await pp.locator('.heat .heat-cell').count() === 6, '恢复历史后分割线撤除，原热力图记录完整');
+  check(errors.length === 0, '积分重置全流程无脚本错误');
+  await pc.close();
   await browser.close(); server.close();
   console.log(failures ? `\n失败 ${failures} 项` : '\n全部通过');
   process.exit(failures ? 1 : 0);
