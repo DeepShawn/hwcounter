@@ -261,5 +261,43 @@ do {
     total += 1
     if compareStudentNumbers("02", "2") == 0 { pass += 1; print("✓ 前导零不改变学号的数字顺序") }
 }
+do {
+    print("== 按作业重置积分")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    let rules = Rules()
+    var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三")])
+    c.assignments = [("a1", Int64(1000), "MISSING"), ("a2", 2000, "EXCELLENT"), ("a3", 3000, "LATE")].map { id, time, status in
+        var a = Assignment(title: id, subject: "数学", statuses: ["s1": status]); a.id = id; a.createdAt = time; a.comments = ["s1": "保留备注"]; return a
+    }
+    c.scores = [("m0", Int64(1500), 3.0, "表现", "manual"), ("m1", 2500, 2, "进步", "manual"), ("r0", 2600, -4, "重置分数至 0", "manual"), ("r1", 3500, 5, "调整", "reset")].map { id, time, delta, reason, kind in
+        var e = ScoreEntry(studentId: "s1", delta: delta, reason: reason, kind: kind); e.id = id; e.time = time; return e
+    }
+    let reset = c.startingScorePeriod("a2", time: 5000)
+    check(c.stats(rules)[0].score == 104 && reset.stats(rules)[0].score == 102, "包含选中作业，结转范围内手动分，排除旧重置调整")
+    check(reset.assignments == c.assignments && reset.scores == c.scores && reset.stats(rules)[0].missing == 1, "所有作业、备注、积分流水及未交次数保留")
+    var zero = rules; zero.initial = 0
+    check(reset.stats(zero)[0].score == 2, "本轮仍可随时修改基准分")
+    check(reset.scoreBoundaryIndex(reset.assignments) == 1 && reset.scoreBoundaryIndex(Array(reset.assignments.suffix(1))) == nil, "分割线定位正确，范围外不误标")
+    var future = c; var entry = ScoreEntry(studentId: "s1", delta: 20, reason: "时钟偏差"); entry.id = "future"; entry.time = 7000; future.scores.append(entry)
+    var noCarry = future.startingScorePeriod("a2", keepManualSinceStart: false, time: 5000)
+    check(noCarry.stats(rules)[0].score == 100, "不结转旧手动分，排除已有未来记录")
+    entry.id = "new"; entry.time = 5000; entry.delta = 1.5; noCarry.scores.append(entry)
+    check(noCarry.stats(rules)[0].score == 101.5, "重置后的新加减分继续累计")
+    var edited = reset; edited.assignments[0].statuses["s1"] = "EXCELLENT"
+    check(edited.stats(rules)[0].score == 102 && edited.stats(rules)[0].missing == 0, "旧作业补登记改变历史次数，不改变本轮积分")
+    let compensated = reset.resettingScores(rules, ids: ["s1"], target: 0)
+    check(compensated.stats(rules)[0].score == 0 && compensated.startingScorePeriod("a3", time: nowMillis() + 1000).stats(rules)[0].score == 99, "本轮指定分数重置仍可用，新一轮排除旧调整")
+    check(reset.restoringScoreHistory(time: 6000).stats(rules)[0].score == 104, "恢复历史计分可逆")
+    var same = c; same.assignments = same.assignments.map { a in var a = a; a.createdAt = 2000; return a }
+    let tied = same.startingScorePeriod("a2", time: 5000)
+    check(tied.assignments.map { tied.countsTowardScore($0) } == [false, true, true], "同毫秒作业仍准确包含所选起点")
+    var removed = tied; removed.assignments.remove(at: 1)
+    check(removed.activeScoreReset?.assignmentTitle == "a2" && removed.scoreBoundaryIndex(removed.assignments) == 1, "删除起点作业后保留计分分界")
+    let back = try! JSONDecoder().decode(SchoolClass.self, from: JSONEncoder().encode(reset))
+    check(back == reset, "新备份保存积分起点并完整还原")
+    let legacy = try! JSONDecoder().decode(SchoolClass.self, from: Data("{\"name\":\"旧班级\"}".utf8))
+    check(legacy.scoreResets.isEmpty, "旧版备份默认全部历史计分")
+    check(reset.startingScorePeriod("bad") == reset && reset.startingScorePeriod("a3", time: 6000).activeScoreReset?.assignmentId == "a3", "无效起点不改数据，最新起点优先")
+}
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

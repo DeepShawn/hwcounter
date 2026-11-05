@@ -61,6 +61,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.deepshawn.hwcounter.data.activeScoreReset
+import com.deepshawn.hwcounter.data.countsTowardScore
 import com.deepshawn.hwcounter.data.AppData
 import com.deepshawn.hwcounter.data.AppViewModel
 import com.deepshawn.hwcounter.data.Assignment
@@ -140,7 +142,9 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
         return
     }
 
-    val sorted = c.sortedAssignments()
+    val reset = c.activeScoreReset
+    val sorted = c.sortedAssignments().sortedBy { if (c.countsTowardScore(it)) 0 else 1 }
+    val firstHistory = sorted.firstOrNull { !c.countsTowardScore(it) }?.id
     val hero = sorted.firstOrNull()
     val todayTarget = c.assignments.filter { isToday(it.createdAt) }.maxByOrNull { it.createdAt }
 
@@ -291,7 +295,9 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
         if (sorted.isEmpty()) {
             item { EmptyState("📭", "还没有作业", "点击“新建作业”开始；用拍照、语音等快捷登记时也会先让你确认新建") }
         }
+        item { ScorePeriodBanner(c) }
         items(sorted, key = { it.id }) { a ->
+            if (reset != null && a.id == firstHistory) ScorePeriodDivider(reset)
             AssignmentRow(
                 c, a,
                 onClick = { kit.nav.push(Route.Assign(a.id)) },
@@ -301,6 +307,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp).animateItemPlacement(),
             )
         }
+        if (reset != null && firstHistory == null) item { ScorePeriodDivider(reset) }
     }
 
     if (pendingAction == "photo") {

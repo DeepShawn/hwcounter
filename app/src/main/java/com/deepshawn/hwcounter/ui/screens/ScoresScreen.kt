@@ -64,6 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.deepshawn.hwcounter.data.activeScoreReset
 import com.deepshawn.hwcounter.data.AppData
 import com.deepshawn.hwcounter.data.AppViewModel
 import com.deepshawn.hwcounter.data.HwStatus
@@ -95,6 +96,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
     var menu by remember { mutableStateOf(false) }
     var resetFor by remember(c.id, readOnly) { mutableStateOf<List<String>?>(null) }
     var editBase by remember(c.id, readOnly) { mutableStateOf(false) }
+    var periodOpen by remember(c.id, readOnly) { mutableStateOf(false) }
     val stats = remember(c, rules) { c.studentStats(rules).sortedByDescending { it.score } }
     val personalStats = remember(stats, byNumber) { if (byNumber) stats.sortedWith { x, y -> compareStudentNumbers(x.student.no, y.student.no) } else stats }
     val ranks = remember(stats) { stats.mapIndexed { i, st -> st.student.id to i + 1 }.toMap() }
@@ -115,6 +117,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
                                 if (!readOnly) {
                                     DropdownMenuItem(text = { Text("全班 +1") }, enabled = !selecting && c.students.isNotEmpty(), onClick = { menu = false; vm.addScore(c.students.map { it.id }, 1.0, "全班表现好"); kit.celebrate(); kit.undoable("全班 +1 🎉") })
                                     DropdownMenuItem(text = { Text("重置全班分数") }, enabled = !selecting && c.students.isNotEmpty(), onClick = { menu = false; resetFor = c.students.map { it.id } })
+                                    DropdownMenuItem(text = { Text("按作业重置积分") }, enabled = !selecting && (c.assignments.isNotEmpty() || c.activeScoreReset != null), onClick = { menu = false; periodOpen = true })
                                     DropdownMenuItem(text = { Text("修改基准分") }, onClick = { menu = false; editBase = true })
                                 }
                                 DropdownMenuItem(text = { Text("修改计分规则") }, onClick = { menu = false; kit.nav.tab(Route.Settings) })
@@ -125,6 +128,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
                     if (stats.size >= 3 && mode == 0) Podium(stats.take(3)) { kit.nav.push(Route.StudentDetail(it)) }
                 }
             }
+            item { ScorePeriodBanner(c) }
             item {
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(16.dp)) {
                     listOf("个人榜", "小组榜", "催交榜").forEachIndexed { i, t ->
@@ -202,6 +206,12 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
             selecting = false; selected = emptySet()
         }
     }
+    if (periodOpen && !readOnly) ScorePeriodDialog(c, rules.initial, { periodOpen = false }, { id, keep ->
+        vm.startScorePeriod(id, keep); periodOpen = false
+        kit.undoable("已设置积分起点，作业及未交次数已保留")
+    }, {
+        vm.restoreScoreHistory(); periodOpen = false; kit.undoable("已恢复全部历史计分")
+    })
     if (editBase && !readOnly) ScoreValueDialog(
         title = "修改基准分", initial = rules.initial,
         description = "适用于所有班级。只修改计分基准，历史加减分继续计入，未交次数和记录保留。",

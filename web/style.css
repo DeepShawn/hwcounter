@@ -149,6 +149,12 @@ textarea.input { resize: vertical; }
 .typed select.input { width: auto; }
 .pickbar { position: sticky; bottom: 70px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 10px; margin: 8px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.15); z-index: 4; }
 .chip.danger { color: #f0475a; }
+.score-period-notice { border-left: 4px solid #f59f00; }
+.score-period-notice b, .score-period-note { color: #ad6800; }
+.score-period-divider { border-top: 3px dashed #f59f00; margin: 16px 14px 8px; padding: 8px 4px; display: flex; flex-wrap: wrap; gap: 6px; color: #ad6800; }
+.score-period-divider span { font-size: 12px; }
+.heat .score-boundary { border-left: 3px solid #f59f00; }
+.period-mark { display: block; color: #ad6800; font-size: 9px; white-space: nowrap; }
 
 /* 草稿 / 统计表 */
 .draft-note { background: #fff8e1; border-color: #ffe08a; color: #5c4400; cursor: pointer; font-size: 13px; }

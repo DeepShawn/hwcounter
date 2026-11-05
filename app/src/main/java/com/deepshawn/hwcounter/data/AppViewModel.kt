@@ -293,6 +293,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearScores() = updateClass { c -> c.copy(scores = emptyList()) }
 
+    fun startScorePeriod(assignmentId: String, keepManualSinceStart: Boolean) = updateClass { it.startScorePeriod(assignmentId, keepManualSinceStart) }
+    fun restoreScoreHistory() = updateClass { it.restoreScoreHistory() }
+
     fun resetScores(studentIds: Collection<String>, target: Double) = updateClass { c ->
         c.resetStudentScores(_data.value.settings.rules, studentIds, target)
     }
@@ -327,7 +330,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return r.students.size
         }
         updateClass { c ->
-            if (replace) c.copy(students = r.students, assignments = emptyList(), scores = emptyList(), name = r.className ?: c.name)
+            if (replace) c.copy(students = r.students, assignments = emptyList(), scores = emptyList(), scoreResets = emptyList(), name = r.className ?: c.name)
             else {
                 val byNo = c.students.associateBy { it.no }
                 val merged = c.students.map { old ->
