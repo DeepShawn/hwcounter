@@ -57,6 +57,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   const errors = []; page.on('pageerror', (e) => errors.push(e.message)); page.on('console', (m) => { if (m.type() === 'error' && !m.text().startsWith('Failed to load resource')) errors.push(m.text()); });
   await page.goto(base);
 
+  if (!process.env.PERIODS_ONLY) {
   // 1) 未登录：预览
   await page.waitForSelector('text=练习册 P32', { timeout: 8000 });
   check((await page.inputValue('.class-select')) === 'c1', '未登录也能看到云端公开的班级');
@@ -394,6 +395,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.screenshot({ path: `${OUT}/6-phone-preview.png` });
 
   check(errors.length === 0, `页面无 JS 报错${errors.length ? '：' + errors.join(' | ') : ''}`);
+  }
   // 独立账号上下文：按作业重置、撤销、重开、标线、历史恢复与云端往返。
   const periodData = {version:1,currentClassId:'period-class',settings:{},classes:[{
     id:'period-class',name:'重置回归班',emoji:'📚',students:[{id:'p1',no:'01',name:'张三'},{id:'p2',no:'02',name:'李四'}],
@@ -406,7 +408,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   db.row = {...db.row,data:periodData,version:30};
   const pc = await browser.newContext({viewport:{width:1024,height:900}});
   await pc.route('https://beasxxexggnjcocdbtdl.supabase.co/**', mock);
-  await pc.addInitScript(() => localStorage.setItem('hw.cloud.session', JSON.stringify({access_token:'tok',refresh_token:'ref',expires_at:Date.now()+3600000,email:'period@test.local',user_id:'u-owner'})));
+  await pc.addInitScript(() => localStorage.setItem('hw.cloud.session', JSON.stringify({accessToken:'tok',refreshToken:'ref',expiresAt:Date.now()+3600000,email:'period@test.local',userId:'u-owner'})));
   const pp = await pc.newPage(); pp.on('pageerror',e=>errors.push(e.message));
   await pp.goto(base); await pp.waitForSelector('.assign:has-text("上轮作业")');
   const localClass = () => pp.evaluate(() => JSON.parse(localStorage.getItem('hw.data')).classes[0]);
