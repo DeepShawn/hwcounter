@@ -164,3 +164,4 @@ textarea.input { resize: vertical; }
 .stat-line { padding: 4px 0; border-bottom: 1px solid var(--line); }
 .stat-line:last-child { border-bottom: 0; }
 .stat-sel { width: auto; margin: 0; padding: 4px 8px; font-weight: 700; }
+.recharge-item{display:block;margin:8px 0;padding:12px}.recharge-item .actions{margin-top:8px}

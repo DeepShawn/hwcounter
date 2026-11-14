@@ -34,6 +34,7 @@ export function normalizeData(d) {
     students: (c.students || []).map((s) => ({ id: newId(), group: '', gender: '', note: '', longLeave: false, ...s })),
     assignments: (c.assignments || []).map((a) => ({ id: newId(), subject: '', createdAt: Date.now(), statuses: {}, comments: {}, countedBooks: null, pinned: false, ...a })),
     scores: (c.scores || []).map((e) => ({ id: newId(), time: Date.now(), ...e })),
+    recharges: (c.recharges || []).map((r) => ({ id: newId(), time: Date.now(), studentIds: [], before: {}, note: '', ...r })),
   }));
   return out;
 }
@@ -72,21 +73,48 @@ export function summary(c, a) {
   return result;
 }
 
+/**
+ * 积分充值（与安卓 Recharge.kt 同算法）：每位学生最近一次充值生效，
+ * 当前积分 = 充值分数 + 充值之后布置的作业自动计分 + 充值之后的手动加减分。
+ */
+export function latestRecharges(c) {
+  const out = {};
+  const list = [...(c.recharges || [])].sort((a, b) => a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  for (const r of list) for (const sid of r.studentIds || []) out[sid] = r;
+  return out;
+}
+export const entryCounts = (e, r) => !r || e.time > r.time;
+export const assignmentCounts = (a, r) => !r || a.createdAt > r.time;
+
 export function studentStats(c, rules) {
   let byRules = statsCache.get(c);
   if (!byRules) { byRules = new WeakMap(); statsCache.set(c, byRules); }
   if (byRules.has(rules)) return byRules.get(rules);
+  const last = latestRecharges(c);
   const manual = {};
-  for (const e of c.scores) manual[e.studentId] = (manual[e.studentId] || 0) + e.delta;
+  for (const e of c.scores) if (entryCounts(e, last[e.studentId])) manual[e.studentId] = (manual[e.studentId] || 0) + e.delta;
   const result = c.students.map((st) => {
+    const r = last[st.id];
     const counts = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
     let auto = 0;
-    for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; auto += ruleOf(rules, s); }
-    return { student: st, score: rules.initial + auto + (manual[st.id] || 0), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING };
+    for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; if (assignmentCounts(a, r)) auto += ruleOf(rules, s); }
+    return { student: st, score: (r ? r.target : rules.initial) + auto + (manual[st.id] || 0), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };
   });
   byRules.set(rules, result);
   return result;
 }
+
+/** 积分充值：只重置积分并新增一条记录，历史流水 / 作业状态 / 未交次数全部保留 */
+export function rechargeScores(c, rules, studentIds, target, note = '', time = Date.now()) {
+  if (!Number.isFinite(target)) return c;
+  const wanted = new Set(studentIds);
+  const ids = c.students.map((s) => s.id).filter((id) => wanted.has(id));
+  if (!ids.length) return c;
+  const now = Object.fromEntries(studentStats(c, rules).map((st) => [st.student.id, st.score]));
+  const r = { id: newId(), time, target, studentIds: ids, before: Object.fromEntries(ids.map((id) => [id, now[id] ?? 0])), note: String(note || '').trim() };
+  return { ...c, recharges: [...(c.recharges || []), r] };
+}
+export const removeRecharge = (c, id) => ({ ...c, recharges: (c.recharges || []).filter((r) => r.id !== id) });
 
 export function addStudentScores(c, studentIds, delta, reason) {
   if (!Number.isFinite(delta) || delta === 0) return c;

@@ -81,6 +81,8 @@ data class SchoolClass(
     val emoji: String = "🎒",
     /** 座位表（可选） */
     val seating: Seating? = null,
+    /** 积分充值记录（见 Recharge.kt） */
+    val recharges: List<ScoreRecharge> = emptyList(),
 )
 
 /** 座位表：seats 为 学生id → 下标(行*cols+列)；frontAtTop 讲台是否在上方。三端同一格式 */
@@ -189,16 +191,19 @@ fun SchoolClass.resetStudentScores(rules: ScoreRules, studentIds: Collection<Str
 }
 
 fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
-    val manual = scores.groupBy { it.studentId }.mapValues { e -> e.value.sumOf { it.delta } }
+    val last = latestRecharges()
+    val manual = HashMap<String, Double>()
+    for (e in scores) if (e.countsAfter(last[e.studentId])) manual[e.studentId] = (manual[e.studentId] ?: 0.0) + e.delta
     return students.map { st ->
+        val r = last[st.id]
         val counts = HashMap<HwStatus, Int>()
         var auto = 0.0
         for (a in assignments) {
             val s = a.statuses[st.id] ?: HwStatus.NONE
             counts[s] = (counts[s] ?: 0) + 1
-            auto += rules.of(s)
+            if (a.countsAfter(r)) auto += rules.of(s)
         }
-        StudentStat(st, rules.initial + auto + (manual[st.id] ?: 0.0), counts)
+        StudentStat(st, (r?.target ?: rules.initial) + auto + (manual[st.id] ?: 0.0), counts)
     }
 }
 

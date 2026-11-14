@@ -1,7 +1,7 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
-import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, compareStudentNumbers, addStudentScores, resetStudentScores, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
+import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, compareStudentNumbers, addStudentScores, rechargeScores, removeRecharge, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
 import { api, session, meta, setMeta, syncOnce, pushAs, merge, hashData, withLocalKey } from './cloud.js';
 import { createVoiceParser } from './voice.js';
 import { xlsx, ST } from './xlsx.js';
@@ -599,7 +599,7 @@ function Roster({ s }) {
   const doImport = (mode) => {
     const r = pending; setPending(null);
     if (mode === 'new' || !c) { const nc = { id: newId(), name: r.className || '新班级', emoji: '🎒', students: r.students, assignments: [], scores: [] }; update((d) => ({ ...d, classes: [...d.classes, nc], currentClassId: nc.id })); say(`已创建班级，共 ${r.students.length} 人`); return; }
-    if (mode === 'replace') { update((d) => mapClass(d, c.id, (k) => ({ ...k, name: r.className || k.name, students: r.students, assignments: [], scores: [] }))); say(`已替换为 ${r.students.length} 人`, true); return; }
+    if (mode === 'replace') { update((d) => mapClass(d, c.id, (k) => ({ ...k, name: r.className || k.name, students: r.students, assignments: [], scores: [], recharges: [] }))); say(`已替换为 ${r.students.length} 人`, true); return; }
     update((d) => mapClass(d, c.id, (k) => { const byNo = new Map(k.students.map((x) => [x.no, x])); const merged = k.students.map((o) => { const n = r.students.find((x) => x.no === o.no); return n ? { ...o, name: n.name, group: n.group || o.group, gender: n.gender || o.gender } : o; }); return { ...k, students: [...merged, ...r.students.filter((x) => !byNo.has(x.no))] }; }));
     say(`已合并 ${r.students.length} 人`, true);
   };
@@ -632,7 +632,7 @@ function Roster({ s }) {
         ${c && html`<button class="btn danger" onClick=${() => doImport('replace')}>替换当前班级（清空作业记录）</button>`}
       </div></${Modal}>`}
     ${edit && html`<${StudentEdit} st=${edit} onClose=${() => setEdit(null)}
-      onDelete=${edit._new ? null : () => { if (confirm(`删除 ${edit.name}？其作业记录和积分也会删除`)) { update((d) => mapClass(d, c.id, (k) => ({ ...k, students: k.students.filter((x) => x.id !== edit.id), scores: k.scores.filter((e) => e.studentId !== edit.id), assignments: k.assignments.map((a) => { const m = { ...a.statuses }; delete m[edit.id]; return { ...a, statuses: m }; }) }))); setEdit(null); say(`已删除 ${edit.name}`, true); } }}
+      onDelete=${edit._new ? null : () => { if (confirm(`删除 ${edit.name}？其作业记录和积分也会删除`)) { update((d) => mapClass(d, c.id, (k) => ({ ...k, students: k.students.filter((x) => x.id !== edit.id), scores: k.scores.filter((e) => e.studentId !== edit.id), recharges: (k.recharges || []).map((r) => ({ ...r, studentIds: r.studentIds.filter((x) => x !== edit.id) })).filter((r) => r.studentIds.length), assignments: k.assignments.map((a) => { const m = { ...a.statuses }; delete m[edit.id]; return { ...a, statuses: m }; }) }))); setEdit(null); say(`已删除 ${edit.name}`, true); } }}
       onSave=${(n) => { const { _new, ...clean } = n; update((d) => mapClass(d, c.id, (k) => ({ ...k, students: _new ? [...k.students, clean] : k.students.map((x) => (x.id === clean.id ? clean : x)) }))); setEdit(null); }} />`}
   </div>`;
 }
@@ -668,6 +668,7 @@ function Scores({ s }) {
   const [byNumber, setByNumber] = useState(() => { try { return localStorage.getItem('hw.scores.sort') === 'number'; } catch { return false; } });
   const [selecting, setSelecting] = useState(false); const [selected, setSelected] = useState(new Set());
   const [resetIds, setResetIds] = useState(null); const [baseOpen, setBaseOpen] = useState(false); const [scoreValue, setScoreValue] = useState('');
+  const [rechargeNote, setRechargeNote] = useState(''); const [historyOpen, setHistoryOpen] = useState(false);
   useEffect(() => { setSelecting(false); setSelected(new Set()); setTargetIds(null); setResetIds(null); setBaseOpen(false); }, [c?.id, s.readOnly]);
   if (!c) return html`<div class="page"><div class="empty">🏆 还没有班级</div></div>`;
   const ranked = [...studentStats(c, rules)].sort((x, y) => y.score - x.score);
@@ -678,7 +679,9 @@ function Scores({ s }) {
   const targets = c.students.filter((st) => targetIds?.includes(st.id));
   const resetTargets = c.students.filter((st) => resetIds?.includes(st.id));
   const validScoreValue = scoreValue.trim() !== '' && Number.isFinite(Number(scoreValue));
-  const openReset = (ids) => { setResetIds(ids); setScoreValue(String(rules.initial)); };
+  const openReset = (ids) => { setResetIds(ids); setScoreValue(String(rules.initial)); setRechargeNote(''); };
+  const recharges = [...(c.recharges || [])].sort((a, b) => b.time - a.time);
+  const nameOf = (id) => c.students.find((x) => x.id === id)?.name || '已删除';
   const openScore = (ids) => setTargetIds(ids);
   const cancelSelection = () => { setSelecting(false); setSelected(new Set()); };
   const saveScore = (delta, reason) => {
@@ -695,7 +698,8 @@ function Scores({ s }) {
     const rows = [head, ...c.students.map((st) => { const x = byId[st.id]; return [st.no, st.name, ...assigns.map((a) => { const k = a.statuses[st.id] || 'NONE'; return { v: STATUS[k].label, s: styleOf[k] }; }), x.submitted, x.late, x.missing, x.score]; })];
     const rank = [['名次', '学号', '姓名', '积分'].map((v) => ({ v, s: ST.HEADER })), ...ranked.map((x, i) => [i + 1, x.student.no, x.student.name, x.score])];
     const log = [['日期', '学号', '姓名', '分值', '原因'].map((v) => ({ v, s: ST.HEADER })), ...[...c.scores].sort((a, b) => b.time - a.time).map((e) => { const st = c.students.find((x) => x.id === e.studentId); return st ? [fmtDate(e.time), st.no, st.name, { v: e.delta, s: e.delta >= 0 ? ST.GREEN : ST.RED }, e.reason] : null; }).filter(Boolean)];
-    download(xlsx([{ name: '作业统计', rows }, { name: '各次统计名单', rows: classStatRows(c, fmtDate) }, { name: '积分榜', rows: rank }, { name: '积分明细', rows: log }]), `${c.name}_作业统计.xlsx`);
+    const rc = [['充值时间', '学号', '姓名', '充值前', '充值后', '备注'].map((v) => ({ v, s: ST.HEADER })), ...recharges.flatMap((r) => r.studentIds.map((id) => { const st = c.students.find((x) => x.id === id); return st ? [fmtDate(r.time), st.no, st.name, r.before?.[id] ?? 0, { v: r.target, s: ST.GREEN }, r.note || ''] : null; }).filter(Boolean))];
+    download(xlsx([{ name: '作业统计', rows }, { name: '各次统计名单', rows: classStatRows(c, fmtDate) }, { name: '积分榜', rows: rank }, { name: '积分明细', rows: log }, ...(recharges.length ? [{ name: '积分充值记录', rows: rc }] : [])]), `${c.name}_作业统计.xlsx`);
   };
   return html`<div class=${'page' + (selecting ? ' scores-selecting' : '')}>
     <div class="hero"><div class="hero-title">积分榜</div><div class="muted-light small">基准 ${fmtNum(rules.initial)} · 未交 ${signed(rules.missing)} · 迟交 ${signed(rules.late)} · 优秀 ${signed(rules.excellent)}</div>
@@ -703,9 +707,10 @@ function Scores({ s }) {
     </div>
     <div class="toolbar"><button class="chip" onClick=${exportAll}>📊 导出全班 Excel</button>
       <button class="chip" onClick=${() => download(xlsx([{ name: '各次统计名单', rows: classStatRows(c, fmtDate) }]), `${c.name}_各次作业统计名单.xlsx`)}>📋 各次统计名单</button>
+      ${recharges.length > 0 && html`<button class="chip" onClick=${() => setHistoryOpen(true)}>🧾 充值记录 ${recharges.length}</button>`}
       ${!s.readOnly && html`<button class=${'chip' + (selecting ? ' on' : '')} disabled=${!c.students.length} onClick=${() => { if (selecting) cancelSelection(); else setSelecting(true); }}>${selecting ? '退出多选' : '☑️ 多选'}</button>
       <button class="chip" onClick=${() => { setScoreValue(String(rules.initial)); setBaseOpen(true); }}>修改基准分</button>
-      <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => openReset(c.students.map((st) => st.id))}>重置全班分数</button>
+      <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => openReset(c.students.map((st) => st.id))}>💳 全班积分充值</button>
       <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => { update((d) => mapClass(d, c.id, (k) => ({ ...k, scores: [...k.scores, ...k.students.map((x) => ({ id: newId(), studentId: x.id, delta: 1, reason: '全班表现好', time: Date.now() }))] }))); say('全班 +1 🎉', true); }}>🎉 全班 +1</button>`}</div>
     <div class="toolbar" aria-label="积分排序">
       <button class=${'chip' + (!byNumber ? ' on' : '')} aria-pressed=${!byNumber} onClick=${() => setOrder(false)}>按积分</button>
@@ -726,7 +731,7 @@ function Scores({ s }) {
       <button class="chip" onClick=${() => setSelected(new Set(c.students.map((st) => st.id)))}>全选</button>
       <button class="chip" onClick=${() => setSelected(new Set())}>清空选择</button>
       <button class="btn" disabled=${!picked.length} onClick=${() => openScore(picked.map((st) => st.id))}>批量加减分</button>
-      <button class="chip" disabled=${!picked.length} onClick=${() => openReset(picked.map((st) => st.id))}>重置分数</button>
+      <button class="chip" disabled=${!picked.length} onClick=${() => openReset(picked.map((st) => st.id))}>💳 积分充值</button>
       <button class="chip" onClick=${cancelSelection}>取消</button>
     </div>`}
     ${!s.readOnly && targets.length > 0 && html`<${ScoreEntryDialog} students=${targets} reasons=${data.settings.quickReasons} onClose=${() => setTargetIds(null)} onSave=${saveScore} />`}
@@ -739,15 +744,25 @@ function Scores({ s }) {
         setBaseOpen(false); say(`基准分已改为 ${fmtNum(Number(scoreValue))}，历史记录已保留`, true);
       }}>保存</button></div>
     </${Modal}>`}
-    ${!s.readOnly && resetTargets.length > 0 && html`<${Modal} title=${`重置 ${resetTargets.length} 人的分数`} onClose=${() => setResetIds(null)}>
+    ${!s.readOnly && resetTargets.length > 0 && html`<${Modal} title=${`💳 积分充值 · ${resetTargets.length} 人`} onClose=${() => setResetIds(null)}>
       <div class="score-targets muted small">${resetTargets.map((st) => `${st.no} ${st.name}`).join('、')}</div>
-      <p class="muted small">将当前积分调整到指定分数，每人新增一条“重置分数”记录。未交次数、作业状态和原有加减分记录全部保留；之后的加减分继续累计。</p>
-      <label>重置到<input class="input" type="number" step="0.5" value=${scoreValue} onInput=${(e) => setScoreValue(e.target.value)} /></label>
+      <p class="muted small">只重置积分：把当前积分设为充值分数，并留下一条充值记录。原有加减分流水、作业状态、备注和未交次数全部保留，仍可在记录中查看；之后的新作业与加减分在充值分数上继续累计。可在“充值记录”中撤销。</p>
+      <label>充值到<input class="input" type="number" step="0.5" value=${scoreValue} onInput=${(e) => setScoreValue(e.target.value)} /></label>
+      <label>备注（可选）<input class="input" placeholder="如：期中重新计分" value=${rechargeNote} onInput=${(e) => setRechargeNote(e.target.value)} /></label>
       <div class="actions"><button class="btn ghost" onClick=${() => setResetIds(null)}>取消</button><button class="btn" disabled=${!validScoreValue} onClick=${() => {
         if (!validScoreValue || s.readOnly) return;
-        update((d) => mapClass(d, c.id, (k) => resetStudentScores(k, d.settings.rules, resetTargets.map((st) => st.id), Number(scoreValue))));
-        setResetIds(null); cancelSelection(); say(`已将 ${resetTargets.length} 人重置为 ${fmtNum(Number(scoreValue))} 分，未交次数及历史记录已保留`, true);
-      }}>确认重置</button></div>
+        update((d) => mapClass(d, c.id, (k) => rechargeScores(k, d.settings.rules, resetTargets.map((st) => st.id), Number(scoreValue), rechargeNote)));
+        setResetIds(null); cancelSelection(); say(`💳 已为 ${resetTargets.length} 人充值到 ${fmtNum(Number(scoreValue))} 分，历史记录已保留`, true);
+      }}>确认充值</button></div>
+    </${Modal}>`}
+    ${historyOpen && html`<${Modal} title="🧾 积分充值记录" onClose=${() => setHistoryOpen(false)}>
+      ${recharges.length === 0 && html`<div class="muted small">暂无充值记录</div>`}
+      ${recharges.map((r) => html`<div key=${r.id} class="card recharge-item">
+        <div class="row"><b class="grow">充值到 ${fmtNum(r.target)} 分 · ${r.studentIds.length} 人</b><span class="muted tiny">${fmtDate(r.time)} ${new Date(r.time).toTimeString().slice(0, 5)}</span></div>
+        ${r.note && html`<div class="small">${r.note}</div>`}
+        <div class="muted tiny">${r.studentIds.slice(0, 12).map((id) => `${nameOf(id)}（原 ${fmtNum(r.before?.[id] ?? 0)}）`).join('、')}${r.studentIds.length > 12 ? ` 等 ${r.studentIds.length} 人` : ''}</div>
+        ${!s.readOnly && html`<div class="actions"><button class="btn ghost" onClick=${() => { if (confirm('撤销这次充值？这些同学的积分将恢复按之前的记录计算。')) { update((d) => mapClass(d, c.id, (k) => removeRecharge(k, r.id))); say('已撤销该次充值', true); } }}>撤销这次充值</button></div>`}
+      </div>`)}
     </${Modal}>`}
   </div>`;
 }

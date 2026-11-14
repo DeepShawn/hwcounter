@@ -1,5 +1,8 @@
 package com.deepshawn.hwcounter.export
 
+import com.deepshawn.hwcounter.data.countsAfter
+import com.deepshawn.hwcounter.data.latestRecharges
+
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -101,18 +104,33 @@ object Exporter {
             }
         }
         x.sheet("积分明细") {
-            widths = listOf(18.0, 12.0, 10.0, 8.0, 30.0)
-            row(*listOf("日期", "学号", "姓名", "分值", "原因").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) }.toTypedArray())
+            widths = listOf(18.0, 12.0, 10.0, 8.0, 30.0, 12.0)
+            row(*listOf("日期", "学号", "姓名", "分值", "原因", "计入当前积分").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) }.toTypedArray())
             val byId = c.students.associateBy { it.id }
+            val last = c.latestRecharges()
             c.scores.sortedByDescending { it.time }.forEach { e ->
                 val s = byId[e.studentId] ?: return@forEach
                 rowCells(
                     listOf(
                         XlsxWriter.Cell(fullFmt.format(Date(e.time))), XlsxWriter.Cell(s.no), XlsxWriter.Cell(s.name),
                         XlsxWriter.Cell(e.delta, if (e.delta >= 0) XlsxWriter.Style.GREEN else XlsxWriter.Style.RED),
-                        XlsxWriter.Cell(e.reason),
+                        XlsxWriter.Cell(e.reason), XlsxWriter.Cell(if (e.countsAfter(last[e.studentId])) "是" else "充值前"),
                     ),
                 )
+            }
+        }
+        if (c.recharges.isNotEmpty()) x.sheet("积分充值记录") {
+            widths = listOf(18.0, 12.0, 10.0, 10.0, 10.0, 20.0)
+            row(*listOf("充值时间", "学号", "姓名", "充值前", "充值后", "备注").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) }.toTypedArray())
+            val byId = c.students.associateBy { it.id }
+            c.recharges.sortedByDescending { it.time }.forEach { r ->
+                r.studentIds.forEach { sid ->
+                    val s = byId[sid] ?: return@forEach
+                    rowCells(listOf(
+                        XlsxWriter.Cell(fullFmt.format(Date(r.time))), XlsxWriter.Cell(s.no), XlsxWriter.Cell(s.name),
+                        XlsxWriter.Cell(r.before[sid] ?: 0.0), XlsxWriter.Cell(r.target, XlsxWriter.Style.GREEN), XlsxWriter.Cell(r.note),
+                    ))
+                }
             }
         }
         x.sheet("计分规则") {

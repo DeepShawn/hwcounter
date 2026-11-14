@@ -19,6 +19,7 @@ struct ScoresView: View {
     @State private var selected: Set<String> = []
     @State private var exportURL: URL? = nil
     @State private var scoreValueRequest: ScoreValueRequest? = nil
+    @State private var showRecharges = false
     @AppStorage("scoresSortByNo") private var byNumber = false
 
     var body: some View {
@@ -59,8 +60,10 @@ struct ScoresView: View {
                                 Button(selecting ? "退出多选" : "多选") { selecting.toggle(); selected.removeAll() }
                                 Menu {
                                     Button("修改基准分") { scoreValueRequest = ScoreValueRequest(classId: nil, studentIds: []) }
-                                    Button("重置全班分数") { scoreValueRequest = ScoreValueRequest(classId: c.id, studentIds: c.students.map(\.id)) }
+                                    Button("💳 全班积分充值") { scoreValueRequest = ScoreValueRequest(classId: c.id, studentIds: c.students.map(\.id)) }
                                         .disabled(selecting)
+                                    Button("🧾 充值记录（\(c.recharges.count)）") { showRecharges = true }
+                                        .disabled(c.recharges.isEmpty)
                                 } label: { Label("分数设置", systemImage: "ellipsis.circle") }
                             }
                             Button { exportURL = Exporter.classCSV(c, store.data.rules) } label: { Label("导出统计表", systemImage: "tablecells") }
@@ -82,7 +85,7 @@ struct ScoresView: View {
                             } label: { Text("批量加减分").frame(maxWidth: .infinity) }
                             .buttonStyle(.borderedProminent)
                             .disabled(picked.isEmpty)
-                            Button("重置分数") { scoreValueRequest = ScoreValueRequest(classId: c.id, studentIds: picked.map(\.id)) }
+                            Button("💳 积分充值") { scoreValueRequest = ScoreValueRequest(classId: c.id, studentIds: picked.map(\.id)) }
                                 .disabled(picked.isEmpty)
                         }
                         .padding().background(.regularMaterial)
@@ -101,6 +104,7 @@ struct ScoresView: View {
         .sheet(item: $scoreValueRequest) { request in
             ScoreValueSheet(request: request, initial: store.data.rules.initial) { cancelSelection() }
         }
+        .sheet(isPresented: $showRecharges) { RechargeHistorySheet() }
         .onChange(of: store.data.currentClass?.id) { _ in cancelSelection(); scoreRequest = nil; scoreValueRequest = nil }
         .onChange(of: store.readOnly) { _ in cancelSelection(); scoreRequest = nil; scoreValueRequest = nil }
     }
@@ -146,6 +150,7 @@ private struct ScoreValueSheet: View {
     let request: ScoreValueRequest
     let onSaved: () -> Void
     @State private var text: String
+    @State private var note = ""
 
     init(request: ScoreValueRequest, initial: Double, onSaved: @escaping () -> Void) {
         self.request = request; self.onSaved = onSaved
@@ -159,21 +164,22 @@ private struct ScoreValueSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text(editingBase ? "适用于所有班级。只修改计分基准，历史加减分继续计入，未交次数和记录保留。" : "将当前积分调整到指定分数，每人新增一条“重置分数”记录。未交次数、作业状态和原有加减分记录全部保留；之后的加减分继续累计。")
+                    Text(editingBase ? "适用于所有班级。只修改计分基准，历史加减分继续计入，未交次数和记录保留。" : "只重置积分：把当前积分设为充值分数，并留下一条充值记录。原有加减分流水、作业状态、备注和未交次数全部保留，仍可查看；之后的新作业与加减分在充值分数上继续累计。可在“充值记录”中撤销。")
                         .font(.callout).foregroundStyle(.secondary)
-                    TextField(editingBase ? "基准分" : "重置到", text: $text)
+                    TextField(editingBase ? "基准分" : "充值到", text: $text)
                         .keyboardType(.numbersAndPunctuation)
+                    if !editingBase { TextField("备注（可选，如：期中重新计分）", text: $note) }
                 }
                 if !editingBase {
                     Section("已选 \(targets.count) 人") { Text(targets.map { "\($0.no) \($0.name)" }.joined(separator: "、")) }
                 }
                 Section {
-                    Button(editingBase ? "保存" : "确认重置") {
+                    Button(editingBase ? "保存" : "确认充值") {
                         guard !store.readOnly, let value, value.isFinite else { return }
                         if let classId = request.classId {
                             guard !targets.isEmpty else { return }
-                            store.resetScores(targets.map(\.id), target: value, classId: classId)
-                            store.say("已将 \(targets.count) 人重置为 \(fmtNum(value)) 分，未交次数及历史记录已保留")
+                            store.rechargeScores(targets.map(\.id), target: value, note: note, classId: classId)
+                            store.say("💳 已为 \(targets.count) 人充值到 \(fmtNum(value)) 分，历史记录已保留")
                         } else {
                             store.update { var rules = $0.rules; rules.initial = value; $0.rules = rules }
                             store.say("基准分已改为 \(fmtNum(value))，历史记录已保留")
@@ -183,7 +189,7 @@ private struct ScoreValueSheet: View {
                     .disabled(store.readOnly || value?.isFinite != true || (!editingBase && targets.isEmpty))
                 }
             }
-            .navigationTitle(editingBase ? "修改基准分" : "重置分数")
+            .navigationTitle(editingBase ? "修改基准分" : "积分充值")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
@@ -258,5 +264,42 @@ struct ScoreSheet: View {
         }
         .presentationDetents([.medium, .large])
         .onAppear { reason = initialReason }
+    }
+}
+
+/// 积分充值记录：查看每次充值（时间、分数、人员与充值前分数），可撤销
+private struct RechargeHistorySheet: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let c = store.data.currentClass {
+                    let names = Dictionary(uniqueKeysWithValues: c.students.map { ($0.id, $0.name) })
+                    if c.recharges.isEmpty { Text("暂无充值记录").foregroundStyle(.secondary) }
+                    ForEach(c.recharges.sorted { $0.time > $1.time }) { r in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("充值到 \(fmtNum(r.target)) 分 · \(r.studentIds.count) 人").font(.headline)
+                                Spacer()
+                                Text(Date(timeIntervalSince1970: Double(r.time) / 1000), style: .date).font(.caption).foregroundStyle(.secondary)
+                            }
+                            if !r.note.isEmpty { Text(r.note).font(.subheadline) }
+                            Text(r.studentIds.map { "\(names[$0] ?? "已删除")（原 \(fmtNum(r.before[$0] ?? 0))）" }.joined(separator: "、"))
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(4)
+                            if !store.readOnly {
+                                Button("撤销这次充值", role: .destructive) {
+                                    store.removeRecharge(r.id, classId: c.id)
+                                    store.say("已撤销该次充值")
+                                }.font(.callout)
+                            }
+                        }.padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle("积分充值记录")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+        }
     }
 }

@@ -234,6 +234,12 @@ final class Store: ObservableObject {
         let rules = data.rules
         updateClass(classId) { $0 = $0.resettingScores(rules, ids: ids, target: target) }
     }
+    /// 积分充值：只重置积分并留下记录
+    func rechargeScores(_ ids: [String], target: Double, note: String, classId: String) {
+        let rules = data.rules
+        updateClass(classId) { $0 = $0.recharging(rules, ids: ids, target: target, note: note) }
+    }
+    func removeRecharge(_ id: String, classId: String) { updateClass(classId) { $0.recharges.removeAll { $0.id == id } } }
 
     // 学生
     func upsertStudent(_ s: Student) {
@@ -245,6 +251,10 @@ final class Store: ObservableObject {
         updateClass { c in
             c.students.removeAll { $0.id == id }
             c.scores.removeAll { $0.studentId == id }
+            c.recharges = c.recharges.compactMap { r in
+                var r = r; r.studentIds.removeAll { $0 == id }; r.before.removeValue(forKey: id)
+                return r.studentIds.isEmpty ? nil : r
+            }
             c.seating?.seats.removeValue(forKey: id)
             for i in c.assignments.indices {
                 c.assignments[i].statuses.removeValue(forKey: id)
@@ -263,7 +273,7 @@ final class Store: ObservableObject {
         }
         updateClass { c in
             if mode == 1 {
-                c.students = students; c.assignments = []; c.scores = []
+                c.students = students; c.assignments = []; c.scores = []; c.recharges = []
                 if let n = className { c.name = n }
             } else {
                 for n in students {

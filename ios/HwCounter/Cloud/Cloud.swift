@@ -269,6 +269,7 @@ final class CloudClient {
             }
             c.assignments = assigns
             c.scores = unionById(r.scores, l.scores)
+            c.recharges = unionById(r.recharges, l.recharges).sorted { $0.time < $1.time }
             c.seating = l.seating ?? r.seating
             classes[l.id] = c
         }
