@@ -74,8 +74,8 @@ export function summary(c, a) {
 }
 
 /**
- * 积分充值（与安卓 Recharge.kt 同算法）：每位学生最近一次充值生效，
- * 当前积分 = 充值分数 + 充值之后布置的作业自动计分 + 充值之后的手动加减分。
+ * 积分重置（与安卓 Recharge.kt 同算法）：每位学生最近一次重置生效，
+ * 当前积分 = 重置分数 + 重置之后布置的作业自动计分 + 重置之后的手动加减分。
  */
 /** 计分起点：effectiveAt（从某次作业 / 某一天起，含当刻）或操作时间（立即生效，只计之后的） */
 export const rechargeStart = (r) => (r.effectiveAt ?? r.time);
@@ -109,7 +109,7 @@ export function studentStats(c, rules) {
   return result;
 }
 
-/** 积分充值：只重置积分并新增一条记录，历史流水 / 作业状态 / 未交次数全部保留 */
+/** 积分重置：只重置积分并新增一条记录，历史流水 / 作业状态 / 未交次数全部保留 */
 export function rechargeScores(c, rules, studentIds, target, note = '', time = Date.now(), { effectiveAt = null, assignmentId = null } = {}) {
   if (!Number.isFinite(target)) return c;
   const wanted = new Set(studentIds);

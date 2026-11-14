@@ -238,7 +238,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
 
 /**
  * 作业热力图：每行一位同学、每列一次作业，一个 Canvas 画完（大班级也流畅）。
- * 可按学号或按缺交排序；竖线标出最近一次全班积分充值的位置；点格子进入该次作业。
+ * 可按学号或按缺交排序；竖线标出最近一次全班积分重置的位置；点格子进入该次作业。
  */
 @Composable
 private fun Heatmap(c: com.deepshawn.hwcounter.data.SchoolClass, report: Analytics.Report, onOpen: (String) -> Unit) {
@@ -252,7 +252,7 @@ private fun Heatmap(c: com.deepshawn.hwcounter.data.SchoolClass, report: Analyti
             else -> c.students.sortedWith { a, b -> compareStudentNumbers(a.no, b.no) }
         }
     }
-    // 全班（至少一半同学）参与的最近一次充值 → 在其后的第一列前画竖线
+    // 全班（至少一半同学）参与的最近一次重置 → 在其后的第一列前画竖线
     val boundary = remember(c, cols) {
         val r = c.recharges.filter { it.studentIds.size * 2 >= c.students.size.coerceAtLeast(1) }.maxWithOrNull(compareBy({ it.start }, { it.time }))
         if (r == null) -1 else cols.indexOfFirst { r.counts(it.createdAt) }.takeIf { it > 0 } ?: -1
@@ -301,7 +301,7 @@ private fun Heatmap(c: com.deepshawn.hwcounter.data.SchoolClass, report: Analyti
                 Spacer(Modifier.height(10.dp))
                 ChartLegend(ChartStatusOrder.map { statusChartColor(it).copy(alpha = if (it == HwStatus.NONE) 0.3f else 1f) to it.label })
                 Text(
-                    "左右滑动查看更早的作业，点任意一列进入该次作业" + if (boundary > 0) " · 蓝色竖线：全班积分充值" else "",
+                    "左右滑动查看更早的作业，点任意一列进入该次作业" + if (boundary > 0) " · 蓝色竖线：全班积分重置" else "",
                     fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp),
                 )
             }

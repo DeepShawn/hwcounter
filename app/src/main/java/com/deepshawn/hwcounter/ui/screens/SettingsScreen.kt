@@ -203,7 +203,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
                 RuleRow("迟交", r.late) { v -> rules { it.copy(late = v) } }
                 RuleRow("未交", r.missing) { v -> rules { it.copy(missing = v) } }
                 RuleRow("请假", r.leave) { v -> rules { it.copy(leave = v) } }
-                Text("修改后所有历史作业的自动计分会立即按新规则重算；已积分充值的同学从充值分数起算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text("修改后所有历史作业的自动计分会立即按新规则重算；已积分重置的同学从重置分数起算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }
         }
 

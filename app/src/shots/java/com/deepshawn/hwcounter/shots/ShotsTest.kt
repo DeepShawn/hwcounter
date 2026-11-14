@@ -88,7 +88,7 @@ class ShotsTest {
         tab("积分"); save("${prefix}_04_scores"); scroll(); save("${prefix}_05_scores_scrolled")
         runCatching {
             rule.onNode(hasContentDescription("更多")).performClick(); rule.waitForIdle(); save("${prefix}_06_scores_menu")
-            rule.onAllNodes(hasText("全班积分充值")).onFirst().performClick(); rule.waitForIdle(); save("${prefix}_07_recharge_dialog")
+            rule.onAllNodes(hasText("全班积分重置")).onFirst().performClick(); rule.waitForIdle(); save("${prefix}_07_recharge_dialog")
             rule.onAllNodes(hasText("从某次作业起")).onFirst().performClick(); rule.waitForIdle(); save("${prefix}_08_recharge_from_assignment")
             rule.onAllNodes(hasText("取消")).onFirst().performClick(); rule.waitForIdle()
         }

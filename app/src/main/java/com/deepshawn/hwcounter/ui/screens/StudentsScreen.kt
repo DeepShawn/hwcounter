@@ -479,15 +479,15 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
                     row.delta >= 0 -> statusColor(HwStatus.SUBMITTED)
                     else -> statusColor(HwStatus.MISSING)
                 }
-                Text(if (isRecharge) "💳" else row.delta.signed(), fontWeight = FontWeight.Black, color = color.copy(alpha = if (dim) 0.45f else 1f), modifier = Modifier.width(52.dp))
+                Text(if (isRecharge) "🔄" else row.delta.signed(), fontWeight = FontWeight.Black, color = color.copy(alpha = if (dim) 0.45f else 1f), modifier = Modifier.width(52.dp))
                 Column(Modifier.weight(1f)) {
                     Text(row.title, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (dim) 0.5f else 1f))
                     Text(
                         (when (row.kind) {
                             com.deepshawn.hwcounter.data.LedgerRow.Kind.AUTO -> "自动计分 · "
-                            com.deepshawn.hwcounter.data.LedgerRow.Kind.RECHARGE -> if (row.counted) "当前生效 · " else "已被之后的充值取代 · "
+                            com.deepshawn.hwcounter.data.LedgerRow.Kind.RECHARGE -> if (row.counted) "当前生效 · " else "已被之后的重置取代 · "
                             else -> ""
-                        }) + fmt.format(Date(row.time)) + if (dim && !isRecharge) " · 充值前，不计入当前积分" else "",
+                        }) + fmt.format(Date(row.time)) + if (dim && !isRecharge) " · 重置前，不计入当前积分" else "",
                         fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

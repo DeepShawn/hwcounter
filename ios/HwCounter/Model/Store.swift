@@ -234,7 +234,7 @@ final class Store: ObservableObject {
         let rules = data.rules
         updateClass(classId) { $0 = $0.resettingScores(rules, ids: ids, target: target) }
     }
-    /// 积分充值：只重置积分并留下记录
+    /// 积分重置：只重置积分并留下记录
     func rechargeScores(_ ids: [String], target: Double, note: String, classId: String, effectiveAt: Int64? = nil, assignmentId: String? = nil) {
         let rules = data.rules
         updateClass(classId) { $0 = $0.recharging(rules, ids: ids, target: target, note: note, effectiveAt: effectiveAt, assignmentId: assignmentId) }

@@ -701,8 +701,8 @@ function Scores({ s }) {
     const rows = [head, ...c.students.map((st) => { const x = byId[st.id]; return [st.no, st.name, ...assigns.map((a) => { const k = a.statuses[st.id] || 'NONE'; return { v: STATUS[k].label, s: styleOf[k] }; }), x.submitted, x.late, x.missing, x.score]; })];
     const rank = [['名次', '学号', '姓名', '积分'].map((v) => ({ v, s: ST.HEADER })), ...ranked.map((x, i) => [i + 1, x.student.no, x.student.name, x.score])];
     const log = [['日期', '学号', '姓名', '分值', '原因'].map((v) => ({ v, s: ST.HEADER })), ...[...c.scores].sort((a, b) => b.time - a.time).map((e) => { const st = c.students.find((x) => x.id === e.studentId); return st ? [fmtDate(e.time), st.no, st.name, { v: e.delta, s: e.delta >= 0 ? ST.GREEN : ST.RED }, e.reason] : null; }).filter(Boolean)];
-    const rc = [['充值时间', '学号', '姓名', '充值前', '充值后', '备注'].map((v) => ({ v, s: ST.HEADER })), ...recharges.flatMap((r) => r.studentIds.map((id) => { const st = c.students.find((x) => x.id === id); return st ? [fmtDate(r.time), st.no, st.name, r.before?.[id] ?? 0, { v: r.target, s: ST.GREEN }, r.note || ''] : null; }).filter(Boolean))];
-    download(xlsx([{ name: '作业统计', rows }, { name: '各次统计名单', rows: classStatRows(c, fmtDate) }, { name: '积分榜', rows: rank }, { name: '积分明细', rows: log }, ...(recharges.length ? [{ name: '积分充值记录', rows: rc }] : [])]), `${c.name}_作业统计.xlsx`);
+    const rc = [['重置时间', '学号', '姓名', '重置前', '重置后', '备注'].map((v) => ({ v, s: ST.HEADER })), ...recharges.flatMap((r) => r.studentIds.map((id) => { const st = c.students.find((x) => x.id === id); return st ? [fmtDate(r.time), st.no, st.name, r.before?.[id] ?? 0, { v: r.target, s: ST.GREEN }, r.note || ''] : null; }).filter(Boolean))];
+    download(xlsx([{ name: '作业统计', rows }, { name: '各次统计名单', rows: classStatRows(c, fmtDate) }, { name: '积分榜', rows: rank }, { name: '积分明细', rows: log }, ...(recharges.length ? [{ name: '积分重置记录', rows: rc }] : [])]), `${c.name}_作业统计.xlsx`);
   };
   return html`<div class=${'page' + (selecting ? ' scores-selecting' : '')}>
     <div class="hero"><div class="hero-title">积分榜</div><div class="muted-light small">基准 ${fmtNum(rules.initial)} · 未交 ${signed(rules.missing)} · 迟交 ${signed(rules.late)} · 优秀 ${signed(rules.excellent)}</div>
@@ -710,10 +710,10 @@ function Scores({ s }) {
     </div>
     <div class="toolbar"><button class="chip" onClick=${exportAll}>📊 导出全班 Excel</button>
       <button class="chip" onClick=${() => download(xlsx([{ name: '各次统计名单', rows: classStatRows(c, fmtDate) }]), `${c.name}_各次作业统计名单.xlsx`)}>📋 各次统计名单</button>
-      ${recharges.length > 0 && html`<button class="chip" onClick=${() => setHistoryOpen(true)}>🧾 充值记录 ${recharges.length}</button>`}
+      ${recharges.length > 0 && html`<button class="chip" onClick=${() => setHistoryOpen(true)}>🧾 重置记录 ${recharges.length}</button>`}
       ${!s.readOnly && html`<button class=${'chip' + (selecting ? ' on' : '')} disabled=${!c.students.length} onClick=${() => { if (selecting) cancelSelection(); else setSelecting(true); }}>${selecting ? '退出多选' : '☑️ 多选'}</button>
       <button class="chip" onClick=${() => { setScoreValue(String(rules.initial)); setBaseOpen(true); }}>修改基准分</button>
-      <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => openReset(c.students.map((st) => st.id))}>💳 全班积分充值</button>
+      <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => openReset(c.students.map((st) => st.id))}>🔄 全班积分重置</button>
       <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => { update((d) => mapClass(d, c.id, (k) => ({ ...k, scores: [...k.scores, ...k.students.map((x) => ({ id: newId(), studentId: x.id, delta: 1, reason: '全班表现好', time: Date.now() }))] }))); say('全班 +1 🎉', true); }}>🎉 全班 +1</button>`}</div>
     <div class="toolbar" aria-label="积分排序">
       <button class=${'chip' + (!byNumber ? ' on' : '')} aria-pressed=${!byNumber} onClick=${() => setOrder(false)}>按积分</button>
@@ -734,7 +734,7 @@ function Scores({ s }) {
       <button class="chip" onClick=${() => setSelected(new Set(c.students.map((st) => st.id)))}>全选</button>
       <button class="chip" onClick=${() => setSelected(new Set())}>清空选择</button>
       <button class="btn" disabled=${!picked.length} onClick=${() => openScore(picked.map((st) => st.id))}>批量加减分</button>
-      <button class="chip" disabled=${!picked.length} onClick=${() => openReset(picked.map((st) => st.id))}>💳 积分充值</button>
+      <button class="chip" disabled=${!picked.length} onClick=${() => openReset(picked.map((st) => st.id))}>🔄 积分重置</button>
       <button class="chip" onClick=${cancelSelection}>取消</button>
     </div>`}
     ${!s.readOnly && targets.length > 0 && html`<${ScoreEntryDialog} students=${targets} reasons=${data.settings.quickReasons} onClose=${() => setTargetIds(null)} onSave=${saveScore} />`}
@@ -747,30 +747,30 @@ function Scores({ s }) {
         setBaseOpen(false); say(`基准分已改为 ${fmtNum(Number(scoreValue))}，历史记录已保留`, true);
       }}>保存</button></div>
     </${Modal}>`}
-    ${!s.readOnly && resetTargets.length > 0 && html`<${Modal} title=${`💳 积分充值 · ${resetTargets.length} 人`} onClose=${() => setResetIds(null)}>
+    ${!s.readOnly && resetTargets.length > 0 && html`<${Modal} title=${`🔄 积分重置 · ${resetTargets.length} 人`} onClose=${() => setResetIds(null)}>
       <div class="score-targets muted small">${resetTargets.map((st) => `${st.no} ${st.name}`).join('、')}</div>
-      <p class="muted small">只重置积分：把当前积分设为充值分数，并留下一条充值记录。原有加减分流水、作业状态、备注和未交次数全部保留，仍可在记录中查看；之后的新作业与加减分在充值分数上继续累计。可在“充值记录”中撤销。</p>
-      <label>充值到<input class="input" type="number" step="0.5" value=${scoreValue} onInput=${(e) => setScoreValue(e.target.value)} /></label>
+      <p class="muted small">只重置积分：把当前积分设为重置分数，并留下一条重置记录。原有加减分流水、作业状态、备注和未交次数全部保留，仍可在记录中查看；之后的新作业与加减分在重置分数上继续累计。可在“重置记录”中撤销。</p>
+      <label>重置为<input class="input" type="number" step="0.5" value=${scoreValue} onInput=${(e) => setScoreValue(e.target.value)} /></label>
       <label>备注（可选）<input class="input" placeholder="如：期中重新计分" value=${rechargeNote} onInput=${(e) => setRechargeNote(e.target.value)} /></label>
       <div class="small muted">从什么时候起重新计分</div>
       <div class="chips" role="radiogroup">${[['now', '立即'], ['assignment', '从某次作业起'], ['day', '从某一天起']].map(([k, l]) => html`<button type="button" role="radio" aria-checked=${startMode === k} class=${'chip' + (startMode === k ? ' on' : '')} onClick=${() => setStartMode(k)}>${l}</button>`)}</div>
       ${startMode === 'assignment' && html`<label>选择作业（含该作业）<select class="input recharge-assign" value=${startAssign} onChange=${(e) => setStartAssign(e.target.value)}>${[...c.assignments].sort((a, b) => b.createdAt - a.createdAt).map((a) => html`<option value=${a.id}>${fmtDate(a.createdAt)} ${a.subject} ${a.title}</option>`)}</select></label>`}
       ${startMode === 'day' && html`<label>选择日期（当天 0 点起）<input class="input recharge-day" type="date" value=${startDay} onInput=${(e) => setStartDay(e.target.value)} /></label>`}
-      ${validScoreValue && html`<div class="muted tiny">充值后：${(() => { const after = Object.fromEntries(studentStats(rechargeScores(c, rules, resetTargets.map((st) => st.id), Number(scoreValue), '', Date.now(), startOpts()), rules).map((x) => [x.student.id, x.score])); return resetTargets.slice(0, 12).map((st) => `${st.name} ${fmtNum(after[st.id])}`).join('、') + (resetTargets.length > 12 ? ' …' : ''); })()}</div>`}
+      ${validScoreValue && html`<div class="muted tiny">重置后：${(() => { const after = Object.fromEntries(studentStats(rechargeScores(c, rules, resetTargets.map((st) => st.id), Number(scoreValue), '', Date.now(), startOpts()), rules).map((x) => [x.student.id, x.score])); return resetTargets.slice(0, 12).map((st) => `${st.name} ${fmtNum(after[st.id])}`).join('、') + (resetTargets.length > 12 ? ' …' : ''); })()}</div>`}
       <div class="actions"><button class="btn ghost" onClick=${() => setResetIds(null)}>取消</button><button class="btn" disabled=${!validScoreValue} onClick=${() => {
         if (!validScoreValue || s.readOnly) return;
         if (startMode === 'assignment' && !startAssign) return;
         update((d) => mapClass(d, c.id, (k) => rechargeScores(k, d.settings.rules, resetTargets.map((st) => st.id), Number(scoreValue), rechargeNote, Date.now(), startOpts())));
-        setResetIds(null); cancelSelection(); say(`💳 已为 ${resetTargets.length} 人充值到 ${fmtNum(Number(scoreValue))} 分，历史记录已保留`, true);
-      }}>确认充值</button></div>
+        setResetIds(null); cancelSelection(); say(`🔄 已为 ${resetTargets.length} 人重置为 ${fmtNum(Number(scoreValue))} 分，历史记录已保留`, true);
+      }}>确认重置</button></div>
     </${Modal}>`}
-    ${historyOpen && html`<${Modal} title="🧾 积分充值记录" onClose=${() => setHistoryOpen(false)}>
-      ${recharges.length === 0 && html`<div class="muted small">暂无充值记录</div>`}
+    ${historyOpen && html`<${Modal} title="🧾 积分重置记录" onClose=${() => setHistoryOpen(false)}>
+      ${recharges.length === 0 && html`<div class="muted small">暂无重置记录</div>`}
       ${recharges.map((r) => html`<div key=${r.id} class="card recharge-item">
-        <div class="row"><b class="grow">充值到 ${fmtNum(r.target)} 分 · ${r.studentIds.length} 人</b><span class="muted tiny">${startText(r)} · 操作于 ${fmtDate(r.time)} ${new Date(r.time).toTimeString().slice(0, 5)}</span></div>
+        <div class="row"><b class="grow">重置为 ${fmtNum(r.target)} 分 · ${r.studentIds.length} 人</b><span class="muted tiny">${startText(r)} · 操作于 ${fmtDate(r.time)} ${new Date(r.time).toTimeString().slice(0, 5)}</span></div>
         ${r.note && html`<div class="small">${r.note}</div>`}
         <div class="muted tiny">${r.studentIds.slice(0, 12).map((id) => `${nameOf(id)}（原 ${fmtNum(r.before?.[id] ?? 0)}）`).join('、')}${r.studentIds.length > 12 ? ` 等 ${r.studentIds.length} 人` : ''}</div>
-        ${!s.readOnly && html`<div class="actions"><button class="btn ghost" onClick=${() => { if (confirm('撤销这次充值？这些同学的积分将恢复按之前的记录计算。')) { update((d) => mapClass(d, c.id, (k) => removeRecharge(k, r.id))); say('已撤销该次充值', true); } }}>撤销这次充值</button></div>`}
+        ${!s.readOnly && html`<div class="actions"><button class="btn ghost" onClick=${() => { if (confirm('撤销这次重置？这些同学的积分将恢复按之前的记录计算。')) { update((d) => mapClass(d, c.id, (k) => removeRecharge(k, r.id))); say('已撤销该次重置', true); } }}>撤销这次重置</button></div>`}
       </div>`)}
     </${Modal}>`}
   </div>`;

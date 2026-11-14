@@ -81,7 +81,7 @@ data class SchoolClass(
     val emoji: String = "🎒",
     /** 座位表（可选） */
     val seating: Seating? = null,
-    /** 积分充值记录（见 Recharge.kt） */
+    /** 积分重置记录（见 Recharge.kt） */
     val recharges: List<ScoreRecharge> = emptyList(),
 )
 

@@ -172,9 +172,9 @@ do {
     check(reset.resettingScores(rules, ids: ["s1"], target: 0) == reset, "重复重置不新增记录")
     check(c.resettingScores(rules, ids: [], target: 0) == c && c.resettingScores(rules, ids: ["s1"], target: .nan) == c && c.resettingScores(rules, ids: ["s1"], target: .infinity) == c, "空选择和非有限分数不修改数据")
 }
-// 积分充值：与安卓 RechargeTest、网页 recharge.test.mjs 同一组用例
+// 积分重置：与安卓 RechargeTest、网页 recharge.test.mjs 同一组用例
 do {
-    print("== 积分充值")
+    print("== 积分重置")
     func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
     let rules = Rules()
     var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三"), Student(id: "s2", no: "02", name: "李四")])
@@ -188,34 +188,34 @@ do {
     c.scores = [e1, e2]
     func score(_ k: SchoolClass, _ id: String, _ r: Rules) -> Double { k.stats(r).first { $0.id == id }!.score }
     let r1 = c.recharging(rules, ids: ["s1"], target: 100, time: 5000)
-    check(score(c, "s1", rules) == 96 && score(r1, "s1", rules) == 100 && score(r1, "s2", rules) == 100, "充值把积分设为目标分")
-    check(r1.scores == c.scores && r1.assignments == c.assignments && r1.stats(rules)[0].missing == 3 && r1.recharges[0].before["s1"] == 96, "充值保留流水、作业状态、未交次数，并记录充值前分数")
+    check(score(c, "s1", rules) == 96 && score(r1, "s1", rules) == 100 && score(r1, "s2", rules) == 100, "重置把积分设为目标分")
+    check(r1.scores == c.scores && r1.assignments == c.assignments && r1.stats(rules)[0].missing == 3 && r1.recharges[0].before["s1"] == 96, "重置保留流水、作业状态、未交次数，并记录重置前分数")
     var later = c.recharging(rules, ids: ["s1", "s2"], target: 50, time: 5000)
     var e3 = ScoreEntry(studentId: "s1", delta: 2, reason: "主动回答"); e3.time = 6000
     later.scores.append(e3)
     var a4 = Assignment(title: "作业4", subject: "数学"); a4.createdAt = 7000; a4.statuses = ["s1": "EXCELLENT", "s2": "MISSING"]
     later.assignments.append(a4)
-    check(score(later, "s1", rules) == 53 && score(later, "s2", rules) == 48, "充值后新作业与加减分继续累计")
+    check(score(later, "s1", rules) == 53 && score(later, "s2", rules) == 48, "重置后新作业与加减分继续累计")
     var zero = rules; zero.initial = 0; zero.missing = -10
-    check(score(r1, "s1", zero) == 100, "修改规则不改变充值后的基准")
+    check(score(r1, "s1", zero) == 100, "修改规则不改变重置后的基准")
     var twice = r1
     var e4 = ScoreEntry(studentId: "s1", delta: -4, reason: "违纪"); e4.time = 6000
     twice.scores.append(e4)
     twice = twice.recharging(rules, ids: ["s1"], target: 80, time: 7000)
-    check(score(twice, "s1", rules) == 80 && twice.recharges.last?.before["s1"] == 96, "最近一次充值生效")
+    check(score(twice, "s1", rules) == 80 && twice.recharges.last?.before["s1"] == 96, "最近一次重置生效")
     var undone = twice; undone.recharges.removeLast()
-    check(score(undone, "s1", rules) == 96, "删除记录即撤销充值")
+    check(score(undone, "s1", rules) == 96, "删除记录即撤销重置")
     let json = try! JSONEncoder().encode(twice)
     let back = try! JSONDecoder().decode(SchoolClass.self, from: json)
-    check(back.recharges == twice.recharges, "充值记录可编码/解码")
+    check(back.recharges == twice.recharges, "重置记录可编码/解码")
     let legacy = try! JSONDecoder().decode(SchoolClass.self, from: Data(#"{"name":"旧班级"}"#.utf8))
     check(legacy.recharges.isEmpty, "旧数据没有 recharges 字段也能读取")
     let a2id = c.assignments[1].id
     let fromA = c.recharging(rules, ids: ["s1"], target: 100, time: 9000, assignmentId: a2id)
-    check(score(fromA, "s1", rules) == 95 && fromA.recharges[0].effectiveAt == 2000 && fromA.recharges[0].assignmentTitle == "作业2", "从某次作业起充值（含该作业）")
+    check(score(fromA, "s1", rules) == 95 && fromA.recharges[0].effectiveAt == 2000 && fromA.recharges[0].assignmentTitle == "作业2", "从某次作业起重置（含该作业）")
     let byDay = c.recharging(rules, ids: ["s1"], target: 100, time: 9000, effectiveAt: 2500)
     let both = byDay.recharging(rules, ids: ["s1"], target: 50, time: 10000, effectiveAt: 500)
-    check(score(byDay, "s1", rules) == 97 && score(both, "s1", rules) == 97, "从某一天起充值；生效更晚的优先")
+    check(score(byDay, "s1", rules) == 97 && score(both, "s1", rules) == 97, "从某一天起重置；生效更晚的优先")
 }
 // ---------- 统计表识别 / 统计名单 / 草稿（与 tools/web-tests/stats.test.mjs 同样的用例） ----------
 do {
