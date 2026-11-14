@@ -501,6 +501,7 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
                     Text(
                         (when (row.kind) {
                             com.deepshawn.hwcounter.data.LedgerRow.Kind.AUTO -> "自动计分 · "
+                            com.deepshawn.hwcounter.data.LedgerRow.Kind.EXAM -> "考试计分 · "
                             com.deepshawn.hwcounter.data.LedgerRow.Kind.RECHARGE -> if (row.counted) "当前生效 · " else "已被之后的重置取代 · "
                             else -> ""
                         }) + fmt.format(Date(row.time)) + if (dim && !isRecharge) " · 重置前，不计入当前积分" else "",

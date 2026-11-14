@@ -462,7 +462,7 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
                 Column(Modifier.padding(16.dp)) {
                     Text("粘贴 Excel 里复制的成绩（包含姓名或学号列和分数列），或选择 .xlsx / CSV 文件。可以一次包含多科，每列一科。", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
                     Spacer(Modifier.height(10.dp))
-                    TextField(text, { text = it }, label = "学号\t姓名\t数学\n01\t张三\t95", minLines = 4, maxLines = 8, modifier = Modifier.fillMaxWidth())
+                    TextField(text, { text = it }, label = "例如：学号  姓名  数学\n01  张三  95", minLines = 4, maxLines = 8, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         TextButton("识别粘贴内容", onClick = { table = StatTable.splitTable(text); col = 0; title = ""; full = "" }, enabled = text.isNotBlank(), modifier = Modifier.weight(1f), colors = ButtonDefaults.textButtonColorsPrimary())
