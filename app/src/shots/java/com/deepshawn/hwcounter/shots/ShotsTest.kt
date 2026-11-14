@@ -84,6 +84,8 @@ class ShotsTest {
         rule.waitForIdle()
     }
 
+    /** 一直返回直到看到底部选项卡 */
+    private fun home() = repeat(4) { if (rule.onAllNodes(hasText("设置") and hasClickAction()).fetchSemanticsNodes().isEmpty()) runCatching { back() } }
     private fun top() = repeat(10) { rule.onRoot().performTouchInput { swipeDown(startY = top + bottom * 0.2f, endY = bottom * 0.95f, durationMillis = 200) } }
     private fun click(text: String) = rule.onAllNodes(hasText(text) and hasClickAction()).onFirst().performClick()
     private fun tab(label: String) = rule.onAllNodes(hasText(label) and hasClickAction()).onFirst().performClick()
@@ -119,15 +121,11 @@ class ShotsTest {
         }
 
         tab("首页")
-        safe {
-            top()
-            click("考试"); save("${prefix}_40_exams")
-            click("第一次月考"); save("${prefix}_41_exam_detail"); scroll(); save("${prefix}_42_exam_detail")
-            click("按学号"); save("${prefix}_43_exam_by_no")
-            back(); rule.onAllNodes(hasContentDescription("导入成绩")).onFirst().performClick(); save("${prefix}_44_exam_import")
-            back(); back()
-        }
-
+        safe { top(); click("考试"); save("${prefix}_40_exams") }
+        safe { click("第一次月考"); save("${prefix}_41_exam_detail"); scroll(); save("${prefix}_42_exam_detail") }
+        safe { top(); click("按学号"); save("${prefix}_43_exam_by_no") }
+        safe { back(); rule.onAllNodes(hasContentDescription("导入成绩")).onFirst().performClick(); save("${prefix}_44_exam_import") }
+        home()
         tab("设置"); save("${prefix}_50_settings"); scroll(); save("${prefix}_51_settings"); scroll(); save("${prefix}_52_settings")
         safe {
             tab("名单"); top(); click("学生")

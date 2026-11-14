@@ -338,7 +338,9 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
         if (st.count > 0) item(key = "dist") {
             SmallTitle("分数段（满分的 10% 一档）")
             HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
-                Histogram(st.bins.map { (l, n) -> l.substringBefore("–") to n }, Modifier.padding(16.dp))
+                // 去掉前面没人的分数段（保留一档留白）
+                val first = (st.bins.indexOfFirst { it.second > 0 } - 1).coerceAtLeast(0)
+                Histogram(st.bins.drop(first).map { (l, n) -> l.substringBefore("–") to n }, Modifier.padding(16.dp))
             }
         }
         item(key = "sort") {

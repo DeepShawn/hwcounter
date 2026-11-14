@@ -247,7 +247,7 @@ fun KpiTile(label: String, value: String, delta: Float?, modifier: Modifier = Mo
             val pts = (delta * 100).roundToInt()
             val good = if (goodWhenUp) pts >= 0 else pts <= 0
             Text(
-                when { pts > 0 -> "▲ $pts 个百分点"; pts < 0 -> "▼ ${-pts} 个百分点"; else -> "与上期持平" },
+                when { pts > 0 -> "▲ $pts 个百分点"; pts < 0 -> "▼ ${-pts} 个百分点"; else -> "持平" },
                 fontSize = 11.sp, color = if (pts == 0) colors.onSurfaceVariantSummary else if (good) Color(0xFF169B68) else Color(0xFFD93A4C),
             )
         } else Text(" ", fontSize = 11.sp)
