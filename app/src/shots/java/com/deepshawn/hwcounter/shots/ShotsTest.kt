@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeDown
 import androidx.test.core.app.ApplicationProvider
 import com.deepshawn.hwcounter.data.*
 import com.deepshawn.hwcounter.ui.App
@@ -83,6 +84,7 @@ class ShotsTest {
         rule.waitForIdle()
     }
 
+    private fun top() = repeat(10) { rule.onRoot().performTouchInput { swipeDown(startY = top + bottom * 0.2f, endY = bottom * 0.95f, durationMillis = 200) } }
     private fun click(text: String) = rule.onAllNodes(hasText(text) and hasClickAction()).onFirst().performClick()
     private fun tab(label: String) = rule.onAllNodes(hasText(label) and hasClickAction()).onFirst().performClick()
     private fun back() = rule.onAllNodes(hasContentDescription("返回")).onFirst().performClick()
@@ -111,14 +113,14 @@ class ShotsTest {
         tab("统计"); save("${prefix}_20_stats")
         for (i in 1..7) { scroll(); save("${prefix}_2${i}_stats") }
         safe {
-            rule.onRoot().performTouchInput { swipeUp(startY = top + bottom * 0.12f, endY = bottom * 0.9f, durationMillis = 300) }
-            repeat(12) { rule.onRoot().performTouchInput { swipeUp(startY = top + bottom * 0.15f, endY = bottom * 0.95f, durationMillis = 250) } }
+            top()
             click("本轮"); save("${prefix}_30_stats_period")
             click("考试"); save("${prefix}_31_stats_exam"); scroll(); save("${prefix}_32_stats_exam"); scroll(); save("${prefix}_33_stats_exam"); scroll(); save("${prefix}_34_stats_exam")
         }
 
         tab("首页")
         safe {
+            top()
             click("考试"); save("${prefix}_40_exams")
             click("第一次月考"); save("${prefix}_41_exam_detail"); scroll(); save("${prefix}_42_exam_detail")
             click("按学号"); save("${prefix}_43_exam_by_no")
@@ -128,8 +130,8 @@ class ShotsTest {
 
         tab("设置"); save("${prefix}_50_settings"); scroll(); save("${prefix}_51_settings"); scroll(); save("${prefix}_52_settings")
         safe {
-            tab("积分")
-            rule.onAllNodes(hasText("张锦宇")).onFirst().performTouchInput { longClick() }
+            tab("名单"); top(); click("学生")
+            click("张锦宇")
             save("${prefix}_60_student"); scroll(); save("${prefix}_61_student")
         }
     }

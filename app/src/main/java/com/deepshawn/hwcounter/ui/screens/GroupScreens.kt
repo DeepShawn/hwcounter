@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -193,7 +194,7 @@ fun GroupDetailScreen(vm: AppViewModel, data: AppData, name: String) {
             HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(colors.primary.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
-                        Text(name.take(2), fontWeight = FontWeight.Bold, color = colors.primary)
+                        Icon(Icons.Filled.Groups, null, Modifier.size(26.dp), tint = colors.primary)
                     }
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {

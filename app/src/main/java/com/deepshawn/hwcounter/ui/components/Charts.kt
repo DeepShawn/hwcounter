@@ -139,12 +139,7 @@ fun TrendLine(values: List<Float>, labels: List<String>, details: List<String>, 
                 drawLine(line.copy(alpha = 0.35f), Offset(x(sel), pad), Offset(x(sel), size.height - pad), 1.dp.toPx())
             }
         }
-        Row(Modifier.fillMaxWidth().padding(start = 34.dp, top = 4.dp)) {
-            val show = if (labels.size <= 6) labels.indices.toList() else listOf(0, labels.size / 2, labels.lastIndex)
-            labels.forEachIndexed { i, t ->
-                Text(if (i in show) t else "", Modifier.weight(1f), fontSize = 10.sp, color = muted, textAlign = TextAlign.Center, maxLines = 1)
-            }
-        }
+        AxisLabels(labels, Modifier.padding(start = 34.dp, top = 4.dp), muted)
         Text("虚线为平均 ${pctText(avg)} · 点按图表查看每次详情", fontSize = 11.sp, color = muted, modifier = Modifier.padding(top = 2.dp))
     }
 }
@@ -191,10 +186,7 @@ fun StackedColumns(columns: List<Map<HwStatus, Int>>, labels: List<String>, deta
             }
             drawLine(colors.dividerLine, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
         }
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-            val show = if (labels.size <= 8) labels.indices.toList() else listOf(0, labels.size / 2, labels.lastIndex)
-            labels.forEachIndexed { i, t -> Text(if (i in show) t else "", Modifier.weight(1f), fontSize = 10.sp, color = colors.onSurfaceVariantSummary, textAlign = TextAlign.Center, maxLines = 1) }
-        }
+        AxisLabels(labels, Modifier.padding(top = 4.dp), colors.onSurfaceVariantSummary)
         Spacer(Modifier.height(8.dp))
         ChartLegend(ChartStatusOrder.map { statusChartColor(it) to it.label })
     }
@@ -258,7 +250,7 @@ fun KpiTile(label: String, value: String, delta: Float?, modifier: Modifier = Mo
                 when { pts > 0 -> "▲ $pts 个百分点"; pts < 0 -> "▼ ${-pts} 个百分点"; else -> "与上期持平" },
                 fontSize = 11.sp, color = if (pts == 0) colors.onSurfaceVariantSummary else if (good) Color(0xFF169B68) else Color(0xFFD93A4C),
             )
-        } else Text("暂无上期数据", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
+        } else Text(" ", fontSize = 11.sp)
     }
 }
 
@@ -304,10 +296,7 @@ fun ValueLine(values: List<Double>, labels: List<String>, details: List<String>,
                 drawLine(line.copy(alpha = 0.35f), Offset(x(sel), p), Offset(x(sel), size.height - p), 1.dp.toPx())
             }
         }
-        Row(Modifier.fillMaxWidth().padding(start = 34.dp, top = 4.dp)) {
-            val show = if (labels.size <= 6) labels.indices.toList() else listOf(0, labels.size / 2, labels.lastIndex)
-            labels.forEachIndexed { i, t -> Text(if (i in show) t else "", Modifier.weight(1f), fontSize = 10.sp, color = muted, textAlign = TextAlign.Center, maxLines = 1) }
-        }
+        AxisLabels(labels, Modifier.padding(start = 34.dp, top = 4.dp), muted)
     }
 }
 
@@ -333,3 +322,14 @@ fun InsightList(items: List<com.deepshawn.hwcounter.data.Analytics.Insight>, mod
 }
 
 private fun fmtValue(x: Double): String = with(x) { com.deepshawn.hwcounter.data.fmtNumber(this) }
+
+
+/** 横轴标签：少于 7 个逐个显示；更多时只显示首、中、尾，不截断 */
+@Composable
+private fun AxisLabels(labels: List<String>, modifier: Modifier, color: Color) {
+    if (labels.size <= 6) Row(modifier.fillMaxWidth()) {
+        labels.forEach { Text(it, Modifier.weight(1f), fontSize = 10.sp, color = color, textAlign = TextAlign.Center, maxLines = 1) }
+    } else Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        listOf(labels.first(), labels[labels.size / 2], labels.last()).forEach { Text(it, fontSize = 10.sp, color = color, maxLines = 1) }
+    }
+}

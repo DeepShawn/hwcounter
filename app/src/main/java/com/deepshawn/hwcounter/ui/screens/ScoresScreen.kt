@@ -113,7 +113,8 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
     val stats = remember(c, rules) { c.studentStats(rules).sortedByDescending { it.score } }
     val personalStats = remember(stats, byNumber) { if (byNumber) stats.sortedWith { x, y -> compareStudentNumbers(x.student.no, y.student.no) } else stats }
     val ranks = remember(stats) { stats.mapIndexed { i, st -> st.student.id to i + 1 }.toMap() }
-    val recharged = remember(c) { c.latestRecharges() }
+    // 全班同一次重置时不必逐行标注，只标出单独重置过的同学
+    val recharged = remember(c) { c.latestRecharges().let { m -> if (m.size == c.students.size && m.values.map { it.id }.distinct().size == 1) emptyMap() else m } }
     val selectedIds = c.students.filter { it.id in selected }.map { it.id }
     fun exitSelect() { selecting = false; selected = emptySet() }
 
