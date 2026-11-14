@@ -261,3 +261,75 @@ fun KpiTile(label: String, value: String, delta: Float?, modifier: Modifier = Mo
         } else Text("暂无上期数据", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
     }
 }
+
+/**
+ * 数值折线（积分走势、考试平均分等）：纵轴按数据范围自动取整，2px 线、点按看详情。
+ */
+@Composable
+fun ValueLine(values: List<Double>, labels: List<String>, details: List<String>, modifier: Modifier = Modifier, height: Dp = 150.dp, format: (Double) -> String = ::fmtValue) {
+    if (values.isEmpty()) return
+    val colors = MiuixTheme.colorScheme
+    val line = colors.primary
+    val muted = colors.onSurfaceVariantSummary
+    val grow = rememberGrow(values)
+    var sel by remember(values) { mutableIntStateOf(values.lastIndex) }
+    val lo0 = values.min(); val hi0 = values.max()
+    val pad = maxOf((hi0 - lo0) * 0.15, 0.5)
+    val lo = kotlin.math.floor(lo0 - pad); val hi = kotlin.math.ceil(hi0 + pad)
+    Column(modifier) {
+        Readout(details.getOrElse(sel) { "" })
+        Spacer(Modifier.height(6.dp))
+        Row {
+            Column(Modifier.height(height), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.End) {
+                listOf(hi, (hi + lo) / 2, lo).forEach { Text(format(it), fontSize = 10.sp, color = muted) }
+            }
+            Spacer(Modifier.width(6.dp))
+            Canvas(
+                Modifier.weight(1f).height(height)
+                    .pointerInput(values) {
+                        detectTapGestures { o -> val n = values.size; sel = if (n == 1) 0 else ((o.x / size.width) * (n - 1)).roundToInt().coerceIn(0, n - 1) }
+                    },
+            ) {
+                val p = 6.dp.toPx(); val w = size.width - p * 2; val h = size.height - p * 2
+                fun x(i: Int) = p + if (values.size == 1) w / 2 else w * i / (values.size - 1)
+                fun y(v: Double) = p + h * (1f - (((v - lo) / (hi - lo)).toFloat().coerceIn(0f, 1f)) * grow)
+                listOf(lo, (hi + lo) / 2, hi).forEach { g -> drawLine(colors.dividerLine, Offset(p, y(g)), Offset(size.width - p, y(g)), 1.dp.toPx()) }
+                val path = Path().apply { values.forEachIndexed { i, v -> if (i == 0) moveTo(x(i), y(v)) else lineTo(x(i), y(v)) } }
+                drawPath(path, line, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                values.forEachIndexed { i, v ->
+                    val r = if (i == sel) 5.dp.toPx() else 3.5.dp.toPx()
+                    drawCircle(colors.surfaceContainer, r + 2.dp.toPx(), Offset(x(i), y(v)))
+                    drawCircle(line, r, Offset(x(i), y(v)))
+                }
+                drawLine(line.copy(alpha = 0.35f), Offset(x(sel), p), Offset(x(sel), size.height - p), 1.dp.toPx())
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(start = 34.dp, top = 4.dp)) {
+            val show = if (labels.size <= 6) labels.indices.toList() else listOf(0, labels.size / 2, labels.lastIndex)
+            labels.forEachIndexed { i, t -> Text(if (i in show) t else "", Modifier.weight(1f), fontSize = 10.sp, color = muted, textAlign = TextAlign.Center, maxLines = 1) }
+        }
+    }
+}
+
+/** 自动结论列表：彩色圆点区分“好 / 提示 / 注意” */
+@Composable
+fun InsightList(items: List<com.deepshawn.hwcounter.data.Analytics.Insight>, modifier: Modifier = Modifier) {
+    val colors = MiuixTheme.colorScheme
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (items.isEmpty()) Text("数据还不够多，暂时没有明显的结论。", fontSize = 14.sp, color = colors.onSurfaceVariantSummary)
+        items.forEach { s ->
+            val c = when (s.level) {
+                com.deepshawn.hwcounter.data.Analytics.Level.GOOD -> Color(0xFF169B68)
+                com.deepshawn.hwcounter.data.Analytics.Level.WARN -> Color(0xFFE8792C)
+                else -> colors.primary
+            }
+            Row {
+                Box(Modifier.padding(top = 6.dp).size(8.dp).clip(CircleShape).background(c))
+                Spacer(Modifier.width(10.dp))
+                Text(s.text, fontSize = 14.sp, lineHeight = 20.sp, color = colors.onSurface)
+            }
+        }
+    }
+}
+
+private fun fmtValue(x: Double): String = with(x) { com.deepshawn.hwcounter.data.fmtNumber(this) }

@@ -238,3 +238,6 @@ fun Double.fmt(): String {
 }
 
 fun Double.signed(): String = if (this > 0) "+" + fmt() else fmt()
+
+/** 给不方便用扩展函数的地方（函数引用） */
+fun fmtNumber(x: Double): String = x.fmt()
