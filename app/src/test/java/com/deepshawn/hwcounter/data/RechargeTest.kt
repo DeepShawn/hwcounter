@@ -82,4 +82,33 @@ class RechargeTest {
         val round = AppViewModel.json.decodeFromString(AppData.serializer(), AppViewModel.json.encodeToString(AppData.serializer(), d.copy(classes = d.classes.map { it.recharge(rules, listOf("s1"), 90.0, "期中", 1) })))
         assertEquals("期中", round.classes.single().recharges.single().note)
     }
+
+    @Test fun rechargeFromAnAssignmentCountsThatAssignmentOnward() {
+        val base = fixture() // a1@1000 a2@2000 a3@3000 未交；e1@1500 +3, e2@2500 −1
+        val a2 = base.assignments.first { it.id == "a2" }
+        val c = base.recharge(rules, listOf("s1"), 100.0, time = 9_000, assignment = a2)
+        // 计入 a2、a3（各 −2）和 e2（−1）：100 − 4 − 1 = 95
+        assertEquals(95.0, c.score("s1"), 0.0)
+        val r = c.recharges.single()
+        assertEquals(2_000L, r.effectiveAt); assertEquals("a2", r.assignmentId); assertEquals("作业2", r.assignmentTitle)
+        assertEquals(96.0, r.before["s1"]!!, 0.0)
+        val rows = c.ledger(rules, "s1")
+        assertTrue(rows.first { it.assignmentId == "a2" }.counted)
+        assertFalse(rows.first { it.assignmentId == "a1" }.counted)
+        assertFalse(rows.first { it.entryId == "e1" }.counted)
+        assertTrue(rows.first { it.entryId == "e2" }.counted)
+        assertTrue(rows.first { it.kind == LedgerRow.Kind.RECHARGE }.title.contains("从「作业2」起"))
+    }
+
+    @Test fun rechargeFromADayAndOrderingByEffectiveStart() {
+        val base = fixture()
+        // 从 2500 起：计入 e2（−1）、a3（−2）
+        val byDay = base.recharge(rules, listOf("s1"), 100.0, time = 9_000, effectiveAt = 2_500)
+        assertEquals(97.0, byDay.score("s1"), 0.0)
+        // 之后再补一条更早生效的充值：生效更晚的那次仍然生效
+        val both = byDay.recharge(rules, listOf("s1"), 50.0, time = 10_000, effectiveAt = 500)
+        assertEquals(97.0, both.score("s1"), 0.0)
+        assertEquals(50.0 - 6 + 2, both.removeRecharge(byDay.recharges.single().id).score("s1"), 0.0)
+        assertEquals(startOfDay(startOfDay(1_700_000_000_000L) + 5), startOfDay(1_700_000_000_000L))
+    }
 }

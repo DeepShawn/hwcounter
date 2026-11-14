@@ -194,6 +194,18 @@ struct ScoreRecharge: Codable, Identifiable, Equatable {
     var studentIds: [String]
     var before: [String: Double] = [:]
     var note: String = ""
+    /// 生效时间：nil = 操作时立即生效；否则从这一刻（含）起重新计分（从某次作业 / 某一天起）
+    var effectiveAt: Int64? = nil
+    var assignmentId: String? = nil
+    var assignmentTitle: String = ""
+
+    var start: Int64 { effectiveAt ?? time }
+    func counts(_ t: Int64) -> Bool { if let e = effectiveAt { return t >= e } else { return t > time } }
+    var startLabel: String {
+        guard let e = effectiveAt else { return "立即生效" }
+        if assignmentId != nil { return "从「\(assignmentTitle.isEmpty ? "所选作业" : assignmentTitle)」起" }
+        return "从 \(fmtDate(Date(timeIntervalSince1970: Double(e) / 1000))) 起"
+    }
 
     init(target: Double, studentIds: [String], before: [String: Double], note: String, time: Int64 = nowMillis()) {
         self.target = target; self.studentIds = studentIds; self.before = before; self.note = note; self.time = time
@@ -206,6 +218,9 @@ struct ScoreRecharge: Codable, Identifiable, Equatable {
         studentIds = try c.decodeIfPresent([String].self, forKey: .studentIds) ?? []
         before = try c.decodeIfPresent([String: Double].self, forKey: .before) ?? [:]
         note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+        effectiveAt = try c.decodeIfPresent(Int64.self, forKey: .effectiveAt)
+        assignmentId = try c.decodeIfPresent(String.self, forKey: .assignmentId)
+        assignmentTitle = try c.decodeIfPresent(String.self, forKey: .assignmentTitle) ?? ""
     }
 }
 
@@ -364,14 +379,14 @@ extension SchoolClass {
     /// 每位学生最近一次生效的充值
     func latestRecharges() -> [String: ScoreRecharge] {
         var out: [String: ScoreRecharge] = [:]
-        for r in recharges.sorted(by: { $0.time != $1.time ? $0.time < $1.time : $0.id < $1.id }) {
+        for r in recharges.sorted(by: { $0.start != $1.start ? $0.start < $1.start : $0.time != $1.time ? $0.time < $1.time : $0.id < $1.id }) {
             for sid in r.studentIds { out[sid] = r }
         }
         return out
     }
 
     /// 积分充值：只新增记录，不改动任何历史数据
-    func recharging(_ rules: Rules, ids: [String], target: Double, note: String = "", time: Int64 = nowMillis()) -> SchoolClass {
+    func recharging(_ rules: Rules, ids: [String], target: Double, note: String = "", time: Int64 = nowMillis(), effectiveAt: Int64? = nil, assignmentId: String? = nil) -> SchoolClass {
         guard target.isFinite else { return self }
         let wanted = Set(ids)
         let chosen = students.map(\.id).filter { wanted.contains($0) }
@@ -381,20 +396,24 @@ extension SchoolClass {
         var result = self
         var before: [String: Double] = [:]
         for id in chosen { before[id] = now[id] ?? 0 }
-        result.recharges.append(ScoreRecharge(target: target, studentIds: chosen, before: before, note: note.trimmingCharacters(in: .whitespaces), time: time))
+        var r = ScoreRecharge(target: target, studentIds: chosen, before: before, note: note.trimmingCharacters(in: .whitespaces), time: time)
+        if let aid = assignmentId, let a = assignments.first(where: { $0.id == aid }) {
+            r.effectiveAt = a.createdAt; r.assignmentId = a.id; r.assignmentTitle = a.title
+        } else { r.effectiveAt = effectiveAt }
+        result.recharges.append(r)
         return result
     }
 
     func stats(_ rules: Rules) -> [Stat] {
         let last = latestRecharges()
         var manual: [String: Double] = [:]
-        for e in scores where last[e.studentId].map({ e.time > $0.time }) ?? true { manual[e.studentId, default: 0] += e.delta }
+        for e in scores where last[e.studentId].map({ $0.counts(e.time) }) ?? true { manual[e.studentId, default: 0] += e.delta }
         return students.map { st in
             let r = last[st.id]
             var auto = 0.0, sub = 0, late = 0, miss = 0
             for a in assignments {
                 let s = a.status(st.id)
-                if r.map({ a.createdAt > $0.time }) ?? true { auto += rules.of(s) }
+                if r.map({ $0.counts(a.createdAt) }) ?? true { auto += rules.of(s) }
                 if s == .SUBMITTED || s == .EXCELLENT { sub += 1 }
                 if s == .LATE { late += 1 }
                 if s == .MISSING { miss += 1 }

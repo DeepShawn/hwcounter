@@ -151,6 +151,9 @@ private struct ScoreValueSheet: View {
     let onSaved: () -> Void
     @State private var text: String
     @State private var note = ""
+    @State private var startMode = 0
+    @State private var startAssignment = ""
+    @State private var startDay = Calendar.current.startOfDay(for: Date())
 
     init(request: ScoreValueRequest, initial: Double, onSaved: @escaping () -> Void) {
         self.request = request; self.onSaved = onSaved
@@ -170,6 +173,24 @@ private struct ScoreValueSheet: View {
                         .keyboardType(.numbersAndPunctuation)
                     if !editingBase { TextField("备注（可选，如：期中重新计分）", text: $note) }
                 }
+                if !editingBase, let cls = store.data.classes.first(where: { $0.id == request.classId }) {
+                    let assigns = cls.assignments.sorted { $0.createdAt > $1.createdAt }
+                    Section("从什么时候起重新计分") {
+                        Picker("生效时间", selection: $startMode) {
+                            Text("立即").tag(0)
+                            Text("从某次作业起").tag(1)
+                            Text("从某一天起").tag(2)
+                        }.pickerStyle(.segmented)
+                        if startMode == 1 {
+                            Picker("选择作业（含该作业）", selection: $startAssignment) {
+                                ForEach(assigns) { a in Text("\(fmtDate(a.date)) \(a.subject) \(a.title)").tag(a.id) }
+                            }
+                            .onAppear { if startAssignment.isEmpty { startAssignment = assigns.first?.id ?? "" } }
+                        } else if startMode == 2 {
+                            DatePicker("选择日期（当天 0 点起）", selection: $startDay, displayedComponents: .date)
+                        }
+                    }
+                }
                 if !editingBase {
                     Section("已选 \(targets.count) 人") { Text(targets.map { "\($0.no) \($0.name)" }.joined(separator: "、")) }
                 }
@@ -178,7 +199,10 @@ private struct ScoreValueSheet: View {
                         guard !store.readOnly, let value, value.isFinite else { return }
                         if let classId = request.classId {
                             guard !targets.isEmpty else { return }
-                            store.rechargeScores(targets.map(\.id), target: value, note: note, classId: classId)
+                            let day = Int64(Calendar.current.startOfDay(for: startDay).timeIntervalSince1970 * 1000)
+                            store.rechargeScores(targets.map(\.id), target: value, note: note, classId: classId,
+                                                 effectiveAt: startMode == 2 ? day : nil,
+                                                 assignmentId: startMode == 1 && !startAssignment.isEmpty ? startAssignment : nil)
                             store.say("💳 已为 \(targets.count) 人充值到 \(fmtNum(value)) 分，历史记录已保留")
                         } else {
                             store.update { var rules = $0.rules; rules.initial = value; $0.rules = rules }
@@ -186,7 +210,7 @@ private struct ScoreValueSheet: View {
                         }
                         onSaved(); dismiss()
                     }
-                    .disabled(store.readOnly || value?.isFinite != true || (!editingBase && targets.isEmpty))
+                    .disabled(store.readOnly || value?.isFinite != true || (!editingBase && targets.isEmpty) || (!editingBase && startMode == 1 && startAssignment.isEmpty))
                 }
             }
             .navigationTitle(editingBase ? "修改基准分" : "积分充值")
@@ -278,12 +302,12 @@ private struct RechargeHistorySheet: View {
                 if let c = store.data.currentClass {
                     let names = Dictionary(uniqueKeysWithValues: c.students.map { ($0.id, $0.name) })
                     if c.recharges.isEmpty { Text("暂无充值记录").foregroundStyle(.secondary) }
-                    ForEach(c.recharges.sorted { $0.time > $1.time }) { r in
+                    ForEach(c.recharges.sorted { $0.start != $1.start ? $0.start > $1.start : $0.time > $1.time }) { r in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text("充值到 \(fmtNum(r.target)) 分 · \(r.studentIds.count) 人").font(.headline)
                                 Spacer()
-                                Text(Date(timeIntervalSince1970: Double(r.time) / 1000), style: .date).font(.caption).foregroundStyle(.secondary)
+                                Text(r.startLabel).font(.caption).foregroundStyle(.secondary)
                             }
                             if !r.note.isEmpty { Text(r.note).font(.subheadline) }
                             Text(r.studentIds.map { "\(names[$0] ?? "已删除")（原 \(fmtNum(r.before[$0] ?? 0))）" }.joined(separator: "、"))

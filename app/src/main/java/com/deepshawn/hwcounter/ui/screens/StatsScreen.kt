@@ -254,8 +254,8 @@ private fun Heatmap(c: com.deepshawn.hwcounter.data.SchoolClass, report: Analyti
     }
     // 全班（至少一半同学）参与的最近一次充值 → 在其后的第一列前画竖线
     val boundary = remember(c, cols) {
-        val r = c.recharges.filter { it.studentIds.size * 2 >= c.students.size.coerceAtLeast(1) }.maxByOrNull { it.time }
-        if (r == null) -1 else cols.indexOfFirst { it.createdAt > r.time }.takeIf { it > 0 } ?: -1
+        val r = c.recharges.filter { it.studentIds.size * 2 >= c.students.size.coerceAtLeast(1) }.maxWithOrNull(compareBy({ it.start }, { it.time }))
+        if (r == null) -1 else cols.indexOfFirst { r.counts(it.createdAt) }.takeIf { it > 0 } ?: -1
     }
     val statusColors = HwStatus.entries.associateWith { statusColor(it) }
     val cell = 18.dp; val gap = 3.dp

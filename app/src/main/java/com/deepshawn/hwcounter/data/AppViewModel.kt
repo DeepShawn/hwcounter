@@ -298,8 +298,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 积分充值：只重置积分并留下记录，历史加减分与作业状态不变 */
-    fun rechargeScores(studentIds: Collection<String>, target: Double, note: String = "") = updateClass { c ->
-        c.recharge(_data.value.settings.rules, studentIds, target, note)
+    fun rechargeScores(studentIds: Collection<String>, target: Double, note: String = "", effectiveAt: Long? = null, assignmentId: String? = null) = updateClass { c ->
+        c.recharge(_data.value.settings.rules, studentIds, target, note, effectiveAt = effectiveAt, assignment = c.assignments.firstOrNull { it.id == assignmentId })
     }
 
     /** 撤销某次充值（删除记录，分数按全部历史重新计算） */

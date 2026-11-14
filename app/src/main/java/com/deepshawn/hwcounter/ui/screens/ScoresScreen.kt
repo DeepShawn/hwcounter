@@ -59,6 +59,10 @@ import com.deepshawn.hwcounter.data.StudentStat
 import com.deepshawn.hwcounter.data.compareStudentNumbers
 import com.deepshawn.hwcounter.data.fmt
 import com.deepshawn.hwcounter.data.latestRecharges
+import com.deepshawn.hwcounter.data.recharge
+import com.deepshawn.hwcounter.data.startLabel
+import com.deepshawn.hwcounter.data.startOfDay
+import com.deepshawn.hwcounter.data.fmtDay
 import com.deepshawn.hwcounter.data.signed
 import com.deepshawn.hwcounter.data.studentStats
 import com.deepshawn.hwcounter.ui.LocalKit
@@ -238,12 +242,22 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         targets = rechargeFor?.takeIf { !readOnly }?.let { ids -> c.students.filter { it.id in ids } }.orEmpty(),
         scores = stats.associate { it.student.id to it.score },
         initial = rules.initial,
+        assignments = remember(c.assignments) { c.assignments.sortedByDescending { it.createdAt } },
+        preview = { ids, value, at, aid ->
+            c.recharge(rules, ids, value, effectiveAt = at, assignment = c.assignments.firstOrNull { it.id == aid })
+                .studentStats(rules).associate { it.student.id to it.score }
+        },
         onDismiss = { rechargeFor = null },
-    ) { targets, value, note ->
-        vm.rechargeScores(targets.map { it.id }, value, note)
+    ) { targets, value, note, at, aid ->
+        vm.rechargeScores(targets.map { it.id }, value, note, at, aid)
         rechargeFor = null; exitSelect()
         kit.haptic(true)
-        kit.undoable("💳 已为 ${targets.size} 人充值到 ${value.fmt()} 分，历史记录已保留")
+        val start = when {
+            aid != null -> "，从「${c.assignments.firstOrNull { it.id == aid }?.title.orEmpty()}」起计分"
+            at != null -> "，从 ${fmtDay(at)} 起计分"
+            else -> ""
+        }
+        kit.undoable("💳 已为 ${targets.size} 人充值到 ${value.fmt()} 分$start，历史记录已保留")
     }
     RechargeHistorySheet(history, c.recharges, c.students, readOnly, onDismiss = { history = false }) { r ->
         vm.removeRecharge(r.id); kit.undoable("已撤销 ${fmtStamp(r.time)} 的充值")
@@ -253,41 +267,103 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
 private val stampFmt = SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA)
 fun fmtStamp(t: Long): String = stampFmt.format(Date(t))
 
-/** 积分充值：设定分数和备注，列出每人充值前后的变化 */
+/**
+ * 积分充值：设定分数、备注和生效时间（立即 / 从某次作业起 / 从某一天起），
+ * 实时预览每人充值后的积分。
+ */
 @Composable
 private fun RechargeDialog(
     targets: List<Student>, scores: Map<String, Double>, initial: Double,
-    onDismiss: () -> Unit, onConfirm: (List<Student>, Double, String) -> Unit,
+    assignments: List<com.deepshawn.hwcounter.data.Assignment>,
+    preview: (List<String>, Double, Long?, String?) -> Map<String, Double>,
+    onDismiss: () -> Unit, onConfirm: (List<Student>, Double, String, Long?, String?) -> Unit,
 ) {
     val show = targets.isNotEmpty()
     var text by remember(show) { mutableStateOf(initial.fmt()) }
     var note by remember(show) { mutableStateOf("") }
+    var when_ by remember(show) { mutableIntStateOf(0) }
+    var assignmentId by remember(show) { mutableStateOf(assignments.firstOrNull()?.id) }
+    var day by remember(show) { mutableStateOf(startOfDay(System.currentTimeMillis())) }
+    var pickDay by remember { mutableStateOf(false) }
     val value = text.trim().toDoubleOrNull()?.takeIf { it.isFinite() }
+    val at: Long? = if (when_ == 2) day else null
+    val aid: String? = if (when_ == 1) assignmentId else null
+    val after = remember(value, at, aid, targets) { if (value == null || !show) emptyMap() else preview(targets.map { it.id }, value, at, aid) }
     val colors = MiuixTheme.colorScheme
+    val shortFmt = remember { SimpleDateFormat("M月d日", Locale.CHINA) }
     HyperDialog(
         show = show, title = "💳 积分充值 · ${targets.size} 人", onDismiss = onDismiss,
-        summary = "只重置积分：当前积分设为充值分数，并留下一条充值记录。原有加减分、作业状态、备注和未交次数全部保留，可随时查看；之后的新作业与加减分在充值分数上继续累计。",
-        confirmText = "确认充值", confirmEnabled = value != null,
-        onConfirm = { value?.let { onConfirm(targets, it, note) } },
+        summary = "只重置积分并留下充值记录。原有加减分、作业状态、备注和未交次数全部保留，可随时查看和撤销。",
+        confirmText = "确认充值", confirmEnabled = value != null && (when_ != 1 || aid != null),
+        onConfirm = { value?.let { onConfirm(targets, it, note, at, aid) } },
     ) {
         TextField(text, { text = it }, label = "充值到（分）", singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         TextField(note, { note = it }, label = "备注（可选，如：期中重新计分）", singleLine = true, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(12.dp))
+        Text("从什么时候起重新计分", fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
+        TabRowWithContour(listOf("立即", "从某次作业起", "从某一天起"), when_, { when_ = it })
+        Spacer(Modifier.height(8.dp))
+        when (when_) {
+            0 -> Text("现在起：之后布置的作业和之后的加减分在充值分数上累计。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+            1 -> if (assignments.isEmpty()) Text("还没有作业", fontSize = 12.sp, color = colors.onSurfaceVariantSummary) else {
+                Text("所选作业（含）及之后的作业、以及这次作业布置之后的加减分计入；之前的不计入。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                Spacer(Modifier.height(6.dp))
+                Column(Modifier.fillMaxWidth().heightIn(max = 168.dp).clip(RoundedCornerShape(14.dp)).background(colors.secondaryContainer).verticalScroll(rememberScrollState())) {
+                    assignments.forEach { a ->
+                        val sel = a.id == assignmentId
+                        Row(
+                            Modifier.fillMaxWidth().background(if (sel) colors.primary.copy(alpha = 0.14f) else Color.Transparent)
+                                .combinedClickable(onClick = { assignmentId = a.id }).padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(shortFmt.format(Date(a.createdAt)), fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.width(56.dp))
+                            Text("${a.subject} ${a.title}".trim(), fontSize = 14.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal)
+                            if (sel) Icon(Icons.Filled.Check, null, Modifier.size(16.dp), tint = colors.primary)
+                        }
+                    }
+                }
+            }
+            else -> {
+                Text("这一天 0 点起布置的作业和加减分计入；之前的不计入。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton("‹", onClick = { day = startOfDay(day - 12 * 3600_000L) }, minWidth = 44.dp)
+                    TextButton(fmtDay(day), onClick = { pickDay = true }, modifier = Modifier.weight(1f))
+                    TextButton("›", onClick = { day = startOfDay(day + 36 * 3600_000L) }, minWidth = 44.dp)
+                }
+            }
+        }
         Spacer(Modifier.height(10.dp))
         Column(
-            Modifier.fillMaxWidth().heightIn(max = 180.dp).clip(RoundedCornerShape(14.dp)).background(colors.secondaryContainer)
+            Modifier.fillMaxWidth().heightIn(max = 160.dp).clip(RoundedCornerShape(14.dp)).background(colors.secondaryContainer)
                 .verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
+            Text("当前 → 充值后", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
             targets.forEach { s ->
                 val before = scores[s.id] ?: initial
                 Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("${s.no} ${s.name}", Modifier.weight(1f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(before.fmt(), fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
                     Text("  →  ", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
-                    Text(value?.fmt() ?: "—", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.primary)
+                    Text(after[s.id]?.fmt() ?: "—", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.primary)
                 }
             }
         }
+    }
+    if (pickDay) {
+        val state = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = day + java.util.TimeZone.getDefault().getOffset(day))
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { pickDay = false },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    // DatePicker 返回 UTC 当天 0 点，换算成本地当天 0 点
+                    state.selectedDateMillis?.let { utc -> day = startOfDay(utc - java.util.TimeZone.getDefault().getOffset(utc) + 12 * 3600_000L) }
+                    pickDay = false
+                }) { androidx.compose.material3.Text("确定") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { pickDay = false }) { androidx.compose.material3.Text("取消") } },
+        ) { androidx.compose.material3.DatePicker(state) }
     }
 }
 
@@ -299,14 +375,14 @@ private fun RechargeHistorySheet(show: Boolean, recharges: List<ScoreRecharge>, 
     SuperBottomSheet(show = show, title = "🧾 积分充值记录", onDismissRequest = onDismiss) {
         Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (recharges.isEmpty()) Text("暂无充值记录", color = colors.onSurfaceVariantSummary)
-            recharges.sortedByDescending { it.time }.forEach { r ->
+            recharges.sortedWith(compareByDescending<ScoreRecharge> { it.start }.thenByDescending { it.time }).forEach { r ->
                 Card {
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("充值到 ${r.target.fmt()} 分", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, modifier = Modifier.weight(1f))
                             Text("${r.studentIds.size} 人", color = colors.primary, fontWeight = FontWeight.SemiBold)
                         }
-                        Text(fmtStamp(r.time) + if (r.note.isNotBlank()) " · ${r.note}" else "", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                        Text(r.startLabel(::fmtDay) + " · 操作于 " + fmtStamp(r.time) + if (r.note.isNotBlank()) " · ${r.note}" else "", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
                         Spacer(Modifier.height(6.dp))
                         Text(
                             r.studentIds.take(30).joinToString("、") { "${names[it] ?: "已删除"}（原${(r.before[it] ?: 0.0).fmt()}）" } + if (r.studentIds.size > 30) " 等 ${r.studentIds.size} 人" else "",

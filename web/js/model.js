@@ -77,14 +77,19 @@ export function summary(c, a) {
  * 积分充值（与安卓 Recharge.kt 同算法）：每位学生最近一次充值生效，
  * 当前积分 = 充值分数 + 充值之后布置的作业自动计分 + 充值之后的手动加减分。
  */
+/** 计分起点：effectiveAt（从某次作业 / 某一天起，含当刻）或操作时间（立即生效，只计之后的） */
+export const rechargeStart = (r) => (r.effectiveAt ?? r.time);
+export const rechargeCounts = (r, t) => (r.effectiveAt != null ? t >= r.effectiveAt : t > r.time);
 export function latestRecharges(c) {
   const out = {};
-  const list = [...(c.recharges || [])].sort((a, b) => a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const list = [...(c.recharges || [])].sort((a, b) => rechargeStart(a) - rechargeStart(b) || a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   for (const r of list) for (const sid of r.studentIds || []) out[sid] = r;
   return out;
 }
-export const entryCounts = (e, r) => !r || e.time > r.time;
-export const assignmentCounts = (a, r) => !r || a.createdAt > r.time;
+export const entryCounts = (e, r) => !r || rechargeCounts(r, e.time);
+export const assignmentCounts = (a, r) => !r || rechargeCounts(r, a.createdAt);
+/** 某天 0 点（本地时区） */
+export const startOfDay = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
 export function studentStats(c, rules) {
   let byRules = statsCache.get(c);
@@ -105,13 +110,16 @@ export function studentStats(c, rules) {
 }
 
 /** 积分充值：只重置积分并新增一条记录，历史流水 / 作业状态 / 未交次数全部保留 */
-export function rechargeScores(c, rules, studentIds, target, note = '', time = Date.now()) {
+export function rechargeScores(c, rules, studentIds, target, note = '', time = Date.now(), { effectiveAt = null, assignmentId = null } = {}) {
   if (!Number.isFinite(target)) return c;
   const wanted = new Set(studentIds);
   const ids = c.students.map((s) => s.id).filter((id) => wanted.has(id));
   if (!ids.length) return c;
   const now = Object.fromEntries(studentStats(c, rules).map((st) => [st.student.id, st.score]));
-  const r = { id: newId(), time, target, studentIds: ids, before: Object.fromEntries(ids.map((id) => [id, now[id] ?? 0])), note: String(note || '').trim() };
+  const a = assignmentId ? c.assignments.find((x) => x.id === assignmentId) : null;
+  const start = a ? a.createdAt : effectiveAt;
+  const r = { id: newId(), time, target, studentIds: ids, before: Object.fromEntries(ids.map((id) => [id, now[id] ?? 0])), note: String(note || '').trim(),
+    effectiveAt: start ?? null, assignmentId: a ? a.id : null, assignmentTitle: a ? a.title : '' };
   return { ...c, recharges: [...(c.recharges || []), r] };
 }
 export const removeRecharge = (c, id) => ({ ...c, recharges: (c.recharges || []).filter((r) => r.id !== id) });
