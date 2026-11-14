@@ -1,8 +1,6 @@
 package com.deepshawn.hwcounter.shots
 
-import android.graphics.Bitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.captureToImage
+import com.github.takahirom.roborazzi.captureRoboImage
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -68,8 +66,7 @@ class ShotsTest {
 
     private fun save(name: String) {
         rule.waitForIdle()
-        val bmp = rule.onRoot().captureToImage().asAndroidBitmap()
-        File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        rule.onRoot().captureRoboImage(File(out, "$name.png").absolutePath)
     }
 
     private fun scroll(times: Int = 1) = repeat(times) {

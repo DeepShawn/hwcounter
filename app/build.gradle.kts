@@ -79,6 +79,7 @@ if (shots) {
     android.testOptions.unitTests.all {
         it.systemProperty("robolectric.graphicsMode", "NATIVE")
         it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+        it.systemProperty("roborazzi.test.record", "true")
         it.systemProperty("shots.dir", rootProject.file("shots").absolutePath)
         it.maxHeapSize = "3g"
     }
@@ -90,6 +91,7 @@ dependencies {
         testImplementation("org.robolectric:robolectric:4.16")
         testImplementation("androidx.compose.ui:ui-test-junit4")
         testImplementation("androidx.test:core:1.6.1")
+        testImplementation("io.github.takahirom.roborazzi:roborazzi:1.78.0")
         debugImplementation("androidx.compose.ui:ui-test-manifest")
     }
     val composeBom = platform("androidx.compose:compose-bom:2026.03.01")
