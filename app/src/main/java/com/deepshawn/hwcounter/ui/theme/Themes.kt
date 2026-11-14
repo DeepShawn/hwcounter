@@ -161,7 +161,10 @@ fun HwTheme(
             // 低性能模式：关闭越界回弹（拉伸/弹簧）以减少绘制
             androidx.compose.foundation.LocalOverscrollFactory provides if (ui.lowPerf) null else androidx.compose.foundation.LocalOverscrollFactory.current,
         ) {
-            MaterialTheme(colorScheme = scheme, shapes = shapes, typography = typography, content = content)
+            MaterialTheme(colorScheme = scheme, shapes = shapes, typography = typography) {
+                // 根布局不再是 Material Scaffold，需要自己给 Material 文字/图标默认颜色，否则深色模式下是黑字
+                CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides scheme.onSurface, content = content)
+            }
         }
     }
 }

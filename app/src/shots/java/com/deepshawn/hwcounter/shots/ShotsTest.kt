@@ -79,7 +79,8 @@ class ShotsTest {
     private fun run(prefix: String, dark: Int, ui: UiPrefs) {
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
         val vm = AppViewModel(app)
-        AppViewModel::class.java.getDeclaredField("_readOnly").apply { isAccessible = true }.set(vm, MutableStateFlow(false))
+        @Suppress("UNCHECKED_CAST")
+        (AppViewModel::class.java.getDeclaredField("_readOnly").apply { isAccessible = true }.get(vm) as MutableStateFlow<Boolean>).value = false
         val data = sample().let { it.copy(settings = it.settings.copy(dark = dark)) }
         rule.setContent { HwTheme(data.settings.theme, dark, 1, false, ui) { App(vm, data) } }
         save("${prefix}_01_home"); scroll(); save("${prefix}_02_home_scrolled")

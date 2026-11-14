@@ -2,6 +2,11 @@
 
 package com.deepshawn.hwcounter.ui.screens
 
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.foundation.lazy.itemsIndexed
+import com.deepshawn.hwcounter.ui.components.listCell
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -100,11 +105,11 @@ fun subjectColor(subject: String): Color {
 private fun greeting(): String {
     val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     return when (h) {
-        in 5..10 -> "早上好，老师 ☀️"
-        in 11..13 -> "中午好，老师 🍱"
-        in 14..17 -> "下午好，老师 🌤️"
-        in 18..22 -> "晚上好，老师 🌙"
-        else -> "夜深了，老师注意休息 ✨"
+        in 5..10 -> "早上好"
+        in 11..13 -> "中午好"
+        in 14..17 -> "下午好"
+        in 18..22 -> "晚上好"
+        else -> "夜深了，注意休息"
     }
 }
 
@@ -155,152 +160,137 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
 
     val photo = rememberPhotoLauncher { uris -> photoTarget?.let { kit.nav.push(Route.Recognize(it, uris)) } }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + com.deepshawn.hwcounter.ui.components.LocalBottomInset.current)) {
-        item {
-            GradientHeader {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(greeting(), color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.bodyMedium)
-                        Box {
-                            Row(
-                                Modifier.clip(CircleShape).clickable { classMenu = true }.padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text("${c.emoji} ${c.name}", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Icon(Icons.Filled.ArrowDropDown, null, tint = Color.White)
-                            }
-                            DropdownMenu(classMenu, { classMenu = false }) {
-                                data.classes.forEach { k ->
-                                    DropdownMenuItem(
-                                        text = { Text("${k.emoji} ${k.name}  (${k.students.size}人)", fontWeight = if (k.id == c.id) FontWeight.Bold else null) },
-                                        onClick = { vm.switchClass(k.id); classMenu = false },
-                                    )
-                                }
-                                HorizontalDivider()
-                                DropdownMenuItem(text = { Text("✏️ 编辑当前班级") }, onClick = { classDialog = c; classMenu = false })
-                                DropdownMenuItem(text = { Text("➕ 新建班级") }, onClick = { newClass = true; classMenu = false })
-                            }
-                        }
-                        Text(
-                            SimpleDateFormat("M月d日 EEEE", Locale.CHINA).format(Date()) + " · ${c.students.size} 名学生",
-                            color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
+    var classSheet by remember { mutableStateOf(false) }
+    var rowMenu by remember { mutableStateOf<Assignment?>(null) }
+    val colors = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+    val stats = remember(c, data.settings.rules) { c.studentStats(data.settings.rules) }
+    com.deepshawn.hwcounter.ui.components.MiuixPage(
+        title = c.name,
+        actions = {
+            top.yukonga.miuix.kmp.basic.IconButton(onClick = { classSheet = true }, modifier = Modifier.padding(end = 16.dp)) {
+                top.yukonga.miuix.kmp.basic.Icon(Icons.Filled.SwapHoriz, "切换班级", tint = colors.onSurface)
+            }
+        },
+    ) {
+        item(key = "sub") {
+            top.yukonga.miuix.kmp.basic.Text(
+                greeting() + " · " + SimpleDateFormat("M月d日 EEEE", Locale.CHINA).format(Date()) + " · ${c.students.size} 名学生",
+                fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = 10.dp),
+            )
+        }
+        item(key = "today") {
+            top.yukonga.miuix.kmp.basic.Card(
+                Modifier.padding(horizontal = 12.dp).fillMaxWidth(),
+                onClick = { if (hero != null) kit.nav.push(Route.Assign(hero.id)) else showNew = true },
+            ) {
                 if (hero != null) {
                     val sm = c.summary(hero)
-                    Surface(
-                        shape = MaterialTheme.shapes.large,
-                        color = Color.White.copy(alpha = 0.16f),
-                        modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).clickable { kit.nav.push(Route.Assign(hero.id)) },
-                    ) {
-                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            ProgressRing(sm.rate, size = 96.dp, stroke = 10.dp) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("${(sm.rate * 100).toInt()}%", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black)
-                                    Text("提交率", color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
-                                }
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ProgressRing(sm.rate, size = 72.dp, stroke = 7.dp, track = colors.secondaryContainer, colors = listOf(colors.primary, colors.primary)) {
+                            top.yukonga.miuix.kmp.basic.Text("${(sm.rate * 100).toInt()}%", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            top.yukonga.miuix.kmp.basic.Text(if (isToday(hero.createdAt)) "今日作业" else "最近作业", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                            top.yukonga.miuix.kmp.basic.Text("${hero.subject} · ${hero.title}".trimStart(' ', '·'), fontWeight = FontWeight.SemiBold, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                CountDot(statusColor(HwStatus.SUBMITTED), "已交", sm.handedIn)
+                                CountDot(statusColor(HwStatus.MISSING), "未交", sm.c(HwStatus.MISSING) + sm.c(HwStatus.NONE))
+                                CountDot(statusColor(HwStatus.LEAVE), "请假", sm.c(HwStatus.LEAVE))
                             }
-                            Spacer(Modifier.width(16.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(if (isToday(hero.createdAt)) "今日作业" else "最近作业", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp)
-                                Text("${hero.subject} · ${hero.title}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Spacer(Modifier.height(8.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    MiniStat("已交", sm.handedIn)
-                                    MiniStat("未交", sm.c(HwStatus.MISSING) + sm.c(HwStatus.NONE))
-                                    MiniStat("请假", sm.c(HwStatus.LEAVE))
+                        }
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = colors.onSurfaceVariantActions)
+                    }
+                } else Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    top.yukonga.miuix.kmp.basic.Text("还没有作业，点这里新建第一次作业", Modifier.weight(1f), color = colors.onSurfaceVariantSummary)
+                    Icon(Icons.Filled.Add, null, tint = colors.primary)
+                }
+            }
+        }
+        item(key = "actions") {
+            top.yukonga.miuix.kmp.basic.SmallTitle("快捷登记")
+            top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                val actions: List<Triple<String, ImageVector, Pair<Color, () -> Unit>>> = listOf(
+                    Triple("新建作业", Icons.Filled.Add, Color(0xFF3482FF) to { showNew = true }),
+                    Triple("拍照识别", Icons.Filled.CameraAlt, Color(0xFF12B886) to { withTarget { id -> photoTarget = id; pendingAction = "photo" } }),
+                    Triple("语音登记", Icons.Filled.Mic, Color(0xFF1098AD) to { withTarget { kit.nav.push(Route.Voice(it)) } }),
+                    Triple("实时扫描", Icons.Filled.DocumentScanner, Color(0xFFF76707) to { withTarget { kit.nav.push(Route.Live(it)) } }),
+                    Triple("侧面学号", Icons.Filled.ViewWeek, Color(0xFFE64980) to { withTarget { kit.nav.push(Route.Spine(it)) } }),
+                    Triple("数本数", Icons.Filled.Layers, Color(0xFFAE3EC9) to { kit.nav.push(Route.Stack(todayTarget?.id)) }),
+                    Triple(if (drafts.isNotEmpty()) "草稿 ${drafts.size}" else "草稿箱", Icons.Filled.Drafts, Color(0xFF7A5CFF) to { kit.nav.push(Route.Drafts) }),
+                    Triple("统计表识别", Icons.Filled.TableChart, Color(0xFF0CA678) to { kit.nav.push(Route.StatTable(null)) }),
+                )
+                Column(Modifier.padding(vertical = 10.dp)) {
+                    actions.chunked(4).forEach { row ->
+                        Row(Modifier.fillMaxWidth()) {
+                            row.forEach { (label, icon, pair) ->
+                                Column(
+                                    Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { kit.haptic(); pair.second() }.padding(vertical = 10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Box(Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(pair.first.copy(alpha = if (com.deepshawn.hwcounter.ui.theme.LocalExtra.current.isDark) 0.22f else 0.12f)), contentAlignment = Alignment.Center) {
+                                        Icon(icon, null, tint = pair.first, modifier = Modifier.size(24.dp))
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    top.yukonga.miuix.kmp.basic.Text(label, fontSize = 12.sp, maxLines = 1, color = colors.onSurface)
                                 }
                             }
                         }
                     }
-                } else {
-                    Text("还没有作业，点下面“新建作业”开始吧 👇", color = Color.White)
                 }
             }
         }
-        item {
-            FlowRow(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                maxItemsInEachRow = 3,
-            ) {
-                QuickAction("新建作业", Icons.Filled.Add, Color(0xFF4C6EF5), Modifier.weight(1f)) { showNew = true }
-                QuickAction("拍照识别", Icons.Filled.CameraAlt, Color(0xFF12B886), Modifier.weight(1f)) { withTarget { id -> photoTarget = id; pendingAction = "photo" } }
-                QuickAction("语音登记", Icons.Filled.Mic, Color(0xFF1098AD), Modifier.weight(1f)) {
-                    withTarget { kit.nav.push(Route.Voice(it)) }
-                }
-                QuickAction("实时扫描", Icons.Filled.DocumentScanner, Color(0xFFF76707), Modifier.weight(1f)) {
-                    withTarget { kit.nav.push(Route.Live(it)) }
-                }
-                QuickAction("侧面学号", Icons.Filled.ViewWeek, Color(0xFFE64980), Modifier.weight(1f)) {
-                    withTarget { kit.nav.push(Route.Spine(it)) }
-                }
-                QuickAction("数本数", Icons.Filled.Layers, Color(0xFFAE3EC9), Modifier.weight(1f)) {
-                    kit.nav.push(Route.Stack(todayTarget?.id))
-                }
-                QuickAction(if (drafts.isNotEmpty()) "草稿箱 · ${drafts.size}" else "草稿箱", Icons.Filled.Drafts, Color(0xFF8A6CFF), Modifier.weight(1f)) {
-                    kit.nav.push(Route.Drafts)
-                }
-                QuickAction("统计表识别", Icons.Filled.TableChart, Color(0xFF0CA678), Modifier.weight(1f)) {
-                    kit.nav.push(Route.StatTable(null))
-                }
-                Spacer(Modifier.weight(1f))
-            }
-        }
-        item {
-            val stats = remember(c, data.settings.rules) { c.studentStats(data.settings.rules) }
+        item(key = "overview") {
             val recent = c.assignments.sortedByDescending { it.createdAt }.take(7)
             val avg = if (recent.isEmpty()) 0f else recent.map { c.summary(it).rate }.average().toFloat()
             val perfect = stats.count { it.missing == 0 && it.late == 0 && c.assignments.isNotEmpty() }
             val missTotal = stats.sumOf { it.missing }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatTile("近7次提交率", "${(avg * 100).toInt()}%", MaterialTheme.colorScheme.primary, Modifier.weight(1f), Icons.Filled.AutoAwesome)
-                StatTile("全勤之星", "$perfect", Color(0xFFFFA000), Modifier.weight(1f)) { kit.nav.tab(Route.Scores) }
-                StatTile("累计未交", "$missTotal", Color(0xFFF0475A), Modifier.weight(1f)) { kit.nav.tab(Route.Stats) }
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                AppCard(Modifier.weight(1f), onClick = { random = true }, padding = PaddingValues(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Casino, null, tint = MaterialTheme.colorScheme.tertiary)
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text("随机点名", fontWeight = FontWeight.Bold)
-                            Text("老虎机抽一位幸运儿", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-                AppCard(Modifier.weight(1f), onClick = { kit.nav.tab(Route.Students) }, padding = PaddingValues(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🏷️", fontSize = 22.sp)
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text("学号二维码", fontWeight = FontWeight.Bold)
-                            Text("打印贴纸，识别率≈100%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
+            top.yukonga.miuix.kmp.basic.SmallTitle("概览")
+            top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                Row(Modifier.padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Overview("近 7 次交齐率", "${(avg * 100).toInt()}%", Modifier.weight(1f)) { kit.nav.tab(Route.Stats) }
+                    Box(Modifier.width(0.5.dp).height(32.dp).background(colors.dividerLine))
+                    Overview("全勤之星", "$perfect 人", Modifier.weight(1f)) { kit.nav.tab(Route.Stats) }
+                    Box(Modifier.width(0.5.dp).height(32.dp).background(colors.dividerLine))
+                    Overview("累计未交", "$missTotal 次", Modifier.weight(1f)) { kit.nav.tab(Route.Scores) }
                 }
             }
         }
-        item {
-            SectionTitle("全部作业 · ${c.assignments.size}", Modifier.padding(start = 12.dp, end = 12.dp, top = 16.dp))
+        item(key = "tools") {
+            top.yukonga.miuix.kmp.basic.SmallTitle("工具")
+            top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                top.yukonga.miuix.kmp.extra.SuperArrow(title = "随机点名", summary = "老虎机抽一位同学，可直接加分", onClick = { random = true })
+                top.yukonga.miuix.kmp.extra.SuperArrow(title = "学号二维码贴纸", summary = "在名单页生成 A4 贴纸，识别率接近 100%", onClick = { kit.nav.tab(Route.Students) })
+            }
         }
+        item(key = "allTitle") { top.yukonga.miuix.kmp.basic.SmallTitle("全部作业 · ${c.assignments.size}") }
         if (sorted.isEmpty()) {
             item { EmptyState("📭", "还没有作业", "点击“新建作业”开始；用拍照、语音等快捷登记时也会先让你确认新建") }
         }
-        items(sorted, key = { it.id }) { a ->
-            AssignmentRow(
-                c, a,
-                onClick = { kit.nav.push(Route.Assign(a.id)) },
-                onPin = { vm.editAssignment(a.id) { it.copy(pinned = !it.pinned) } },
-                onEdit = { editA = a },
-                onDelete = { deleteA = a },
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp).animateItem(),
-            )
+        itemsIndexed(sorted, key = { _, a -> a.id }) { i, a ->
+            CompactAssignmentRow(c, a, Modifier.listCell(i, sorted.size), onClick = { kit.nav.push(Route.Assign(a.id)) }, onLong = { rowMenu = a })
         }
+    }
+
+    com.deepshawn.hwcounter.ui.components.ActionSheet(
+        show = classSheet, title = "班级", onDismiss = { classSheet = false },
+        actions = data.classes.map { k ->
+            com.deepshawn.hwcounter.ui.components.SheetAction("${k.emoji} ${k.name}" + if (k.id == c.id) "（当前）" else "", "${k.students.size} 人 · ${k.assignments.size} 次作业") { vm.switchClass(k.id) }
+        } + listOf(
+            com.deepshawn.hwcounter.ui.components.SheetAction("编辑当前班级") { classDialog = c },
+            com.deepshawn.hwcounter.ui.components.SheetAction("新建班级") { newClass = true },
+        ),
+    )
+    rowMenu?.let { a ->
+        com.deepshawn.hwcounter.ui.components.ActionSheet(
+            show = true, title = a.title, onDismiss = { rowMenu = null },
+            actions = listOf(
+                com.deepshawn.hwcounter.ui.components.SheetAction(if (a.pinned) "取消置顶" else "置顶") { vm.editAssignment(a.id) { it.copy(pinned = !it.pinned) } },
+                com.deepshawn.hwcounter.ui.components.SheetAction("编辑名称和科目") { editA = a },
+                com.deepshawn.hwcounter.ui.components.SheetAction("删除", danger = true) { deleteA = a },
+            ),
+        )
     }
 
     if (pendingAction == "photo") {
@@ -487,6 +477,68 @@ private fun WelcomeScreen(onNewClass: () -> Unit, onImported: (com.deepshawn.hwc
                 "名单 JSON 示例：{\"className\":\"高一3班\",\"students\":[{\"no\":\"202401\",\"name\":\"张三\"}]}",
                 fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+@Composable
+private fun CountDot(color: Color, label: String, n: Int) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(7.dp).clip(CircleShape).background(color))
+        Spacer(Modifier.width(5.dp))
+        top.yukonga.miuix.kmp.basic.Text("$label $n", fontSize = 13.sp, color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceSecondary)
+    }
+}
+
+@Composable
+private fun Overview(label: String, value: String, modifier: Modifier, onClick: () -> Unit) {
+    Column(modifier.clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+        top.yukonga.miuix.kmp.basic.Text(value, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        top.yukonga.miuix.kmp.basic.Text(label, fontSize = 12.sp, color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
+    }
+}
+
+/** 紧凑的作业行：科目徽标 · 标题/日期 · 状态细条 · 交齐数 */
+@Composable
+private fun CompactAssignmentRow(c: SchoolClass, a: Assignment, modifier: Modifier, onClick: () -> Unit, onLong: () -> Unit) {
+    val colors = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+    val sm = c.summary(a)
+    val sc = subjectColor(a.subject)
+    val dateFmt = remember { SimpleDateFormat("M月d日", Locale.CHINA) }
+    Row(
+        modifier.combinedClickable(onClick = onClick, onLongClick = onLong).padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(sc.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+            top.yukonga.miuix.kmp.basic.Text(a.subject.take(1).ifEmpty { "作" }, color = sc, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (a.pinned) Icon(Icons.Filled.PushPin, null, Modifier.size(13.dp).padding(end = 2.dp), tint = colors.primary)
+                top.yukonga.miuix.kmp.basic.Text(a.title, fontWeight = FontWeight.Medium, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                if (isToday(a.createdAt)) {
+                    Spacer(Modifier.width(6.dp))
+                    top.yukonga.miuix.kmp.basic.Text("今天", fontSize = 10.sp, color = colors.primary, modifier = Modifier.clip(CircleShape).background(colors.primary.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 1.dp))
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                top.yukonga.miuix.kmp.basic.Text(
+                    listOf(a.subject, dateFmt.format(Date(a.createdAt))).filter { it.isNotBlank() }.joinToString(" · ") + (a.countedBooks?.let { " · 实数${it}本" } ?: ""),
+                    fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1,
+                )
+                Spacer(Modifier.width(10.dp))
+                StackedBar(
+                    com.deepshawn.hwcounter.ui.components.ChartStatusOrder.filter { it != HwStatus.NONE }.map { statusColor(it) to sm.c(it) },
+                    Modifier.weight(1f), height = 4.dp,
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            top.yukonga.miuix.kmp.basic.Text("${sm.handedIn}/${sm.expected}", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            top.yukonga.miuix.kmp.basic.Text("${(sm.rate * 100).toInt()}%", fontSize = 12.sp, color = if (sm.rate >= 1f) statusColor(HwStatus.SUBMITTED) else colors.onSurfaceVariantSummary)
         }
     }
 }
