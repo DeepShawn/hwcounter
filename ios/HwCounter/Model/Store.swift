@@ -234,10 +234,6 @@ final class Store: ObservableObject {
         let rules = data.rules
         updateClass(classId) { $0 = $0.resettingScores(rules, ids: ids, target: target) }
     }
-    func startScorePeriod(_ assignmentId: String, keepManualSinceStart: Bool, classId: String) {
-        updateClass(classId) { $0 = $0.startingScorePeriod(assignmentId, keepManualSinceStart: keepManualSinceStart) }
-    }
-    func restoreScoreHistory(classId: String) { updateClass(classId) { $0 = $0.restoringScoreHistory() } }
 
     // 学生
     func upsertStudent(_ s: Student) {
@@ -267,7 +263,7 @@ final class Store: ObservableObject {
         }
         updateClass { c in
             if mode == 1 {
-                c.students = students; c.assignments = []; c.scores = []; c.scoreResets = []
+                c.students = students; c.assignments = []; c.scores = []
                 if let n = className { c.name = n }
             } else {
                 for n in students {

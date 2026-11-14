@@ -331,8 +331,7 @@ class SyncManager(
                 )
             }
             val scores = (r.scores + l.scores).distinctBy { it.id }
-            val scoreResets = (r.scoreResets + l.scoreResets).distinctBy { it.id }
-            return l.copy(students = students.values.toList(), assignments = assigns.values.toList(), scores = scores, scoreResets = scoreResets, seating = l.seating ?: r.seating)
+            return l.copy(students = students.values.toList(), assignments = assigns.values.toList(), scores = scores, seating = l.seating ?: r.seating)
         }
     }
 }

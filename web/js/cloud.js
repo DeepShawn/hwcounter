@@ -163,8 +163,7 @@ export function merge(local, remote) {
       assigns.set(la.id, ra ? { ...la, statuses: { ...ra.statuses, ...la.statuses }, comments: { ...ra.comments, ...la.comments }, countedBooks: la.countedBooks ?? ra.countedBooks } : la);
     }
     const scores = [...new Map([...r.scores, ...l.scores].map((e) => [e.id, e])).values()];
-    const scoreResets = [...new Map([...(r.scoreResets || []), ...(l.scoreResets || [])].map((e) => [e.id, e])).values()];
-    classes.set(l.id, { ...l, students: [...students.values()], assignments: [...assigns.values()], scores, scoreResets, seating: l.seating || r.seating || null });
+    classes.set(l.id, { ...l, students: [...students.values()], assignments: [...assigns.values()], scores, seating: l.seating || r.seating || null });
   }
   return { ...local, classes: [...classes.values()], currentClassId: local.currentClassId ?? remote.currentClassId };
 }

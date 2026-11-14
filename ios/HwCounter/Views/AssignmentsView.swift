@@ -18,12 +18,19 @@ struct AssignmentsView: View {
                     EmptyHint(emoji: "📝", title: "还没有作业", detail: store.readOnly ? "老师还没有布置作业" : "点右上角 ＋ 布置第一次作业，然后拍照或语音登记谁交了")
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 16) {
-                            ScorePeriodBanner(c: c)
-                            assignmentGrid(c, list.filter { c.countsTowardScore($0) })
-                            if let reset = c.activeScoreReset { ScorePeriodDivider(reset: reset) }
-                            assignmentGrid(c, list.filter { !c.countsTowardScore($0) })
-                        }.padding()
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 16)], spacing: 16) {
+                            ForEach(list) { a in
+                                NavigationLink(value: a.id) { AssignmentCard(c: c, a: a) }
+                                    .buttonStyle(.plain)
+                                    .contextMenu {
+                                        if !store.readOnly {
+                                            Button { store.editAssignment(a.id) { $0.pinned.toggle() } } label: { Label(a.pinned ? "取消置顶" : "置顶", systemImage: "pin") }
+                                            Button(role: .destructive) { store.deleteAssignment(a.id); store.say("已删除「\(a.title)」") } label: { Label("删除", systemImage: "trash") }
+                                        }
+                                    }
+                            }
+                        }
+                        .padding()
                     }
                     .searchable(text: $query, prompt: "搜索作业")
                 }
@@ -62,21 +69,6 @@ struct AssignmentsView: View {
         .sheet(item: $openDraft) { b in NavigationStack { DraftDetailView(draftId: b.id) } }
         .refreshable { if store.readOnly { await store.refreshPreview() } else { await store.runSync() } }
     }
-    private func assignmentGrid(_ c: SchoolClass, _ list: [Assignment]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 16)], spacing: 16) {
-            ForEach(list) { a in
-                NavigationLink(value: a.id) { AssignmentCard(c: c, a: a) }
-                    .buttonStyle(.plain)
-                    .contextMenu {
-                        if !store.readOnly {
-                            Button { store.editAssignment(a.id) { $0.pinned.toggle() } } label: { Label(a.pinned ? "取消置顶" : "置顶", systemImage: "pin") }
-                            Button(role: .destructive) { store.deleteAssignment(a.id); store.say("已删除「\(a.title)」") } label: { Label("删除", systemImage: "trash") }
-                        }
-                    }
-            }
-        }
-    }
-
 }
 
 struct AssignmentCard: View {
