@@ -113,6 +113,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
     var testing by remember { mutableStateOf(false) }
     var newSubject by remember { mutableStateOf("") }
     var confirmReset by remember { mutableStateOf(false) }
+    var editBands by remember { mutableStateOf(false) }
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var modelMenu by remember { mutableStateOf(false) }
     var loadingModels by remember { mutableStateOf(false) }
@@ -204,6 +205,24 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
                 RuleRow("未交", r.missing) { v -> rules { it.copy(missing = v) } }
                 RuleRow("请假", r.leave) { v -> rules { it.copy(leave = v) } }
                 Text("修改后所有历史作业的自动计分会立即按新规则重算；已积分重置的同学从重置分数起算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            }
+        }
+
+        // ---------------- 考试计分 ----------------
+        group("考试计分", key = "examRules") {
+            val er = s.rules.exam
+            fun exam(f: (com.deepshawn.hwcounter.data.ExamRules) -> com.deepshawn.hwcounter.data.ExamRules) = rules { it.copy(exam = f(it.exam)) }
+            SuperSwitch(checked = er.enabled, onCheckedChange = { v -> exam { it.copy(enabled = v) } }, title = "考试按分数档自动加减积分", summary = "按得分率计算，150 分制的考试也适用；可在单场考试里关闭")
+            if (er.enabled) Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                er.bands.sortedByDescending { it.minPct }.forEach { b ->
+                    RuleRow("${b.minPct.fmt()}%–${b.maxPct.fmt()}%", b.delta) { v -> exam { r -> r.copy(bands = r.bands.map { if (it == b) it.copy(delta = v) else it }) } }
+                }
+                RuleRow("缺考", er.absent) { v -> exam { it.copy(absent = v) } }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 6.dp)) {
+                    top.yukonga.miuix.kmp.basic.TextButton("编辑分数档", onClick = { editBands = true }, modifier = Modifier.weight(1f))
+                    top.yukonga.miuix.kmp.basic.TextButton("恢复默认", onClick = { exam { com.deepshawn.hwcounter.data.ExamRules() } }, modifier = Modifier.weight(1f))
+                }
+                Text("得分率落在区间内（含下限，不含上限；最高档含满分）加减对应分数。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(bottom = 8.dp))
             }
         }
 
@@ -370,6 +389,21 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
         }
     }
 
+    if (editBands) {
+        var text by remember { mutableStateOf(s.rules.exam.bands.sortedByDescending { it.minPct }.joinToString("\n") { "${it.minPct.fmt()} ${it.maxPct.fmt()} ${it.delta.fmt()}" }) }
+        val parsed = text.lines().map { it.trim() }.filter { it.isNotEmpty() }.map { l ->
+            val n = l.split(Regex("[\\s,，~～\\-–]+")).mapNotNull { it.trim().removeSuffix("%").toDoubleOrNull() }
+            if (n.size == 3 && n[0] < n[1]) com.deepshawn.hwcounter.data.ExamBand(n[0], n[1], n[2]) else null
+        }
+        com.deepshawn.hwcounter.ui.components.HyperDialog(
+            true, "编辑分数档", { editBands = false },
+            summary = "每行一档：下限% 上限% 加减分，例如“90 100 2”表示得分率 90%–100% 加 2 分，“0 60 -1”表示不及格减 1 分。",
+            confirmText = "保存", confirmEnabled = parsed.isNotEmpty() && parsed.all { it != null },
+            onConfirm = { rules { it.copy(exam = it.exam.copy(bands = parsed.filterNotNull())) }; editBands = false },
+        ) {
+            top.yukonga.miuix.kmp.basic.TextField(text, { text = it }, minLines = 4, maxLines = 8, modifier = Modifier.fillMaxWidth())
+        }
+    }
     if (confirmReset) ConfirmDialog("清空所有数据", "将删除所有班级、名单和记录（设置保留）。建议先备份。", "清空", { confirmReset = false }) {
         vm.resetAll(); kit.undoable("已清空所有数据")
     }

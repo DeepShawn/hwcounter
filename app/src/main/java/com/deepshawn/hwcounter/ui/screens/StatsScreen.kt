@@ -72,7 +72,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.extra.SuperArrow
@@ -97,7 +96,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
         item(key = "range") {
             Column(Modifier.padding(horizontal = 12.dp)) {
                 Text("${c.name} · ${c.students.size} 人 · 共 ${c.assignments.size} 次作业", fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
-                TabRowWithContour(Analytics.Range.entries.map { it.label }, rangeIdx, { rangeIdx = it })
+                com.deepshawn.hwcounter.ui.components.HTabs(Analytics.Range.entries.map { it.label }, rangeIdx, { rangeIdx = it })
             }
         }
         if (report.points.isEmpty()) {
@@ -262,9 +261,9 @@ private fun Heatmap(c: com.deepshawn.hwcounter.data.SchoolClass, report: Analyti
     val density = LocalDensity.current
     Column {
         top.yukonga.miuix.kmp.basic.SmallTitle("作业热力图（${cols.size} 次）")
-        top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp).fillMaxWidth()) {
+        com.deepshawn.hwcounter.ui.components.HCard(Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp).fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
-                TabRowWithContour(listOf("按学号", "按缺交"), sort, { sort = it })
+                com.deepshawn.hwcounter.ui.components.HTabs(listOf("按学号", "按缺交"), sort, { sort = it })
                 Spacer(Modifier.height(10.dp))
                 Row {
                     Column(Modifier.width(60.dp)) {

@@ -248,7 +248,7 @@ fun Histogram(bins: List<Pair<String, Int>>, modifier: Modifier = Modifier, heig
 @Composable
 fun KpiTile(label: String, value: String, delta: Float?, modifier: Modifier = Modifier, goodWhenUp: Boolean = true) {
     val colors = MiuixTheme.colorScheme
-    Column(modifier.clip(RoundedCornerShape(18.dp)).background(colors.surfaceContainer).padding(14.dp)) {
+    Column(modifier.glassPanel(RoundedCornerShape(18.dp)).padding(14.dp)) {
         Text(label, fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
         Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
         if (delta != null) {

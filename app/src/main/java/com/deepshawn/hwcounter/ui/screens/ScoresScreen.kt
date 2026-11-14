@@ -86,7 +86,6 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -151,8 +150,8 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         }
         item(key = "tabs") {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TabRowWithContour(listOf("个人榜", "小组榜", "催交榜"), mode, { mode = it; exitSelect() })
-                if (mode == 0) TabRowWithContour(listOf("按积分", "按学号"), if (byNumber) 1 else 0, {
+                com.deepshawn.hwcounter.ui.components.HTabs(listOf("个人榜", "小组榜", "催交榜"), mode, { mode = it; exitSelect() })
+                if (mode == 0) com.deepshawn.hwcounter.ui.components.HTabs(listOf("按积分", "按学号"), if (byNumber) 1 else 0, {
                     byNumber = it == 1; preferences.edit().putBoolean("scoresSortByNo", byNumber).apply()
                 })
                 Text(
@@ -300,7 +299,7 @@ private fun RechargeDialog(
         TextField(note, { note = it }, label = "备注（可选，如：期中重新计分）", singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(12.dp))
         Text("从什么时候起重新计分", fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
-        TabRowWithContour(listOf("立即", "从某次作业起", "从某一天起"), when_, { when_ = it })
+        com.deepshawn.hwcounter.ui.components.HTabs(listOf("立即", "从某次作业起", "从某一天起"), when_, { when_ = it })
         Spacer(Modifier.height(8.dp))
         when (when_) {
             0 -> Text("现在起：之后布置的作业和之后的加减分在重置分数上累计。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
@@ -405,7 +404,7 @@ private fun RechargeHistorySheet(show: Boolean, recharges: List<ScoreRecharge>, 
 private fun ScoreHero(stats: List<StudentStat>, base: Double, missing: Double, late: Double, excellent: Double, recharges: Int, onClick: (String) -> Unit) {
     val colors = MiuixTheme.colorScheme
     val avg = if (stats.isEmpty()) 0.0 else stats.sumOf { it.score } / stats.size
-    Card {
+    com.deepshawn.hwcounter.ui.components.HCard {
         Row(Modifier.padding(top = 16.dp, bottom = 4.dp)) {
             HeroNumber("平均分", avg.fmt(), Modifier.weight(1f))
             HeroNumber("最高", (stats.maxOfOrNull { it.score } ?: 0.0).fmt(), Modifier.weight(1f))
@@ -516,7 +515,7 @@ private fun RankRow(
 @Composable
 private fun GroupRow(rank: Int, name: String, list: List<StudentStat>, avg: Double, onClick: () -> Unit) {
     val colors = MiuixTheme.colorScheme
-    Card(Modifier.padding(horizontal = 12.dp, vertical = 5.dp), onClick = onClick, pressFeedbackType = top.yukonga.miuix.kmp.utils.PressFeedbackType.Sink) {
+    com.deepshawn.hwcounter.ui.components.HCard(Modifier.padding(horizontal = 12.dp, vertical = 5.dp), onClick = onClick) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (rank <= 3) listOf("🥇", "🥈", "🥉")[rank - 1] else "$rank", fontSize = 22.sp, modifier = Modifier.width(36.dp))

@@ -123,6 +123,10 @@ sealed interface Route {
     data class Draft(val id: String) : Route
     data object Drafts : Route
     data class StatTable(val draftId: String?) : Route
+    data class Group(val name: String) : Route
+    data object Exams : Route
+    data class Exam(val id: String) : Route
+    data class ExamImport(val examId: String?) : Route
 }
 
 class Nav(private val stack: MutableList<Route>, private val canOpen: (Route) -> Boolean = { true }) {
@@ -225,6 +229,7 @@ fun App(vm: AppViewModel, data: AppData) {
     val topLevel = current is Route.Home || current is Route.Students || current is Route.Scores || current is Route.Stats || current is Route.Settings
     val ui = com.deepshawn.hwcounter.ui.theme.LocalUiPrefs.current
     val backdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+    val glassBg = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     // 底栏页面：内容从玻璃底栏下穿过，需要留出底栏高度；二级页面：整体避开系统导航条
     val bottomInset = if (topLevel) 92.dp + navBottom + (if (readOnly) 44.dp else 0.dp) else 16.dp + (if (readOnly) 44.dp else 0.dp)
@@ -239,7 +244,12 @@ fun App(vm: AppViewModel, data: AppData) {
                         .then(if (ui.glassOn) Modifier.layerBackdrop(backdrop) else Modifier)
                         .background(surface),
                 ) {
-                    CompositionLocalProvider(com.deepshawn.hwcounter.ui.components.LocalBottomInset provides bottomInset) {
+                    // 液态玻璃：页面背后铺柔光背景，卡片 / 选项卡从这一层取样做毛玻璃
+                    if (ui.glassOn) com.deepshawn.hwcounter.ui.components.GlassBackground(Modifier.fillMaxSize().layerBackdrop(glassBg))
+                    CompositionLocalProvider(
+                        com.deepshawn.hwcounter.ui.components.LocalBottomInset provides bottomInset,
+                        com.deepshawn.hwcounter.ui.components.LocalGlassBg provides (if (ui.glassOn) glassBg else null),
+                    ) {
                         val content: @Composable (Route) -> Unit = { route ->
                             if (route in listOf(Route.Home, Route.Students, Route.Scores, Route.Stats, Route.Settings)) {
                                 screenState.SaveableStateProvider(route.toString()) { RouteContent(route, vm, data) }
@@ -358,6 +368,10 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         is Route.Draft -> com.deepshawn.hwcounter.ui.screens.DraftScreen(vm, data, route.id)
         Route.Drafts -> com.deepshawn.hwcounter.ui.screens.DraftListScreen(vm, data)
         is Route.StatTable -> com.deepshawn.hwcounter.ui.screens.StatTableScreen(vm, data, route.draftId)
+        is Route.Group -> com.deepshawn.hwcounter.ui.screens.GroupDetailScreen(vm, data, route.name)
+        Route.Exams -> com.deepshawn.hwcounter.ui.screens.ExamListScreen(vm, data)
+        is Route.Exam -> com.deepshawn.hwcounter.ui.screens.ExamDetailScreen(vm, data, route.id)
+        is Route.ExamImport -> com.deepshawn.hwcounter.ui.screens.ExamImportScreen(vm, data, route.examId)
     }
 }
 
