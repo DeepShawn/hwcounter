@@ -71,8 +71,26 @@ kotlin {
     }
 }
 
+// 界面截图（仅 CI 的 screenshots 工作流传 -Pshots 时启用，平时构建不需要 Robolectric）
+val shots = project.hasProperty("shots")
+if (shots) {
+    android.sourceSets.getByName("test").java.srcDir("src/shots/java")
+    android.testOptions.unitTests.isIncludeAndroidResources = true
+    android.testOptions.unitTests.all {
+        it.systemProperty("robolectric.graphicsMode", "NATIVE")
+        it.systemProperty("shots.dir", rootProject.file("shots").absolutePath)
+        it.maxHeapSize = "3g"
+    }
+}
+
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    if (shots) {
+        testImplementation("org.robolectric:robolectric:4.16")
+        testImplementation("androidx.compose.ui:ui-test-junit4")
+        testImplementation("androidx.test:core:1.6.1")
+        debugImplementation("androidx.compose.ui:ui-test-manifest")
+    }
     val composeBom = platform("androidx.compose:compose-bom:2026.03.01")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
