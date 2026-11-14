@@ -123,7 +123,12 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         largeTitle = "积分榜",
         extraBottom = if (selecting) 150.dp else 0.dp,
         actions = {
-            IconButton(onClick = { menu = true }, modifier = Modifier.padding(end = 16.dp)) {
+            if (!readOnly && mode == 0 && c.students.isNotEmpty()) TextButton(
+                if (selecting) "完成" else "多选", onClick = { if (selecting) exitSelect() else selecting = true },
+                minHeight = 34.dp, insideMargin = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                colors = if (selecting) ButtonDefaults.textButtonColorsPrimary() else ButtonDefaults.textButtonColors(),
+            )
+            IconButton(onClick = { menu = true }, modifier = Modifier.padding(start = 4.dp, end = 16.dp)) {
                 Icon(Icons.Filled.MoreVert, "更多", tint = colors.onSurface)
             }
         },
@@ -147,16 +152,9 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         item(key = "tabs") {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TabRowWithContour(listOf("个人榜", "小组榜", "催交榜"), mode, { mode = it; exitSelect() })
-                if (mode == 0) Row(verticalAlignment = Alignment.CenterVertically) {
-                    TabRowWithContour(listOf("按积分", "按学号"), if (byNumber) 1 else 0, {
-                        byNumber = it == 1; preferences.edit().putBoolean("scoresSortByNo", byNumber).apply()
-                    }, modifier = Modifier.weight(1f))
-                    if (!readOnly) TextButton(
-                        if (selecting) "完成" else "多选", onClick = { if (selecting) exitSelect() else selecting = true },
-                        enabled = c.students.isNotEmpty(), modifier = Modifier.padding(start = 8.dp),
-                        colors = if (selecting) ButtonDefaults.textButtonColorsPrimary() else ButtonDefaults.textButtonColors(),
-                    )
-                }
+                if (mode == 0) TabRowWithContour(listOf("按积分", "按学号"), if (byNumber) 1 else 0, {
+                    byNumber = it == 1; preferences.edit().putBoolean("scoresSortByNo", byNumber).apply()
+                })
                 Text(
                     when {
                         mode != 0 -> if (mode == 1) "按小组平均分排名，点小组给全组加减分" else "按未交、迟交次数排列"
@@ -174,7 +172,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
                 RankRow(
                     Modifier.listCell(i, personalStats.size), ranks.getValue(st.student.id), st, selecting, st.student.id in selected,
                     valueText = st.score.fmt(),
-                    sub = "${st.student.no} · 交${st.submitted} · 迟${st.late} · 缺${st.missing}" + if (recharged.containsKey(st.student.id)) " · 💳" else "",
+                    sub = "${st.student.no} · 交${st.submitted} · 迟${st.late} · 缺${st.missing}" + if (recharged.containsKey(st.student.id)) " · 已充值" else "",
                     onClick = {
                         if (selecting) selected = if (st.student.id in selected) selected - st.student.id else selected + st.student.id
                         else if (readOnly) kit.nav.push(Route.StudentDetail(st.student.id))
@@ -402,14 +400,13 @@ private fun RechargeHistorySheet(show: Boolean, recharges: List<ScoreRecharge>, 
     )
 }
 
-/** 顶部概览：班级平均分、最高最低分 + 领奖台 */
+/** 顶部概览：平均 / 最高 / 最低 / 充值次数 + 前三名 */
 @Composable
 private fun ScoreHero(stats: List<StudentStat>, base: Double, missing: Double, late: Double, excellent: Double, recharges: Int, onClick: (String) -> Unit) {
+    val colors = MiuixTheme.colorScheme
     val avg = if (stats.isEmpty()) 0.0 else stats.sumOf { it.score } / stats.size
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(gradientBrush()).padding(horizontal = 16.dp, vertical = 14.dp),
-    ) {
-        Row {
+    Card {
+        Row(Modifier.padding(top = 16.dp, bottom = 4.dp)) {
             HeroNumber("平均分", avg.fmt(), Modifier.weight(1f))
             HeroNumber("最高", (stats.maxOfOrNull { it.score } ?: 0.0).fmt(), Modifier.weight(1f))
             HeroNumber("最低", (stats.minOfOrNull { it.score } ?: 0.0).fmt(), Modifier.weight(1f))
@@ -417,10 +414,11 @@ private fun ScoreHero(stats: List<StudentStat>, base: Double, missing: Double, l
         }
         Text(
             "基准 ${base.fmt()} · 未交 ${missing.signed()} · 迟交 ${late.signed()} · 优秀 ${excellent.signed()}",
-            color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp),
+            color = colors.onSurfaceVariantSummary, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
         if (stats.size >= 3) {
-            Spacer(Modifier.height(10.dp))
+            Box(Modifier.padding(horizontal = 16.dp).fillMaxWidth().height(0.5.dp).background(colors.dividerLine))
             Podium(stats.take(3), onClick)
         }
     }
@@ -428,35 +426,31 @@ private fun ScoreHero(stats: List<StudentStat>, base: Double, missing: Double, l
 
 @Composable
 private fun HeroNumber(label: String, value: String, modifier: Modifier) {
-    Column(modifier) {
-        Text(value, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-        Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, color = MiuixTheme.colorScheme.onSurface, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(label, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, fontSize = 12.sp)
     }
 }
 
+/** 前三名：第一名居中稍大，带奖牌 */
 @Composable
 private fun Podium(top: List<StudentStat>, onClick: (String) -> Unit) {
-    val order = listOf(1, 0, 2)
-    val heights = listOf(70, 92, 56)
+    val colors = MiuixTheme.colorScheme
     val medals = listOf("🥇", "🥈", "🥉")
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
-        order.forEachIndexed { pos, idx ->
+    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
+        listOf(1, 0, 2).forEach { idx ->
             val st = top[idx]
-            val anim = remember { Animatable(0f) }
-            LaunchedEffect(st.student.id) { anim.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessLow)) }
-            Column(Modifier.weight(1f).combinedClickable(onClick = { onClick(st.student.id) }), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(medals[idx], fontSize = 22.sp)
-                Avatar(st.student.name, size = if (idx == 0) 48.dp else 40.dp, color = Color.White.copy(alpha = 0.3f))
-                Text(st.student.name, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1)
-                Spacer(Modifier.height(4.dp))
-                Box(
-                    Modifier.fillMaxWidth().padding(horizontal = 6.dp).height((heights[pos] * anim.value).dp)
-                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-                        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.42f), Color.White.copy(alpha = 0.10f)))),
-                    contentAlignment = Alignment.TopCenter,
-                ) {
-                    Text(st.score.fmt(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp, modifier = Modifier.padding(top = 6.dp))
+            Column(
+                Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).combinedClickable(onClick = { onClick(st.student.id) }).padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(contentAlignment = Alignment.BottomEnd) {
+                    Avatar(st.student.name, size = if (idx == 0) 54.dp else 44.dp)
+                    Text(medals[idx], fontSize = if (idx == 0) 20.sp else 17.sp, modifier = Modifier.padding(start = 2.dp))
                 }
+                Spacer(Modifier.height(6.dp))
+                Text(st.student.name, fontWeight = FontWeight.Medium, fontSize = 14.sp, maxLines = 1)
+                Text(st.score.fmt(), fontWeight = FontWeight.SemiBold, fontSize = if (idx == 0) 18.sp else 16.sp, color = colors.primary)
             }
         }
     }

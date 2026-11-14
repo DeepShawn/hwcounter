@@ -13,8 +13,8 @@ android {
         applicationId = "com.deepshawn.hwcounter"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "2.0.0"
+        versionCode = 21
+        versionName = "2.0.1"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -108,7 +108,7 @@ dependencies {
     implementation("io.github.kyant0:backdrop:1.0.6")
 
     implementation("androidx.core:core-ktx:1.16.0")
-    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.activity:activity-compose:1.12.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
