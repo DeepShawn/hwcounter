@@ -72,3 +72,19 @@ test('从某一天起重置；生效更晚的重置优先', () => {
   assert.equal(score(both, 's1'), 97);
   assert.equal(score(removeRecharge(both, byDay.recharges[0].id), 's1'), 46);
 });
+
+import { examDelta } from '../../web/js/model.js';
+test('考试计分档与安卓一致，并计入积分、受重置影响', () => {
+  assert.equal(examDelta(rules, { scores: { a: 90 }, fullScore: 100 }, 'a'), 2);
+  assert.equal(examDelta(rules, { scores: { a: 100 }, fullScore: 100 }, 'a'), 2);
+  assert.equal(examDelta(rules, { scores: { a: 85 }, fullScore: 100 }, 'a'), 1);
+  assert.equal(examDelta(rules, { scores: { a: 59.5 }, fullScore: 100 }, 'a'), -1);
+  assert.equal(examDelta(rules, { scores: { a: 140 }, fullScore: 150 }, 'a'), 2);
+  assert.equal(examDelta({ ...rules, exam: { absent: -3 } }, { scores: {}, absent: ['a'], fullScore: 100 }, 'a'), -3);
+  assert.equal(examDelta(rules, { scores: { a: 95 }, fullScore: 100, autoScore: false }, 'a'), 0);
+  let c = { ...fixture(), exams: [{ id: 'e1', title: '期中', date: 5000, fullScore: 100, scores: { s1: 95, s2: 50 }, absent: [] }] };
+  assert.equal(score(c, 's1'), 98); // 96 + 2
+  assert.equal(score(c, 's2'), 99);
+  c = rechargeScores(c, rules, ['s1'], 100, '', 9000);
+  assert.equal(score(c, 's1'), 100);
+});

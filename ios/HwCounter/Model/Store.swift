@@ -251,6 +251,8 @@ final class Store: ObservableObject {
         updateClass { c in
             c.students.removeAll { $0.id == id }
             c.scores.removeAll { $0.studentId == id }
+            for i in c.exams.indices { c.exams[i].scores.removeValue(forKey: id); c.exams[i].absent.removeAll { $0 == id } }
+            c.groupLeaders = c.groupLeaders.filter { $0.value != id }
             c.recharges = c.recharges.compactMap { r in
                 var r = r; r.studentIds.removeAll { $0 == id }; r.before.removeValue(forKey: id)
                 return r.studentIds.isEmpty ? nil : r
@@ -273,7 +275,7 @@ final class Store: ObservableObject {
         }
         updateClass { c in
             if mode == 1 {
-                c.students = students; c.assignments = []; c.scores = []; c.recharges = []
+                c.students = students; c.assignments = []; c.scores = []; c.recharges = []; c.exams = []; c.groupLeaders = [:]
                 if let n = className { c.name = n }
             } else {
                 for n in students {

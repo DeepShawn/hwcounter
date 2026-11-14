@@ -96,7 +96,7 @@ data class LedgerRow(
     val assignmentId: String? = null,
     val rechargeId: String? = null,
 ) {
-    enum class Kind { MANUAL, AUTO, RECHARGE }
+    enum class Kind { MANUAL, AUTO, RECHARGE, EXAM }
 }
 
 /** 某位学生的完整积分流水（新 → 旧） */
@@ -110,6 +110,13 @@ fun SchoolClass.ledger(rules: ScoreRules, studentId: String): List<LedgerRow> {
         val st = a.statuses[studentId] ?: HwStatus.NONE
         val d = rules.of(st)
         if (d != 0.0) rows += LedgerRow("a" + a.id, LedgerRow.Kind.AUTO, a.createdAt, d, "${a.subject}「${a.title}」${st.label}", a.countsAfter(last), assignmentId = a.id)
+    }
+    for (e in exams) {
+        val d = rules.exam.deltaFor(e, studentId)
+        if (d != 0.0) {
+            val what = if (studentId in e.absent) "缺考" else "${e.scores[studentId]?.fmt()} 分"
+            rows += LedgerRow("e" + e.id, LedgerRow.Kind.EXAM, e.date, d, "考试「${e.title}」$what", last?.counts(e.date) ?: true)
+        }
     }
     for (r in recharges) if (studentId in r.studentIds) {
         val before = r.before[studentId]

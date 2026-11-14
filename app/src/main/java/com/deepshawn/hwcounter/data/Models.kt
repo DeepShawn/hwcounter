@@ -83,6 +83,10 @@ data class SchoolClass(
     val seating: Seating? = null,
     /** 积分重置记录（见 Recharge.kt） */
     val recharges: List<ScoreRecharge> = emptyList(),
+    /** 考试（见 Exams.kt），与作业分开统计 */
+    val exams: List<Exam> = emptyList(),
+    /** 小组 → 组长学生 id */
+    val groupLeaders: Map<String, String> = emptyMap(),
 )
 
 /** 座位表：seats 为 学生id → 下标(行*cols+列)；frontAtTop 讲台是否在上方。三端同一格式 */
@@ -102,6 +106,8 @@ data class ScoreRules(
     val late: Double = -1.0,
     val missing: Double = -2.0,
     val leave: Double = 0.0,
+    /** 考试按分数档自动加减分 */
+    val exam: ExamRules = ExamRules(),
 ) {
     fun of(s: HwStatus): Double = when (s) {
         HwStatus.NONE -> 0.0
@@ -203,7 +209,9 @@ fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
             counts[s] = (counts[s] ?: 0) + 1
             if (a.countsAfter(r)) auto += rules.of(s)
         }
-        StudentStat(st, (r?.target ?: rules.initial) + auto + (manual[st.id] ?: 0.0), counts)
+        var examPts = 0.0
+        for (e in exams) if (r == null || r.counts(e.date)) examPts += rules.exam.deltaFor(e, st.id)
+        StudentStat(st, (r?.target ?: rules.initial) + auto + (manual[st.id] ?: 0.0) + examPts, counts)
     }
 }
 

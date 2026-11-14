@@ -270,6 +270,17 @@ final class CloudClient {
             c.assignments = assigns
             c.scores = unionById(r.scores, l.scores)
             c.recharges = unionById(r.recharges, l.recharges).sorted { $0.time < $1.time }
+            var exams = r.exams
+            for le in l.exams {
+                if let i = exams.firstIndex(where: { $0.id == le.id }) {
+                    var m = le
+                    m.scores = exams[i].scores.merging(le.scores) { _, n in n }
+                    m.absent = Array(Set(exams[i].absent + le.absent)).filter { le.scores[$0] == nil }.sorted()
+                    exams[i] = m
+                } else { exams.append(le) }
+            }
+            c.exams = exams.sorted { $0.date < $1.date }
+            c.groupLeaders = r.groupLeaders.merging(l.groupLeaders) { _, n in n }
             c.seating = l.seating ?? r.seating
             classes[l.id] = c
         }

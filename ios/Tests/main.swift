@@ -217,6 +217,24 @@ do {
     let both = byDay.recharging(rules, ids: ["s1"], target: 50, time: 10000, effectiveAt: 500)
     check(score(byDay, "s1", rules) == 97 && score(both, "s1", rules) == 97, "从某一天起重置；生效更晚的优先")
 }
+// 考试计分（与安卓 ExamTest、网页 recharge.test.mjs 同一组用例）
+do {
+    print("== 考试计分")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    let r = ExamRules()
+    check(r.delta(90, full: 100) == 2 && r.delta(100, full: 100) == 2 && r.delta(85, full: 100) == 1 && r.delta(70, full: 100) == 0 && r.delta(59.5, full: 100) == -1 && r.delta(140, full: 150) == 2, "分数档按得分率")
+    var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三"), Student(id: "s2", no: "02", name: "李四")])
+    var e = Exam(title: "期中", scores: ["s1": 95, "s2": 50])
+    e.date = 5000
+    c.exams = [e]
+    let rules = Rules()
+    check(c.stats(rules).map(\.score) == [102, 99], "考试加减分计入积分")
+    let reset = c.recharging(rules, ids: ["s1", "s2"], target: 100, time: 9000)
+    check(reset.stats(rules).map(\.score) == [100, 100], "重置后之前的考试不再计分")
+    let json = try! JSONEncoder().encode(c)
+    let back = try! JSONDecoder().decode(SchoolClass.self, from: json)
+    check(back.exams == c.exams, "考试可编码/解码")
+}
 // ---------- 统计表识别 / 统计名单 / 草稿（与 tools/web-tests/stats.test.mjs 同样的用例） ----------
 do {
     print("== 统计表识别")

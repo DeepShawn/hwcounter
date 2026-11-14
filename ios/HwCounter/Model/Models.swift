@@ -224,6 +224,55 @@ struct ScoreRecharge: Codable, Identifiable, Equatable {
     }
 }
 
+/// 考试（与安卓 Exams.kt、网页 model.js 同格式）：分数与作业分开记录
+struct Exam: Codable, Identifiable, Equatable {
+    var id: String = newId()
+    var title: String
+    var subject: String = ""
+    var date: Int64 = nowMillis()
+    var fullScore: Double = 100
+    var scores: [String: Double] = [:]
+    var absent: [String] = []
+    var note: String = ""
+    var autoScore: Bool = true
+
+    init(title: String, subject: String = "", date: Int64 = nowMillis(), fullScore: Double = 100, scores: [String: Double] = [:], absent: [String] = []) {
+        self.title = title; self.subject = subject; self.date = date; self.fullScore = fullScore; self.scores = scores; self.absent = absent
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? newId()
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? "考试"
+        subject = try c.decodeIfPresent(String.self, forKey: .subject) ?? ""
+        date = try c.decodeIfPresent(Int64.self, forKey: .date) ?? nowMillis()
+        fullScore = try c.decodeIfPresent(Double.self, forKey: .fullScore) ?? 100
+        scores = try c.decodeIfPresent([String: Double].self, forKey: .scores) ?? [:]
+        absent = try c.decodeIfPresent([String].self, forKey: .absent) ?? []
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+        autoScore = try c.decodeIfPresent(Bool.self, forKey: .autoScore) ?? true
+    }
+}
+
+/// 考试计分档：得分率落在 [minPct, maxPct) 加 delta 分（最高档含 100%）
+struct ExamBand: Equatable { var minPct: Double; var maxPct: Double; var delta: Double }
+struct ExamRules: Equatable {
+    var enabled = true
+    var bands: [ExamBand] = [ExamBand(minPct: 90, maxPct: 100, delta: 2), ExamBand(minPct: 80, maxPct: 90, delta: 1), ExamBand(minPct: 0, maxPct: 60, delta: -1)]
+    var absent = 0.0
+    func delta(_ score: Double, full: Double) -> Double {
+        guard enabled, full > 0, score.isFinite else { return 0 }
+        let pct = score / full * 100
+        let top = max(100, bands.map(\.maxPct).max() ?? 100)
+        return bands.first { pct >= $0.minPct && (pct < $0.maxPct || ($0.maxPct >= top && pct >= $0.maxPct)) }?.delta ?? 0
+    }
+    func delta(_ e: Exam, _ sid: String) -> Double {
+        guard enabled, e.autoScore else { return 0 }
+        if e.absent.contains(sid) { return absent }
+        guard let s = e.scores[sid] else { return 0 }
+        return delta(s, full: e.fullScore)
+    }
+}
+
 struct SchoolClass: Codable, Identifiable, Equatable {
     var id: String = newId()
     var name: String
@@ -235,6 +284,10 @@ struct SchoolClass: Codable, Identifiable, Equatable {
     var seating: Seating? = nil
     /// 积分重置记录
     var recharges: [ScoreRecharge] = []
+    /// 考试
+    var exams: [Exam] = []
+    /// 小组 → 组长学生 id
+    var groupLeaders: [String: String] = [:]
 
     init(name: String, emoji: String = "🎒", students: [Student] = []) {
         self.name = name; self.emoji = emoji; self.students = students
@@ -249,6 +302,8 @@ struct SchoolClass: Codable, Identifiable, Equatable {
         emoji = try c.decodeIfPresent(String.self, forKey: .emoji) ?? "🎒"
         seating = try? c.decodeIfPresent(Seating.self, forKey: .seating)
         recharges = (try? c.decodeIfPresent([ScoreRecharge].self, forKey: .recharges)) ?? []
+        exams = (try? c.decodeIfPresent([Exam].self, forKey: .exams)) ?? []
+        groupLeaders = (try? c.decodeIfPresent([String: String].self, forKey: .groupLeaders)) ?? [:]
     }
 }
 
@@ -273,6 +328,7 @@ struct Seating: Codable, Equatable {
 
 struct Rules: Equatable {
     var initial = 100.0, submitted = 0.0, excellent = 1.0, late = -1.0, missing = -2.0, leave = 0.0
+    var exam = ExamRules()
     func of(_ s: HwStatus) -> Double {
         switch s {
         case .NONE: return 0
@@ -313,6 +369,16 @@ struct AppData: Codable, Equatable {
             x.late = r?["late"]?.double ?? x.late
             x.missing = r?["missing"]?.double ?? x.missing
             x.leave = r?["leave"]?.double ?? x.leave
+            if let e = r?["exam"] {
+                x.exam.enabled = e["enabled"]?.bool ?? x.exam.enabled
+                x.exam.absent = e["absent"]?.double ?? x.exam.absent
+                if case .array(let arr)? = e["bands"] {
+                    x.exam.bands = arr.compactMap { b in
+                        guard let lo = b["minPct"]?.double, let hi = b["maxPct"]?.double, let d = b["delta"]?.double else { return nil }
+                        return ExamBand(minPct: lo, maxPct: hi, delta: d)
+                    }
+                }
+            }
             return x
         }
         set {
@@ -418,7 +484,9 @@ extension SchoolClass {
                 if s == .LATE { late += 1 }
                 if s == .MISSING { miss += 1 }
             }
-            return Stat(student: st, score: (r?.target ?? rules.initial) + auto + (manual[st.id] ?? 0), submitted: sub, late: late, missing: miss)
+            var examPts = 0.0
+            for e in exams where r.map({ $0.counts(e.date) }) ?? true { examPts += rules.exam.delta(e, st.id) }
+            return Stat(student: st, score: (r?.target ?? rules.initial) + auto + (manual[st.id] ?? 0) + examPts, submitted: sub, late: late, missing: miss)
         }
     }
 }
