@@ -2,6 +2,14 @@
 
 package com.deepshawn.hwcounter.ui.screens
 
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.EventSeat
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.foundation.lazy.itemsIndexed
+import com.deepshawn.hwcounter.ui.components.listCell
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -148,84 +156,116 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
     }
     val list = c.students.filter { query.isBlank() || it.name.contains(query) || it.no.contains(query) || it.group.contains(query) }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + com.deepshawn.hwcounter.ui.components.LocalBottomInset.current)) {
-        item {
-            GradientHeader {
-                Text("名单管理", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                Text("${c.emoji} ${c.name} · ${c.students.size} 人 · ${c.students.map { it.group }.filter { it.isNotBlank() }.distinct().size} 个小组", color = Color.White.copy(alpha = 0.85f))
-                Spacer(Modifier.height(12.dp))
-                TextField(
-                    query, { query = it },
-                    placeholder = { Text("搜索姓名 / 学号 / 小组") },
-                    leadingIcon = { Icon(Icons.Filled.Search, null) },
-                    trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, null) } },
-                    singleLine = true, shape = CircleShape,
-                    colors = TextFieldDefaults.colors(
-                        focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
-                        focusedContainerColor = Color.White, unfocusedContainerColor = Color.White.copy(alpha = 0.92f),
-                        focusedTextColor = Color(0xFF1B1B1F), unfocusedTextColor = Color(0xFF1B1B1F),
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
+    var more by remember { mutableStateOf(false) }
+    var rowMenu by remember { mutableStateOf<Student?>(null) }
+    val colors = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+    val qrPdf = {
+        if (c.students.isEmpty()) kit.toast("名单为空") else scope.launch {
+            val f = withContext(Dispatchers.Default) {
+                File(Exporter.exportDir(ctx), "${c.name}_学号二维码贴纸.pdf".replace("/", "_")).also { Exporter.qrLabelsPdf(c, it) }
             }
+            Exporter.shareFile(ctx, f, "application/pdf", "打印二维码贴纸")
         }
-        item {
-            Row(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip({ openJson.launch(arrayOf("application/json", "text/*", "*/*")) }, { Text("导入 JSON/CSV") }, leadingIcon = { Icon(Icons.Filled.FileUpload, null, Modifier.size(18.dp)) })
-                AssistChip({ paste = true }, { Text("粘贴名单") }, leadingIcon = { Text("📋") })
-                AssistChip({ kit.nav.push(Route.Seating) }, { Text(if (c.seating == null) "座位表" else "座位表（${c.seating.seats.size}人）") }, leadingIcon = { Text("🪑") })
-                AssistChip({ adding = true }, { Text("添加学生") }, leadingIcon = { Icon(Icons.Filled.PersonAdd, null, Modifier.size(18.dp)) })
-                AssistChip({
-                    if (c.students.isEmpty()) kit.toast("名单为空") else scope.launch {
-                        val f = withContext(Dispatchers.Default) {
-                            File(Exporter.exportDir(ctx), "${c.name}_学号二维码贴纸.pdf".replace("/", "_")).also { Exporter.qrLabelsPdf(c, it) }
+    }
+    com.deepshawn.hwcounter.ui.components.MiuixPage(
+        title = "名单",
+        actions = {
+            top.yukonga.miuix.kmp.basic.IconButton(onClick = { adding = true }) {
+                top.yukonga.miuix.kmp.basic.Icon(Icons.Filled.PersonAdd, "添加学生", tint = colors.onSurface)
+            }
+            top.yukonga.miuix.kmp.basic.IconButton(onClick = { more = true }, modifier = Modifier.padding(start = 4.dp, end = 16.dp)) {
+                top.yukonga.miuix.kmp.basic.Icon(Icons.Filled.MoreVert, "更多", tint = colors.onSurface)
+            }
+        },
+    ) {
+        item(key = "sub") {
+            top.yukonga.miuix.kmp.basic.Text(
+                "${c.name} · ${c.students.size} 人 · ${c.students.map { it.group }.filter { it.isNotBlank() }.distinct().size} 个小组",
+                fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = 10.dp),
+            )
+        }
+        item(key = "search") {
+            top.yukonga.miuix.kmp.basic.TextField(
+                query, { query = it }, label = "搜索姓名 / 学号 / 小组", useLabelAsPlaceholder = true, singleLine = true,
+                leadingIcon = { top.yukonga.miuix.kmp.basic.Icon(Icons.Filled.Search, null, Modifier.padding(start = 12.dp, end = 4.dp), tint = colors.onSurfaceVariantSummary) },
+                trailingIcon = { if (query.isNotEmpty()) top.yukonga.miuix.kmp.basic.IconButton(onClick = { query = "" }) { top.yukonga.miuix.kmp.basic.Icon(Icons.Filled.Close, "清除", tint = colors.onSurfaceVariantSummary) } },
+                cornerRadius = 20.dp,
+                modifier = Modifier.padding(horizontal = 12.dp).fillMaxWidth(),
+            )
+        }
+        item(key = "tools") {
+            top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp, vertical = 12.dp).fillMaxWidth()) {
+                Row(Modifier.padding(vertical = 8.dp)) {
+                    listOf(
+                        Triple("导入名单", Icons.Filled.FileUpload, { openJson.launch(arrayOf("application/json", "text/*", "*/*")) }),
+                        Triple("粘贴名单", Icons.Filled.ContentPaste, { paste = true }),
+                        Triple(if (c.seating == null) "座位表" else "座位表 ${c.seating.seats.size}", Icons.Filled.EventSeat, { kit.nav.push(Route.Seating) }),
+                        Triple("二维码贴纸", Icons.Filled.QrCode2, qrPdf),
+                    ).forEach { (label, icon, go) ->
+                        Column(
+                            Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { go() }.padding(vertical = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Box(Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(colors.primary.copy(alpha = 0.10f)), contentAlignment = Alignment.Center) {
+                                top.yukonga.miuix.kmp.basic.Icon(icon, null, Modifier.size(22.dp), tint = colors.primary)
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            top.yukonga.miuix.kmp.basic.Text(label, fontSize = 12.sp, maxLines = 1)
                         }
-                        Exporter.shareFile(ctx, f, "application/pdf", "打印二维码贴纸")
                     }
-                }, { Text("二维码贴纸 PDF") }, leadingIcon = { Icon(Icons.Filled.QrCode2, null, Modifier.size(18.dp)) })
-                AssistChip({ showTemplate = true }, { Text("JSON 格式说明") }, leadingIcon = { Text("📘") })
-                AssistChip({ exportRoster.launch("${c.name}_名单.json") }, { Text("导出名单") }, leadingIcon = { Icon(Icons.Filled.FileDownload, null, Modifier.size(18.dp)) })
-                AssistChip({ vm.sortStudents(); kit.toast("已按学号排序") }, { Text("按学号排序") }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, null, Modifier.size(18.dp)) })
+                }
             }
         }
         if (c.students.isEmpty()) {
             item {
                 EmptyState("👥", "名单还是空的", "导入 JSON（支持多种格式，自动识别字段）、粘贴 Excel 两列，或手动添加") {
-                    FilledTonalButton(onClick = { showTemplate = true }) { Text("查看 JSON 模板") }
+                    top.yukonga.miuix.kmp.basic.TextButton("查看 JSON 模板", onClick = { showTemplate = true })
                 }
             }
+        } else if (list.isEmpty()) {
+            item { top.yukonga.miuix.kmp.basic.Text("没有找到“$query”", Modifier.padding(28.dp), color = colors.onSurfaceVariantSummary) }
         }
-        items(list, key = { it.id }) { s ->
-            var menu by remember { mutableStateOf(false) }
-            Box(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                Row(
-                    Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)
-                        .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-                        .combinedClickable(onClick = { kit.nav.push(Route.StudentDetail(s.id)) }, onLongClick = { menu = true })
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Avatar(s.name, size = 42.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(s.name, fontWeight = FontWeight.Bold)
-                            if (s.gender.isNotBlank()) Text(if (s.gender.startsWith("女")) " ♀" else " ♂", color = if (s.gender.startsWith("女")) Color(0xFFE64980) else Color(0xFF4C6EF5))
-                            if (s.longLeave) {
-                                Spacer(Modifier.width(6.dp))
-                                Text("长期请假", fontSize = 10.sp, color = Color.White, modifier = Modifier.clip(CircleShape).background(statusColor(HwStatus.LEAVE)).padding(horizontal = 6.dp, vertical = 1.dp))
-                            }
+        itemsIndexed(list, key = { _, s -> s.id }) { i, s ->
+            Row(
+                Modifier.listCell(i, list.size)
+                    .combinedClickable(onClick = { kit.nav.push(Route.StudentDetail(s.id)) }, onLongClick = { rowMenu = s })
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Avatar(s.name, size = 38.dp)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        top.yukonga.miuix.kmp.basic.Text(s.name, fontWeight = FontWeight.Medium, fontSize = 16.sp)
+                        if (s.gender.isNotBlank()) top.yukonga.miuix.kmp.basic.Text(if (s.gender.startsWith("女")) " ♀" else " ♂", color = if (s.gender.startsWith("女")) Color(0xFFE64980) else Color(0xFF4C6EF5))
+                        if (s.longLeave) {
+                            Spacer(Modifier.width(6.dp))
+                            top.yukonga.miuix.kmp.basic.Text("长期请假", fontSize = 10.sp, color = statusColor(HwStatus.LEAVE), modifier = Modifier.clip(CircleShape).background(statusColor(HwStatus.LEAVE).copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 1.dp))
                         }
-                        Text(listOf(s.no, s.group, s.note).filter { it.isNotBlank() }.joinToString(" · "), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
                     }
-                    IconButton(onClick = { editing = s }) { Icon(Icons.Filled.Edit, "编辑", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    top.yukonga.miuix.kmp.basic.Text(listOf(s.no, s.group, s.note).filter { it.isNotBlank() }.joinToString(" · "), fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                DropdownMenu(menu, { menu = false }) {
-                    DropdownMenuItem(text = { Text("编辑") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; editing = s })
-                    DropdownMenuItem(text = { Text("删除") }, leadingIcon = { Icon(Icons.Filled.Delete, null) }, onClick = { menu = false; deleting = s })
-                }
+                top.yukonga.miuix.kmp.basic.Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = colors.onSurfaceVariantActions)
             }
         }
+    }
+
+    com.deepshawn.hwcounter.ui.components.ActionSheet(
+        show = more, title = "名单", onDismiss = { more = false },
+        actions = listOf(
+            com.deepshawn.hwcounter.ui.components.SheetAction("导出名单", "保存为 JSON 文件") { exportRoster.launch("${c.name}_名单.json") },
+            com.deepshawn.hwcounter.ui.components.SheetAction("按学号排序", "把名单按学号重新排列") { vm.sortStudents(); kit.toast("已按学号排序") },
+            com.deepshawn.hwcounter.ui.components.SheetAction("名单 JSON 格式说明", "支持的格式和模板文件") { showTemplate = true },
+        ),
+    )
+    rowMenu?.let { st ->
+        com.deepshawn.hwcounter.ui.components.ActionSheet(
+            show = true, title = st.name, onDismiss = { rowMenu = null },
+            actions = listOf(
+                com.deepshawn.hwcounter.ui.components.SheetAction("编辑") { editing = st },
+                com.deepshawn.hwcounter.ui.components.SheetAction("删除", danger = true) { deleting = st },
+            ),
+        )
     }
 
     if (adding) StudentEditDialog(null, { adding = false }) { vm.upsertStudent(it); adding = false; kit.toast("已添加 ${it.name}") }
@@ -369,25 +409,29 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
     val assigns = c.assignments.sortedByDescending { it.createdAt }
     val readOnlyState by vm.readOnly.collectAsState()
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp + com.deepshawn.hwcounter.ui.components.LocalBottomInset.current)) {
+    val mcolors = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+    com.deepshawn.hwcounter.ui.components.MiuixPage(
+        title = s.name,
+        onBack = { kit.nav.pop() },
+        actions = {
+            if (!readOnlyState) top.yukonga.miuix.kmp.basic.IconButton(onClick = { edit = true }, modifier = Modifier.padding(end = 16.dp)) {
+                top.yukonga.miuix.kmp.basic.Icon(Icons.Filled.Edit, "编辑", tint = mcolors.onSurface)
+            }
+        },
+    ) {
         item {
-            GradientHeader {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { kit.nav.pop() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = Color.White) }
-                    Spacer(Modifier.weight(1f))
-                    IconButton(onClick = { edit = true }) { Icon(Icons.Filled.Edit, "编辑", tint = Color.White) }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(s.name, size = 72.dp, color = Color.White.copy(alpha = 0.25f))
-                    Spacer(Modifier.width(16.dp))
+            top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(s.name, size = 56.dp)
+                    Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(s.name, color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                        Text(listOf(s.no, s.group, s.gender).filter { it.isNotBlank() }.joinToString(" · "), color = Color.White.copy(alpha = 0.85f))
-                        if (s.longLeave) Text("🏖️ 长期请假中", color = Color.White)
+                        top.yukonga.miuix.kmp.basic.Text(listOf(s.no, s.group, s.gender).filter { it.isNotBlank() }.joinToString(" · "), fontSize = 14.sp, color = mcolors.onSurfaceSecondary)
+                        if (s.longLeave) top.yukonga.miuix.kmp.basic.Text("长期请假中", fontSize = 12.sp, color = statusColor(HwStatus.LEAVE))
+                        top.yukonga.miuix.kmp.basic.Text("班级第 $rank 名 · 共 ${stats.size} 人", fontSize = 12.sp, color = mcolors.onSurfaceVariantSummary)
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text(me.score.fmt(), color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black)
-                        Text("第 $rank 名", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+                        top.yukonga.miuix.kmp.basic.Text(me.score.fmt(), fontSize = 30.sp, fontWeight = FontWeight.SemiBold, color = mcolors.primary)
+                        top.yukonga.miuix.kmp.basic.Text("当前积分", fontSize = 12.sp, color = mcolors.onSurfaceVariantSummary)
                     }
                 }
             }

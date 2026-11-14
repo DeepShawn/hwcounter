@@ -124,10 +124,11 @@ object Analytics {
         val stats = c.studentStats(rules)
         val scores = stats.map { it.score }
         val scoreBins = if (scores.isEmpty()) emptyList() else {
-            val lo = kotlin.math.floor(scores.min() / 5).toInt() * 5
-            val hi = kotlin.math.floor(scores.max() / 5).toInt() * 5
-            val step = maxOf(5, ((hi - lo) / 6.0).roundToInt().let { ((it + 4) / 5) * 5 })
-            (lo..hi step step).map { b -> "$b~${b + step - 1}" to scores.count { it >= b && it < b + step } }
+            // 按实际分数范围分成至多 7 档：范围小就 1 分一档，范围大再合并
+            val lo = kotlin.math.floor(scores.min()).toInt()
+            val hi = kotlin.math.floor(scores.max()).toInt()
+            val step = maxOf(1, (hi - lo + 7) / 7)
+            (lo..hi step step).map { b -> (if (step == 1) "$b" else "$b~${b + step - 1}") to scores.count { it >= b && it < b + step } }
         }
         val groups = stats.groupBy { it.student.group.ifBlank { "未分组" } }.map { (g, l) -> g to l.sumOf { it.score } / l.size }.sortedByDescending { it.second }
 

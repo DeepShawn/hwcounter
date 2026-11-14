@@ -13,8 +13,8 @@ android {
         applicationId = "com.deepshawn.hwcounter"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "2.0.0"
+        versionCode = 21
+        versionName = "2.0.1"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -71,8 +71,29 @@ kotlin {
     }
 }
 
+// 界面截图（仅 CI 的 screenshots 工作流传 -Pshots 时启用，平时构建不需要 Robolectric）
+val shots = project.hasProperty("shots")
+if (shots) {
+    android.sourceSets.getByName("test").java.srcDir("src/shots/java")
+    android.testOptions.unitTests.isIncludeAndroidResources = true
+    android.testOptions.unitTests.all {
+        it.systemProperty("robolectric.graphicsMode", "NATIVE")
+        it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
+        it.systemProperty("roborazzi.test.record", "true")
+        it.systemProperty("shots.dir", rootProject.file("shots").absolutePath)
+        it.maxHeapSize = "3g"
+    }
+}
+
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    if (shots) {
+        testImplementation("org.robolectric:robolectric:4.16")
+        testImplementation("androidx.compose.ui:ui-test-junit4")
+        testImplementation("androidx.test:core:1.6.1")
+        testImplementation("io.github.takahirom.roborazzi:roborazzi:1.78.0")
+        debugImplementation("androidx.compose.ui:ui-test-manifest")
+    }
     val composeBom = platform("androidx.compose:compose-bom:2026.03.01")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
@@ -87,7 +108,7 @@ dependencies {
     implementation("io.github.kyant0:backdrop:1.0.6")
 
     implementation("androidx.core:core-ktx:1.16.0")
-    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.activity:activity-compose:1.12.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")

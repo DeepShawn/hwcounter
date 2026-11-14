@@ -76,7 +76,7 @@ fun CloudSection(vm: AppViewModel) {
     var changingPw by remember { mutableStateOf(false) }
     val fmt = remember { SimpleDateFormat("yyyy年M月d日", Locale.CHINA) }
 
-    SectionTitle("☁️ 云端同步", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+    SectionTitle("云端同步", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
     AppCard(Modifier.padding(horizontal = 12.dp)) {
         if (st.email == null) {
             Text("现在是预览模式（只读）。登录后才能修改，数据自动在安卓、iPad、网页版之间同步。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -164,7 +164,7 @@ fun CloudSection(vm: AppViewModel) {
     history?.let { list ->
         AlertDialog(
             onDismissRequest = { history = null },
-            title = { Text("☁️ 云端历史版本") },
+            title = { Text("云端历史版本") },
             text = {
                 if (list.isEmpty()) Text("还没有历史版本（每次云端被覆盖前会自动保存一份，最多 30 份）")
                 else LazyColumn(Modifier.heightIn(max = 360.dp)) {
@@ -204,7 +204,7 @@ fun CloudConflictDialog(vm: AppViewModel) {
     }
     AlertDialog(
         onDismissRequest = {},
-        title = { Text("☁️ 两台设备都改过数据") },
+        title = { Text("两台设备都改过数据") },
         text = {
             Column {
                 Text("本机：${brief(local)}", fontSize = 13.sp)
@@ -237,7 +237,7 @@ private fun ChangePasswordDialog(vm: AppViewModel, onDismiss: () -> Unit) {
     val pwOpts = KeyboardOptions(keyboardType = KeyboardType.Password)
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("🔑 修改密码") },
+        title = { Text("修改密码") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(old, { old = it }, label = { Text("旧密码") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), keyboardOptions = pwOpts, modifier = Modifier.fillMaxWidth())
