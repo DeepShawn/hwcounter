@@ -297,12 +297,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         c.resetStudentScores(_data.value.settings.rules, studentIds, target)
     }
 
-    /** 积分充值：只重置积分并留下记录，历史加减分与作业状态不变 */
+    /** 积分重置：只重置积分并留下记录，历史加减分与作业状态不变 */
     fun rechargeScores(studentIds: Collection<String>, target: Double, note: String = "", effectiveAt: Long? = null, assignmentId: String? = null) = updateClass { c ->
         c.recharge(_data.value.settings.rules, studentIds, target, note, effectiveAt = effectiveAt, assignment = c.assignments.firstOrNull { it.id == assignmentId })
     }
 
-    /** 撤销某次充值（删除记录，分数按全部历史重新计算） */
+    // ---------- 考试 / 小组 ----------
+    fun upsertExam(e: Exam) = updateClass { it.upsertExam(e) }
+    fun deleteExam(id: String) = updateClass { it.removeExam(id) }
+    fun setExamScore(examId: String, studentId: String, score: Double?, absent: Boolean = false) = updateClass { c ->
+        c.copy(exams = c.exams.map { e ->
+            if (e.id != examId) e else e.copy(
+                scores = if (score == null || absent) e.scores - studentId else e.scores + (studentId to score),
+                absent = if (absent) (e.absent + studentId).distinct() else e.absent - studentId,
+            )
+        })
+    }
+    fun setGroupLeader(group: String, studentId: String?) = updateClass { it.setGroupLeader(group, studentId) }
+
+    /** 撤销某次重置（删除记录，分数按全部历史重新计算） */
     fun removeRecharge(id: String) = updateClass { c -> c.removeRecharge(id) }
 
     // ---------- 学生 ----------
@@ -315,6 +328,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         c.copy(
             students = c.students.filterNot { it.id == id },
             scores = c.scores.filterNot { it.studentId == id },
+            exams = c.exams.map { e -> e.copy(scores = e.scores - id, absent = e.absent - id) },
+            groupLeaders = c.groupLeaders.filterValues { it != id },
             recharges = c.recharges.mapNotNull { r ->
                 if (id !in r.studentIds) r else r.copy(studentIds = r.studentIds - id, before = r.before - id).takeIf { it.studentIds.isNotEmpty() }
             },
@@ -338,7 +353,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return r.students.size
         }
         updateClass { c ->
-            if (replace) c.copy(students = r.students, assignments = emptyList(), scores = emptyList(), recharges = emptyList(), name = r.className ?: c.name)
+            if (replace) c.copy(students = r.students, assignments = emptyList(), scores = emptyList(), recharges = emptyList(), exams = emptyList(), groupLeaders = emptyMap(), name = r.className ?: c.name)
             else {
                 val byNo = c.students.associateBy { it.no }
                 val merged = c.students.map { old ->

@@ -86,7 +86,6 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -114,7 +113,8 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
     val stats = remember(c, rules) { c.studentStats(rules).sortedByDescending { it.score } }
     val personalStats = remember(stats, byNumber) { if (byNumber) stats.sortedWith { x, y -> compareStudentNumbers(x.student.no, y.student.no) } else stats }
     val ranks = remember(stats) { stats.mapIndexed { i, st -> st.student.id to i + 1 }.toMap() }
-    val recharged = remember(c) { c.latestRecharges() }
+    // 全班同一次重置时不必逐行标注，只标出单独重置过的同学
+    val recharged = remember(c) { c.latestRecharges().let { m -> if (m.size == c.students.size && m.values.map { it.id }.distinct().size == 1) emptyMap() else m } }
     val selectedIds = c.students.filter { it.id in selected }.map { it.id }
     fun exitSelect() { selecting = false; selected = emptySet() }
 
@@ -151,8 +151,8 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         }
         item(key = "tabs") {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TabRowWithContour(listOf("个人榜", "小组榜", "催交榜"), mode, { mode = it; exitSelect() })
-                if (mode == 0) TabRowWithContour(listOf("按积分", "按学号"), if (byNumber) 1 else 0, {
+                com.deepshawn.hwcounter.ui.components.HTabs(listOf("个人榜", "小组榜", "催交榜"), mode, { mode = it; exitSelect() })
+                if (mode == 0) com.deepshawn.hwcounter.ui.components.HTabs(listOf("按积分", "按学号"), if (byNumber) 1 else 0, {
                     byNumber = it == 1; preferences.edit().putBoolean("scoresSortByNo", byNumber).apply()
                 })
                 Text(
@@ -172,7 +172,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
                 RankRow(
                     Modifier.listCell(i, personalStats.size), ranks.getValue(st.student.id), st, selecting, st.student.id in selected,
                     valueText = st.score.fmt(),
-                    sub = "${st.student.no} · 交${st.submitted} · 迟${st.late} · 缺${st.missing}" + if (recharged.containsKey(st.student.id)) " · 已充值" else "",
+                    sub = "${st.student.no} · 交${st.submitted} · 迟${st.late} · 缺${st.missing}" + if (recharged.containsKey(st.student.id)) " · 已重置" else "",
                     onClick = {
                         if (selecting) selected = if (st.student.id in selected) selected - st.student.id else selected + st.student.id
                         else if (readOnly) kit.nav.push(Route.StudentDetail(st.student.id))
@@ -207,13 +207,13 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         show = menu, title = "积分操作", onDismiss = { menu = false },
         actions = buildList {
             if (!readOnly) {
-                add(SheetAction("全班积分充值", "只重置积分，保留全部历史记录", enabled = c.students.isNotEmpty()) { exitSelect(); rechargeFor = c.students.map { it.id } })
+                add(SheetAction("全班积分重置", "只重置积分，保留全部历史记录", enabled = c.students.isNotEmpty()) { exitSelect(); rechargeFor = c.students.map { it.id } })
                 add(SheetAction("全班 +1", "全班表现好", enabled = c.students.isNotEmpty()) {
                     vm.addScore(c.students.map { it.id }, 1.0, "全班表现好"); kit.celebrate(); kit.undoable("全班 +1 🎉")
                 })
                 add(SheetAction("修改基准分", "当前 ${rules.initial.fmt()} 分，适用于所有班级") { editBase = true })
             }
-            add(SheetAction("充值记录", if (c.recharges.isEmpty()) "暂无" else "共 ${c.recharges.size} 次", enabled = c.recharges.isNotEmpty()) { history = true })
+            add(SheetAction("重置记录", if (c.recharges.isEmpty()) "暂无" else "共 ${c.recharges.size} 次", enabled = c.recharges.isNotEmpty()) { history = true })
             add(SheetAction("修改计分规则", "已交 / 优秀 / 迟交 / 未交 / 请假") { kit.nav.tab(Route.Settings) })
         },
     )
@@ -230,7 +230,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
     }
     NumberDialog(
         show = editBase && !readOnly, title = "修改基准分", initial = rules.initial,
-        summary = "适用于所有班级。只修改计分基准，历史加减分继续计入，未交次数和记录保留。已充值的同学以充值分数为基准，不受影响。",
+        summary = "适用于所有班级。只修改计分基准，历史加减分继续计入，未交次数和记录保留。已重置的同学以重置分数为基准，不受影响。",
         onDismiss = { editBase = false },
     ) { value ->
         vm.update { it.copy(settings = it.settings.copy(rules = it.settings.rules.copy(initial = value))) }
@@ -255,10 +255,10 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
             at != null -> "，从 ${fmtDay(at)} 起计分"
             else -> ""
         }
-        kit.undoable("已为 ${targets.size} 人充值到 ${value.fmt()} 分$start，历史记录已保留")
+        kit.undoable("已为 ${targets.size} 人重置为 ${value.fmt()} 分$start，历史记录已保留")
     }
     RechargeHistorySheet(history, c.recharges, c.students, readOnly, onDismiss = { history = false }) { r ->
-        vm.removeRecharge(r.id); kit.undoable("已撤销 ${fmtStamp(r.time)} 的充值")
+        vm.removeRecharge(r.id); kit.undoable("已撤销 ${fmtStamp(r.time)} 的重置")
     }
 }
 
@@ -266,8 +266,8 @@ private val stampFmt = SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA)
 fun fmtStamp(t: Long): String = stampFmt.format(Date(t))
 
 /**
- * 积分充值：设定分数、备注和生效时间（立即 / 从某次作业起 / 从某一天起），
- * 实时预览每人充值后的积分。
+ * 积分重置：设定分数、备注和生效时间（立即 / 从某次作业起 / 从某一天起），
+ * 实时预览每人重置后的积分。
  */
 @Composable
 private fun RechargeDialog(
@@ -290,20 +290,20 @@ private fun RechargeDialog(
     val colors = MiuixTheme.colorScheme
     val shortFmt = remember { SimpleDateFormat("M月d日", Locale.CHINA) }
     HyperDialog(
-        show = show, title = "积分充值 · ${targets.size} 人", onDismiss = onDismiss,
-        summary = "只重置积分并留下充值记录。原有加减分、作业状态、备注和未交次数全部保留，可随时查看和撤销。",
-        confirmText = "确认充值", confirmEnabled = value != null && (when_ != 1 || aid != null),
+        show = show, title = "积分重置 · ${targets.size} 人", onDismiss = onDismiss,
+        summary = "只重置积分并留下重置记录。原有加减分、作业状态、备注和未交次数全部保留，可随时查看和撤销。",
+        confirmText = "确认重置", confirmEnabled = value != null && (when_ != 1 || aid != null),
         onConfirm = { value?.let { onConfirm(targets, it, note, at, aid) } },
     ) {
-        TextField(text, { text = it }, label = "充值到（分）", singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+        TextField(text, { text = it }, label = "重置为（分）", singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         TextField(note, { note = it }, label = "备注（可选，如：期中重新计分）", singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(12.dp))
         Text("从什么时候起重新计分", fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
-        TabRowWithContour(listOf("立即", "从某次作业起", "从某一天起"), when_, { when_ = it })
+        com.deepshawn.hwcounter.ui.components.HTabs(listOf("立即", "从某次作业起", "从某一天起"), when_, { when_ = it })
         Spacer(Modifier.height(8.dp))
         when (when_) {
-            0 -> Text("现在起：之后布置的作业和之后的加减分在充值分数上累计。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+            0 -> Text("现在起：之后布置的作业和之后的加减分在重置分数上累计。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
             1 -> if (assignments.isEmpty()) Text("还没有作业", fontSize = 12.sp, color = colors.onSurfaceVariantSummary) else {
                 Text("所选作业（含）及之后的作业、以及这次作业布置之后的加减分计入；之前的不计入。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
                 Spacer(Modifier.height(6.dp))
@@ -337,7 +337,7 @@ private fun RechargeDialog(
             Modifier.fillMaxWidth().heightIn(max = 160.dp).clip(RoundedCornerShape(14.dp)).background(colors.secondaryContainer)
                 .verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
-            Text("当前 → 充值后", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
+            Text("当前 → 重置后", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
             targets.forEach { s ->
                 val before = scores[s.id] ?: initial
                 Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -370,14 +370,14 @@ private fun RechargeHistorySheet(show: Boolean, recharges: List<ScoreRecharge>, 
     val colors = MiuixTheme.colorScheme
     val names = remember(students) { students.associate { it.id to it.name } }
     var confirm by remember { mutableStateOf<ScoreRecharge?>(null) }
-    SuperBottomSheet(show = show, title = "积分充值记录", onDismissRequest = onDismiss) {
+    SuperBottomSheet(show = show, title = "积分重置记录", onDismissRequest = onDismiss) {
         Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (recharges.isEmpty()) Text("暂无充值记录", color = colors.onSurfaceVariantSummary)
+            if (recharges.isEmpty()) Text("暂无重置记录", color = colors.onSurfaceVariantSummary)
             recharges.sortedWith(compareByDescending<ScoreRecharge> { it.start }.thenByDescending { it.time }).forEach { r ->
                 Card {
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("充值到 ${r.target.fmt()} 分", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                            Text("重置为 ${r.target.fmt()} 分", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, modifier = Modifier.weight(1f))
                             Text("${r.studentIds.size} 人", color = colors.primary, fontWeight = FontWeight.SemiBold)
                         }
                         Text(r.startLabel(::fmtDay) + " · 操作于 " + fmtStamp(r.time) + if (r.note.isNotBlank()) " · ${r.note}" else "", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
@@ -386,31 +386,31 @@ private fun RechargeHistorySheet(show: Boolean, recharges: List<ScoreRecharge>, 
                             r.studentIds.take(30).joinToString("、") { "${names[it] ?: "已删除"}（原${(r.before[it] ?: 0.0).fmt()}）" } + if (r.studentIds.size > 30) " 等 ${r.studentIds.size} 人" else "",
                             fontSize = 13.sp, color = colors.onSurfaceSecondary,
                         )
-                        if (!readOnly) TextButton("撤销这次充值", onClick = { confirm = r }, modifier = Modifier.padding(top = 8.dp))
+                        if (!readOnly) TextButton("撤销这次重置", onClick = { confirm = r }, modifier = Modifier.padding(top = 8.dp))
                     }
                 }
             }
         }
     }
     HyperDialog(
-        show = confirm != null, title = "撤销充值？", onDismiss = { confirm = null },
-        summary = "删除这条充值记录后，这些同学的积分恢复按之前的记录计算。其他数据不受影响。",
+        show = confirm != null, title = "撤销重置？", onDismiss = { confirm = null },
+        summary = "删除这条重置记录后，这些同学的积分恢复按之前的记录计算。其他数据不受影响。",
         confirmText = "撤销", danger = true,
         onConfirm = { confirm?.let(onUndo); confirm = null },
     )
 }
 
-/** 顶部概览：平均 / 最高 / 最低 / 充值次数 + 前三名 */
+/** 顶部概览：平均 / 最高 / 最低 / 重置次数 + 前三名 */
 @Composable
 private fun ScoreHero(stats: List<StudentStat>, base: Double, missing: Double, late: Double, excellent: Double, recharges: Int, onClick: (String) -> Unit) {
     val colors = MiuixTheme.colorScheme
     val avg = if (stats.isEmpty()) 0.0 else stats.sumOf { it.score } / stats.size
-    Card {
+    com.deepshawn.hwcounter.ui.components.HCard {
         Row(Modifier.padding(top = 16.dp, bottom = 4.dp)) {
             HeroNumber("平均分", avg.fmt(), Modifier.weight(1f))
             HeroNumber("最高", (stats.maxOfOrNull { it.score } ?: 0.0).fmt(), Modifier.weight(1f))
             HeroNumber("最低", (stats.minOfOrNull { it.score } ?: 0.0).fmt(), Modifier.weight(1f))
-            HeroNumber("充值", "$recharges 次", Modifier.weight(1f))
+            HeroNumber("重置", "$recharges 次", Modifier.weight(1f))
         }
         Text(
             "基准 ${base.fmt()} · 未交 ${missing.signed()} · 迟交 ${late.signed()} · 优秀 ${excellent.signed()}",
@@ -476,7 +476,7 @@ private fun SelectionBar(count: Int, modifier: Modifier, onAll: () -> Unit, onCl
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             TextButton("批量加减分", onClick = onScore, enabled = count > 0, modifier = Modifier.weight(1f), colors = ButtonDefaults.textButtonColorsPrimary())
-            TextButton("积分充值", onClick = onRecharge, enabled = count > 0, modifier = Modifier.weight(1f))
+            TextButton("积分重置", onClick = onRecharge, enabled = count > 0, modifier = Modifier.weight(1f))
         }
     }
 }
@@ -516,7 +516,7 @@ private fun RankRow(
 @Composable
 private fun GroupRow(rank: Int, name: String, list: List<StudentStat>, avg: Double, onClick: () -> Unit) {
     val colors = MiuixTheme.colorScheme
-    Card(Modifier.padding(horizontal = 12.dp, vertical = 5.dp), onClick = onClick, pressFeedbackType = top.yukonga.miuix.kmp.utils.PressFeedbackType.Sink) {
+    com.deepshawn.hwcounter.ui.components.HCard(Modifier.padding(horizontal = 12.dp, vertical = 5.dp), onClick = onClick) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (rank <= 3) listOf("🥇", "🥈", "🥉")[rank - 1] else "$rank", fontSize = 22.sp, modifier = Modifier.width(36.dp))

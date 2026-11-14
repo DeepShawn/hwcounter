@@ -202,9 +202,9 @@ fun StatTile(
     onClick: (() -> Unit)? = null,
 ) {
     Surface(
-        modifier = modifier.then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+        modifier = modifier.glassPanel(RoundedCornerShape(16.dp), tint = MaterialTheme.colorScheme.surfaceContainerLowest).then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+        color = Color.Transparent,
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -235,13 +235,12 @@ fun AppCard(
     padding: PaddingValues = PaddingValues(16.dp),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(
-        modifier = modifier.then(if (onClick != null) Modifier.clip(RoundedCornerShape(16.dp)).clickable { onClick() } else Modifier),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLowest,
-    ) {
-        Column(Modifier.padding(padding), content = content)
-    }
+    Column(
+        modifier.glassPanel(RoundedCornerShape(16.dp), tint = MaterialTheme.colorScheme.surfaceContainerLowest)
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .padding(padding),
+        content = content,
+    )
 }
 
 @Composable

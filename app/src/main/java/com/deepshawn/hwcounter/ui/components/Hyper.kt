@@ -41,7 +41,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 看起来是一张卡片，但每行仍是独立的 item（长名单也流畅）。
  */
 @Composable
-fun Modifier.listCell(index: Int, count: Int, radius: Dp = 16.dp, color: Color = MiuixTheme.colorScheme.surfaceContainer): Modifier {
+fun Modifier.listCell(index: Int, count: Int, radius: Dp = 16.dp, color: Color = rowTint()): Modifier {
     val top = if (index == 0) radius else 0.dp
     val bottom = if (index == count - 1) radius else 0.dp
     return this.padding(horizontal = 12.dp).fillMaxWidth()

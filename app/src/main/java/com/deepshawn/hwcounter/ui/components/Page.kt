@@ -59,9 +59,13 @@ fun MiuixPage(
     content: LazyListScope.() -> Unit,
 ) {
     val ui = LocalUiPrefs.current
-    val surface = MiuixTheme.colorScheme.surface
+    val glassBg = LocalGlassBg.current
+    // 玻璃开启时页面透明，露出背后的柔光背景
+    val surface = if (glassBg != null && ui.glassOn) Color.Transparent else MiuixTheme.colorScheme.surface
     val backdrop = rememberLayerBackdrop()
+    val combined = if (glassBg != null) com.kyant.backdrop.backdrops.rememberCombinedBackdrop(glassBg, backdrop) else backdrop
     val glass = if (ui.glassOn) backdrop else null
+    val barBackdrop = if (ui.glassOn) combined else null
     val behavior = MiuixScrollBehavior()
     val bottom = LocalBottomInset.current + extraBottom
     Box(modifier.fillMaxSize()) {
@@ -73,7 +77,7 @@ fun MiuixPage(
                     title = title,
                     largeTitle = largeTitle,
                     color = Color.Transparent,
-                    modifier = Modifier.frosted(glass, surface),
+                    modifier = Modifier.frosted(barBackdrop, MiuixTheme.colorScheme.surface),
                     scrollBehavior = behavior,
                     navigationIcon = {
                         if (onBack != null) IconButton(onClick = onBack, modifier = Modifier.padding(start = 16.dp)) {
@@ -104,7 +108,7 @@ fun LazyListScope.group(title: String?, key: String? = null, content: @Composabl
     item(key = key) {
         Column {
             if (title != null) SmallTitle(title)
-            Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp).fillMaxWidth(), content = content)
+            HCard(Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp).fillMaxWidth(), content = content)
         }
     }
 }

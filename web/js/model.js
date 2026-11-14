@@ -34,6 +34,8 @@ export function normalizeData(d) {
     students: (c.students || []).map((s) => ({ id: newId(), group: '', gender: '', note: '', longLeave: false, ...s })),
     assignments: (c.assignments || []).map((a) => ({ id: newId(), subject: '', createdAt: Date.now(), statuses: {}, comments: {}, countedBooks: null, pinned: false, ...a })),
     scores: (c.scores || []).map((e) => ({ id: newId(), time: Date.now(), ...e })),
+    exams: (c.exams || []).map((e) => ({ id: newId(), subject: '', date: Date.now(), fullScore: 100, scores: {}, absent: [], note: '', autoScore: true, ...e })),
+    groupLeaders: c.groupLeaders || {},
     recharges: (c.recharges || []).map((r) => ({ id: newId(), time: Date.now(), studentIds: [], before: {}, note: '', ...r })),
   }));
   return out;
@@ -74,8 +76,8 @@ export function summary(c, a) {
 }
 
 /**
- * 积分充值（与安卓 Recharge.kt 同算法）：每位学生最近一次充值生效，
- * 当前积分 = 充值分数 + 充值之后布置的作业自动计分 + 充值之后的手动加减分。
+ * 积分重置（与安卓 Recharge.kt 同算法）：每位学生最近一次重置生效，
+ * 当前积分 = 重置分数 + 重置之后布置的作业自动计分 + 重置之后的手动加减分。
  */
 /** 计分起点：effectiveAt（从某次作业 / 某一天起，含当刻）或操作时间（立即生效，只计之后的） */
 export const rechargeStart = (r) => (r.effectiveAt ?? r.time);
@@ -91,6 +93,19 @@ export const assignmentCounts = (a, r) => !r || rechargeCounts(r, a.createdAt);
 /** 某天 0 点（本地时区） */
 export const startOfDay = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
+/** 考试计分档（与安卓 Exams.kt 同算法）：按得分率落档加减分，最高档含 100% */
+export const defaultExamRules = () => ({ enabled: true, bands: [{ minPct: 90, maxPct: 100, delta: 2 }, { minPct: 80, maxPct: 90, delta: 1 }, { minPct: 0, maxPct: 60, delta: -1 }], absent: 0 });
+export function examDelta(rules, e, sid) {
+  const er = { ...defaultExamRules(), ...(rules.exam || {}) };
+  if (!er.enabled || e.autoScore === false) return 0;
+  if ((e.absent || []).includes(sid)) return er.absent || 0;
+  const sc = e.scores?.[sid]; const full = e.fullScore || 0;
+  if (sc == null || !Number.isFinite(sc) || full <= 0) return 0;
+  const pct = sc / full * 100; const top = Math.max(100, ...er.bands.map((b) => b.maxPct));
+  const b = er.bands.find((x) => pct >= x.minPct && (pct < x.maxPct || (x.maxPct >= top && pct >= x.maxPct)));
+  return b ? b.delta : 0;
+}
+
 export function studentStats(c, rules) {
   let byRules = statsCache.get(c);
   if (!byRules) { byRules = new WeakMap(); statsCache.set(c, byRules); }
@@ -103,13 +118,15 @@ export function studentStats(c, rules) {
     const counts = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
     let auto = 0;
     for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; if (assignmentCounts(a, r)) auto += ruleOf(rules, s); }
-    return { student: st, score: (r ? r.target : rules.initial) + auto + (manual[st.id] || 0), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };
+    let examPts = 0;
+    for (const e of c.exams || []) if (!r || rechargeCounts(r, e.date)) examPts += examDelta(rules, e, st.id);
+    return { student: st, score: (r ? r.target : rules.initial) + auto + (manual[st.id] || 0) + examPts, counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };
   });
   byRules.set(rules, result);
   return result;
 }
 
-/** 积分充值：只重置积分并新增一条记录，历史流水 / 作业状态 / 未交次数全部保留 */
+/** 积分重置：只重置积分并新增一条记录，历史流水 / 作业状态 / 未交次数全部保留 */
 export function rechargeScores(c, rules, studentIds, target, note = '', time = Date.now(), { effectiveAt = null, assignmentId = null } = {}) {
   if (!Number.isFinite(target)) return c;
   const wanted = new Set(studentIds);

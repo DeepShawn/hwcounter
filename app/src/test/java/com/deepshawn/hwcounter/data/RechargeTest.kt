@@ -29,7 +29,7 @@ class RechargeTest {
         assertEquals(before.scores, c.scores)
         assertEquals(before.assignments, c.assignments)
         assertEquals(3, c.studentStats(rules).first { it.student.id == "s1" }.missing)
-        // 记录了充值前分数
+        // 记录了重置前分数
         assertEquals(96.0, c.recharges.single().before["s1"]!!, 0.0)
         assertEquals(listOf("s1"), c.recharges.single().studentIds)
     }
@@ -42,7 +42,7 @@ class RechargeTest {
         )
         assertEquals(53.0, c.score("s1"), 0.0)
         assertEquals(48.0, c.score("s2"), 0.0)
-        // 改动充值之前的作业状态不影响当前积分
+        // 改动重置之前的作业状态不影响当前积分
         val edited = c.copy(assignments = c.assignments.map { if (it.id == "a1") it.copy(statuses = mapOf("s1" to HwStatus.EXCELLENT)) else it })
         assertEquals(53.0, edited.score("s1"), 0.0)
     }
@@ -105,7 +105,7 @@ class RechargeTest {
         // 从 2500 起：计入 e2（−1）、a3（−2）
         val byDay = base.recharge(rules, listOf("s1"), 100.0, time = 9_000, effectiveAt = 2_500)
         assertEquals(97.0, byDay.score("s1"), 0.0)
-        // 之后再补一条更早生效的充值：生效更晚的那次仍然生效
+        // 之后再补一条更早生效的重置：生效更晚的那次仍然生效
         val both = byDay.recharge(rules, listOf("s1"), 50.0, time = 10_000, effectiveAt = 500)
         assertEquals(97.0, both.score("s1"), 0.0)
         assertEquals(50.0 - 6 + 2, both.removeRecharge(byDay.recharges.single().id).score("s1"), 0.0)

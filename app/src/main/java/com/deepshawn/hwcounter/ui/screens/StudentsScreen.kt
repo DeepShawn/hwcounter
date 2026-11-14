@@ -158,6 +158,9 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
 
     var more by remember { mutableStateOf(false) }
     var rowMenu by remember { mutableStateOf<Student?>(null) }
+    var rosterTab by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
+    var groupScore by remember { mutableStateOf<Pair<List<String>, String>?>(null) }
+    val readOnlyRoster by vm.readOnly.collectAsState()
     val colors = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
     val qrPdf = {
         if (c.students.isEmpty()) kit.toast("名单为空") else scope.launch {
@@ -184,6 +187,13 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
                 fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = 10.dp),
             )
         }
+        item(key = "rtabs") {
+            com.deepshawn.hwcounter.ui.components.HTabs(listOf("学生", "小组"), rosterTab, { rosterTab = it }, Modifier.padding(horizontal = 12.dp).padding(bottom = 10.dp))
+        }
+        if (rosterTab == 1) {
+            groupCards(vm, data, c, readOnlyRoster) { ids, g -> groupScore = ids to g }
+            return@MiuixPage
+        }
         item(key = "search") {
             top.yukonga.miuix.kmp.basic.TextField(
                 query, { query = it }, label = "搜索姓名 / 学号 / 小组", useLabelAsPlaceholder = true, singleLine = true,
@@ -194,7 +204,7 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
             )
         }
         item(key = "tools") {
-            top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp, vertical = 12.dp).fillMaxWidth()) {
+            com.deepshawn.hwcounter.ui.components.HCard(Modifier.padding(horizontal = 12.dp, vertical = 12.dp).fillMaxWidth()) {
                 Row(Modifier.padding(vertical = 8.dp)) {
                     listOf(
                         Triple("导入名单", Icons.Filled.FileUpload, { openJson.launch(arrayOf("application/json", "text/*", "*/*")) }),
@@ -250,6 +260,12 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
         }
     }
 
+    groupScore?.let { (ids, g) ->
+        val targets = c.students.filter { it.id in ids }
+        if (targets.isNotEmpty()) ScoreDialog(targets, data.settings.quickReasons, { groupScore = null }, initialReason = "${g}表现") { d, r ->
+            vm.addScore(ids, d, r); kit.haptic(true); kit.undoable("$g 全组 ${d.signed()}"); groupScore = null
+        }
+    }
     com.deepshawn.hwcounter.ui.components.ActionSheet(
         show = more, title = "名单", onDismiss = { more = false },
         actions = listOf(
@@ -420,7 +436,7 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
         },
     ) {
         item {
-            top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+            com.deepshawn.hwcounter.ui.components.HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Avatar(s.name, size = 56.dp)
                     Spacer(Modifier.width(14.dp))
@@ -479,15 +495,16 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
                     row.delta >= 0 -> statusColor(HwStatus.SUBMITTED)
                     else -> statusColor(HwStatus.MISSING)
                 }
-                Text(if (isRecharge) "💳" else row.delta.signed(), fontWeight = FontWeight.Black, color = color.copy(alpha = if (dim) 0.45f else 1f), modifier = Modifier.width(52.dp))
+                Text(if (isRecharge) "🔄" else row.delta.signed(), fontWeight = FontWeight.Black, color = color.copy(alpha = if (dim) 0.45f else 1f), modifier = Modifier.width(52.dp))
                 Column(Modifier.weight(1f)) {
                     Text(row.title, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (dim) 0.5f else 1f))
                     Text(
                         (when (row.kind) {
                             com.deepshawn.hwcounter.data.LedgerRow.Kind.AUTO -> "自动计分 · "
-                            com.deepshawn.hwcounter.data.LedgerRow.Kind.RECHARGE -> if (row.counted) "当前生效 · " else "已被之后的充值取代 · "
+                            com.deepshawn.hwcounter.data.LedgerRow.Kind.EXAM -> "考试计分 · "
+                            com.deepshawn.hwcounter.data.LedgerRow.Kind.RECHARGE -> if (row.counted) "当前生效 · " else "已被之后的重置取代 · "
                             else -> ""
-                        }) + fmt.format(Date(row.time)) + if (dim && !isRecharge) " · 充值前，不计入当前积分" else "",
+                        }) + fmt.format(Date(row.time)) + if (dim && !isRecharge) " · 重置前，不计入当前积分" else "",
                         fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

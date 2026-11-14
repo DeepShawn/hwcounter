@@ -114,14 +114,14 @@ object Exporter {
                     listOf(
                         XlsxWriter.Cell(fullFmt.format(Date(e.time))), XlsxWriter.Cell(s.no), XlsxWriter.Cell(s.name),
                         XlsxWriter.Cell(e.delta, if (e.delta >= 0) XlsxWriter.Style.GREEN else XlsxWriter.Style.RED),
-                        XlsxWriter.Cell(e.reason), XlsxWriter.Cell(if (e.countsAfter(last[e.studentId])) "是" else "充值前"),
+                        XlsxWriter.Cell(e.reason), XlsxWriter.Cell(if (e.countsAfter(last[e.studentId])) "是" else "重置前"),
                     ),
                 )
             }
         }
-        if (c.recharges.isNotEmpty()) x.sheet("积分充值记录") {
+        if (c.recharges.isNotEmpty()) x.sheet("积分重置记录") {
             widths = listOf(18.0, 12.0, 10.0, 10.0, 10.0, 20.0)
-            row(*listOf("充值时间", "学号", "姓名", "充值前", "充值后", "备注").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) }.toTypedArray())
+            row(*listOf("重置时间", "学号", "姓名", "重置前", "重置后", "备注").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) }.toTypedArray())
             val byId = c.students.associateBy { it.id }
             c.recharges.sortedByDescending { it.time }.forEach { r ->
                 r.studentIds.forEach { sid ->

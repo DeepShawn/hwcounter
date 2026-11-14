@@ -332,7 +332,13 @@ class SyncManager(
             }
             val scores = (r.scores + l.scores).distinctBy { it.id }
             val recharges = (r.recharges + l.recharges).distinctBy { it.id }.sortedBy { it.time }
-            return l.copy(students = students.values.toList(), assignments = assigns.values.toList(), scores = scores, recharges = recharges, seating = l.seating ?: r.seating)
+            val exams = LinkedHashMap<String, com.deepshawn.hwcounter.data.Exam>()
+            r.exams.forEach { exams[it.id] = it }
+            l.exams.forEach { le -> val re = exams[le.id]; exams[le.id] = if (re == null) le else le.copy(scores = re.scores + le.scores, absent = (re.absent + le.absent).distinct().filter { it !in le.scores }) }
+            return l.copy(
+                students = students.values.toList(), assignments = assigns.values.toList(), scores = scores, recharges = recharges,
+                exams = exams.values.sortedBy { it.date }, groupLeaders = r.groupLeaders + l.groupLeaders, seating = l.seating ?: r.seating,
+            )
         }
     }
 }

@@ -12,7 +12,7 @@ const fixture = () => ({
 });
 const score = (c, id, r = rules) => studentStats(c, r).find((x) => x.student.id === id).score;
 
-test('充值只重置积分，历史流水、作业状态、未交次数都保留', () => {
+test('重置只重置积分，历史流水、作业状态、未交次数都保留', () => {
   const before = fixture();
   assert.equal(score(before, 's1'), 96);
   const c = rechargeScores(before, rules, ['s1'], 100, '', 5000);
@@ -25,7 +25,7 @@ test('充值只重置积分，历史流水、作业状态、未交次数都保�
   assert.deepEqual(c.recharges[0].studentIds, ['s1']);
 });
 
-test('充值后的新作业和加减分继续累计；改动充值前的作业不影响当前积分', () => {
+test('重置后的新作业和加减分继续累计；改动重置前的作业不影响当前积分', () => {
   let c = rechargeScores(fixture(), rules, ['s1', 's2'], 50, '', 5000);
   c = { ...c, scores: [...c.scores, { id: 'e3', studentId: 's1', delta: 2, reason: '主动回答', time: 6000 }],
     assignments: [...c.assignments, { id: 'a4', title: '作业4', createdAt: 7000, statuses: { s1: 'EXCELLENT', s2: 'MISSING' }, comments: {} }] };
@@ -35,13 +35,13 @@ test('充值后的新作业和加减分继续累计；改动充值前的作业�
   assert.equal(score(edited, 's1'), 53);
 });
 
-test('修改计分规则不改变充值后的基准', () => {
+test('修改计分规则不改变重置后的基准', () => {
   const c = rechargeScores(fixture(), rules, ['s1'], 100, '', 5000);
   assert.equal(score(c, 's1', { ...rules, missing: -10, initial: 0 }), 100);
   assert.equal(score(c, 's2', { ...rules, initial: 0 }), 0);
 });
 
-test('最近一次充值生效；删除记录即撤销', () => {
+test('最近一次重置生效；删除记录即撤销', () => {
   let c = rechargeScores(fixture(), rules, ['s1'], 100, '', 5000);
   c = { ...c, scores: [...c.scores, { id: 'e4', studentId: 's1', delta: -4, reason: '违纪', time: 6000 }] };
   c = rechargeScores(c, rules, ['s1'], 80, '', 7000);
@@ -57,7 +57,7 @@ test('旧数据没有 recharges 字段也能读取', () => {
   assert.deepEqual(d.classes[0].recharges, []);
 });
 
-test('从某次作业起充值：该作业（含）及之后计入', () => {
+test('从某次作业起重置：该作业（含）及之后计入', () => {
   const c = rechargeScores(fixture(), rules, ['s1'], 100, '', 9000, { assignmentId: 'a2' });
   assert.equal(score(c, 's1'), 95);
   assert.equal(c.recharges[0].effectiveAt, 2000);
@@ -65,10 +65,26 @@ test('从某次作业起充值：该作业（含）及之后计入', () => {
   assert.equal(c.recharges[0].before.s1, 96);
 });
 
-test('从某一天起充值；生效更晚的充值优先', () => {
+test('从某一天起重置；生效更晚的重置优先', () => {
   const byDay = rechargeScores(fixture(), rules, ['s1'], 100, '', 9000, { effectiveAt: 2500 });
   assert.equal(score(byDay, 's1'), 97);
   const both = rechargeScores(byDay, rules, ['s1'], 50, '', 10000, { effectiveAt: 500 });
   assert.equal(score(both, 's1'), 97);
   assert.equal(score(removeRecharge(both, byDay.recharges[0].id), 's1'), 46);
+});
+
+import { examDelta } from '../../web/js/model.js';
+test('考试计分档与安卓一致，并计入积分、受重置影响', () => {
+  assert.equal(examDelta(rules, { scores: { a: 90 }, fullScore: 100 }, 'a'), 2);
+  assert.equal(examDelta(rules, { scores: { a: 100 }, fullScore: 100 }, 'a'), 2);
+  assert.equal(examDelta(rules, { scores: { a: 85 }, fullScore: 100 }, 'a'), 1);
+  assert.equal(examDelta(rules, { scores: { a: 59.5 }, fullScore: 100 }, 'a'), -1);
+  assert.equal(examDelta(rules, { scores: { a: 140 }, fullScore: 150 }, 'a'), 2);
+  assert.equal(examDelta({ ...rules, exam: { absent: -3 } }, { scores: {}, absent: ['a'], fullScore: 100 }, 'a'), -3);
+  assert.equal(examDelta(rules, { scores: { a: 95 }, fullScore: 100, autoScore: false }, 'a'), 0);
+  let c = { ...fixture(), exams: [{ id: 'e1', title: '期中', date: 5000, fullScore: 100, scores: { s1: 95, s2: 50 }, absent: [] }] };
+  assert.equal(score(c, 's1'), 98); // 96 + 2
+  assert.equal(score(c, 's2'), 99);
+  c = rechargeScores(c, rules, ['s1'], 100, '', 9000);
+  assert.equal(score(c, 's1'), 100);
 });

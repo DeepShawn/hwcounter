@@ -2,6 +2,7 @@
 
 package com.deepshawn.hwcounter.ui.screens
 
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -179,7 +180,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
             )
         }
         item(key = "today") {
-            top.yukonga.miuix.kmp.basic.Card(
+            com.deepshawn.hwcounter.ui.components.HCard(
                 Modifier.padding(horizontal = 12.dp).fillMaxWidth(),
                 onClick = { if (hero != null) kit.nav.push(Route.Assign(hero.id)) else showNew = true },
             ) {
@@ -210,7 +211,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
         }
         item(key = "actions") {
             top.yukonga.miuix.kmp.basic.SmallTitle("快捷登记")
-            top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+            com.deepshawn.hwcounter.ui.components.HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
                 val actions: List<Triple<String, ImageVector, Pair<Color, () -> Unit>>> = listOf(
                     Triple("新建作业", Icons.Filled.Add, Color(0xFF3482FF) to { showNew = true }),
                     Triple("拍照识别", Icons.Filled.CameraAlt, Color(0xFF12B886) to { withTarget { id -> photoTarget = id; pendingAction = "photo" } }),
@@ -218,8 +219,8 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
                     Triple("实时扫描", Icons.Filled.DocumentScanner, Color(0xFFF76707) to { withTarget { kit.nav.push(Route.Live(it)) } }),
                     Triple("侧面学号", Icons.Filled.ViewWeek, Color(0xFFE64980) to { withTarget { kit.nav.push(Route.Spine(it)) } }),
                     Triple("数本数", Icons.Filled.Layers, Color(0xFFAE3EC9) to { kit.nav.push(Route.Stack(todayTarget?.id)) }),
-                    Triple(if (drafts.isNotEmpty()) "草稿 ${drafts.size}" else "草稿箱", Icons.Filled.Drafts, Color(0xFF7A5CFF) to { kit.nav.push(Route.Drafts) }),
                     Triple("统计表识别", Icons.Filled.TableChart, Color(0xFF0CA678) to { kit.nav.push(Route.StatTable(null)) }),
+                    Triple("考试", Icons.Filled.School, Color(0xFF7A5CFF) to { kit.nav.push(Route.Exams) }),
                 )
                 Column(Modifier.padding(vertical = 10.dp)) {
                     actions.chunked(4).forEach { row ->
@@ -247,7 +248,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
             val perfect = stats.count { it.missing == 0 && it.late == 0 && c.assignments.isNotEmpty() }
             val missTotal = stats.sumOf { it.missing }
             top.yukonga.miuix.kmp.basic.SmallTitle("概览")
-            top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+            com.deepshawn.hwcounter.ui.components.HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
                 Row(Modifier.padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Overview("近 7 次交齐率", "${(avg * 100).toInt()}%", Modifier.weight(1f)) { kit.nav.tab(Route.Stats) }
                     Box(Modifier.width(0.5.dp).height(32.dp).background(colors.dividerLine))
@@ -259,7 +260,8 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
         }
         item(key = "tools") {
             top.yukonga.miuix.kmp.basic.SmallTitle("工具")
-            top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+            com.deepshawn.hwcounter.ui.components.HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                top.yukonga.miuix.kmp.extra.SuperArrow(title = "草稿箱", summary = if (drafts.isEmpty()) "只保存在本机的登记草稿" else "${drafts.size} 份草稿待上传", onClick = { kit.nav.push(Route.Drafts) })
                 top.yukonga.miuix.kmp.extra.SuperArrow(title = "随机点名", summary = "老虎机抽一位同学，可直接加分", onClick = { random = true })
                 top.yukonga.miuix.kmp.extra.SuperArrow(title = "学号二维码贴纸", summary = "在名单页生成 A4 贴纸，识别率接近 100%", onClick = { kit.nav.tab(Route.Students) })
             }
