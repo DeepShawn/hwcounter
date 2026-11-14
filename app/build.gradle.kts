@@ -78,6 +78,7 @@ if (shots) {
     android.testOptions.unitTests.isIncludeAndroidResources = true
     android.testOptions.unitTests.all {
         it.systemProperty("robolectric.graphicsMode", "NATIVE")
+        it.systemProperty("robolectric.pixelCopyRenderMode", "hardware")
         it.systemProperty("shots.dir", rootProject.file("shots").absolutePath)
         it.maxHeapSize = "3g"
     }
