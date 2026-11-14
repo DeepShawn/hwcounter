@@ -281,9 +281,9 @@ fun App(vm: AppViewModel, data: AppData) {
                         ) { t -> if (current != t.route) { kit.haptic(); nav.tab(t.route) } }
                     }
                 }
+                if (!ui.lowPerf) Confetti(confetti)
+                com.deepshawn.hwcounter.ui.screens.CloudConflictDialog(vm)
             }
-            if (!ui.lowPerf) Confetti(confetti)
-            com.deepshawn.hwcounter.ui.screens.CloudConflictDialog(vm)
         }
     }
 }

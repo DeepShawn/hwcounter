@@ -186,25 +186,25 @@ do {
     var e1 = ScoreEntry(studentId: "s1", delta: 3, reason: "课堂表现"); e1.time = 1500
     var e2 = ScoreEntry(studentId: "s1", delta: -1, reason: "迟到"); e2.time = 2500
     c.scores = [e1, e2]
-    func score(_ k: SchoolClass, _ id: String, _ r: Rules = rules) -> Double { k.stats(r).first { $0.id == id }!.score }
+    func score(_ k: SchoolClass, _ id: String, _ r: Rules) -> Double { k.stats(r).first { $0.id == id }!.score }
     let r1 = c.recharging(rules, ids: ["s1"], target: 100, time: 5000)
-    check(score(c, "s1") == 96 && score(r1, "s1") == 100 && score(r1, "s2") == 100, "充值把积分设为目标分")
+    check(score(c, "s1", rules) == 96 && score(r1, "s1", rules) == 100 && score(r1, "s2", rules) == 100, "充值把积分设为目标分")
     check(r1.scores == c.scores && r1.assignments == c.assignments && r1.stats(rules)[0].missing == 3 && r1.recharges[0].before["s1"] == 96, "充值保留流水、作业状态、未交次数，并记录充值前分数")
     var later = c.recharging(rules, ids: ["s1", "s2"], target: 50, time: 5000)
     var e3 = ScoreEntry(studentId: "s1", delta: 2, reason: "主动回答"); e3.time = 6000
     later.scores.append(e3)
     var a4 = Assignment(title: "作业4", subject: "数学"); a4.createdAt = 7000; a4.statuses = ["s1": "EXCELLENT", "s2": "MISSING"]
     later.assignments.append(a4)
-    check(score(later, "s1") == 53 && score(later, "s2") == 48, "充值后新作业与加减分继续累计")
+    check(score(later, "s1", rules) == 53 && score(later, "s2", rules) == 48, "充值后新作业与加减分继续累计")
     var zero = rules; zero.initial = 0; zero.missing = -10
     check(score(r1, "s1", zero) == 100, "修改规则不改变充值后的基准")
     var twice = r1
     var e4 = ScoreEntry(studentId: "s1", delta: -4, reason: "违纪"); e4.time = 6000
     twice.scores.append(e4)
     twice = twice.recharging(rules, ids: ["s1"], target: 80, time: 7000)
-    check(score(twice, "s1") == 80 && twice.recharges.last?.before["s1"] == 96, "最近一次充值生效")
+    check(score(twice, "s1", rules) == 80 && twice.recharges.last?.before["s1"] == 96, "最近一次充值生效")
     var undone = twice; undone.recharges.removeLast()
-    check(score(undone, "s1") == 96, "删除记录即撤销充值")
+    check(score(undone, "s1", rules) == 96, "删除记录即撤销充值")
     let json = try! JSONEncoder().encode(twice)
     let back = try! JSONDecoder().decode(SchoolClass.self, from: json)
     check(back.recharges == twice.recharges, "充值记录可编码/解码")
