@@ -132,7 +132,7 @@ object RecogMode {
 
 @Serializable
 data class Settings(
-    val theme: String = "mint",
+    val theme: String = "hyper",
     /** 0 跟随系统 1 浅色 2 深色 */
     val dark: Int = 0,
     /** list / grid / seat / group */
