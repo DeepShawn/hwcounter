@@ -15,7 +15,8 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # ubuntu-latest 已是 26.04，Playwright 1.56 尚不支持在上面安装 Chromium
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -24,7 +25,7 @@ jobs:
           node-version: 22
 
       - name: Test scores, voice parser, seating and stats
-        run: node --test tools/web-tests/scores.test.mjs && node tools/web-tests/voice.test.mjs && node tools/web-tests/seating.test.mjs && node tools/web-tests/stats.test.mjs
+        run: node --test tools/web-tests/scores.test.mjs tools/web-tests/recharge.test.mjs && node tools/web-tests/voice.test.mjs && node tools/web-tests/seating.test.mjs && node tools/web-tests/stats.test.mjs
 
       - name: End-to-end test (Chromium, mocked Supabase)
         run: |
