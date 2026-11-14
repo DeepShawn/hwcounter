@@ -56,3 +56,19 @@ test('旧数据没有 recharges 字段也能读取', () => {
   const d = normalizeData({ classes: [{ id: 'c', name: '一班', students: [{ id: 's1', no: '1', name: '张三' }] }] });
   assert.deepEqual(d.classes[0].recharges, []);
 });
+
+test('从某次作业起充值：该作业（含）及之后计入', () => {
+  const c = rechargeScores(fixture(), rules, ['s1'], 100, '', 9000, { assignmentId: 'a2' });
+  assert.equal(score(c, 's1'), 95);
+  assert.equal(c.recharges[0].effectiveAt, 2000);
+  assert.equal(c.recharges[0].assignmentTitle, '作业2');
+  assert.equal(c.recharges[0].before.s1, 96);
+});
+
+test('从某一天起充值；生效更晚的充值优先', () => {
+  const byDay = rechargeScores(fixture(), rules, ['s1'], 100, '', 9000, { effectiveAt: 2500 });
+  assert.equal(score(byDay, 's1'), 97);
+  const both = rechargeScores(byDay, rules, ['s1'], 50, '', 10000, { effectiveAt: 500 });
+  assert.equal(score(both, 's1'), 97);
+  assert.equal(score(removeRecharge(both, byDay.recharges[0].id), 's1'), 46);
+});

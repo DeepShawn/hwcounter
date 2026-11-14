@@ -314,6 +314,19 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.reload();
   await page.click('.tabs button:has-text("积分")');
   check((await page.locator('.score-row .score').allTextContents()).every((v) => v === '0') && JSON.stringify((await readClass()).recharges) === JSON.stringify(reset.recharges), '刷新后充值分数及记录保留');
+  // 从某次作业起充值：选最早的作业 → 起点等于该作业布置时间，分数 = 充值分 + 全部作业计分
+  await page.getByRole('button', { name: '💳 全班积分充值', exact: true }).click();
+  await page.fill('.modal input[type=number]', '50');
+  await page.getByRole('radio', { name: '从某次作业起' }).click();
+  const firstAssign = [...(await readClass()).assignments].sort((a, b) => a.createdAt - b.createdAt)[0];
+  await page.selectOption('.modal select.recharge-assign', firstAssign.id);
+  await page.getByRole('button', { name: '确认充值', exact: true }).click();
+  await page.waitForSelector('.modal', { state: 'hidden' });
+  const fromA = (await readClass()).recharges.at(-1);
+  check(fromA.assignmentId === firstAssign.id && fromA.effectiveAt === firstAssign.createdAt && fromA.target === 50, '可选择某次作业作为充值起点（含该作业）');
+  await page.click('.toast button:has-text("撤销")');
+  const afterUndo = (await readClass()).recharges;
+  check(afterUndo.length === reset.recharges.length && afterUndo.every((r, i) => r.id === reset.recharges[i].id && r.target === reset.recharges[i].target), '从某次作业起的充值可撤销');
 
   // 5c) 统计表识别（粘贴）→ 存为新作业草稿 → 只在本机 → 上传
   await page.click('.tabs button:has-text("首页")');

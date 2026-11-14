@@ -210,6 +210,12 @@ do {
     check(back.recharges == twice.recharges, "充值记录可编码/解码")
     let legacy = try! JSONDecoder().decode(SchoolClass.self, from: Data(#"{"name":"旧班级"}"#.utf8))
     check(legacy.recharges.isEmpty, "旧数据没有 recharges 字段也能读取")
+    let a2id = c.assignments[1].id
+    let fromA = c.recharging(rules, ids: ["s1"], target: 100, time: 9000, assignmentId: a2id)
+    check(score(fromA, "s1", rules) == 95 && fromA.recharges[0].effectiveAt == 2000 && fromA.recharges[0].assignmentTitle == "作业2", "从某次作业起充值（含该作业）")
+    let byDay = c.recharging(rules, ids: ["s1"], target: 100, time: 9000, effectiveAt: 2500)
+    let both = byDay.recharging(rules, ids: ["s1"], target: 50, time: 10000, effectiveAt: 500)
+    check(score(byDay, "s1", rules) == 97 && score(both, "s1", rules) == 97, "从某一天起充值；生效更晚的优先")
 }
 // ---------- 统计表识别 / 统计名单 / 草稿（与 tools/web-tests/stats.test.mjs 同样的用例） ----------
 do {
