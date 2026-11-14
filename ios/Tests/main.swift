@@ -172,6 +172,45 @@ do {
     check(reset.resettingScores(rules, ids: ["s1"], target: 0) == reset, "重复重置不新增记录")
     check(c.resettingScores(rules, ids: [], target: 0) == c && c.resettingScores(rules, ids: ["s1"], target: .nan) == c && c.resettingScores(rules, ids: ["s1"], target: .infinity) == c, "空选择和非有限分数不修改数据")
 }
+// 积分充值：与安卓 RechargeTest、网页 recharge.test.mjs 同一组用例
+do {
+    print("== 积分充值")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    let rules = Rules()
+    var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三"), Student(id: "s2", no: "02", name: "李四")])
+    for i in 1...3 {
+        var a = Assignment(title: "作业\(i)", subject: "数学")
+        a.createdAt = Int64(1000 * i); a.statuses = ["s1": "MISSING"]; a.comments = ["s1": "补交中"]
+        c.assignments.append(a)
+    }
+    var e1 = ScoreEntry(studentId: "s1", delta: 3, reason: "课堂表现"); e1.time = 1500
+    var e2 = ScoreEntry(studentId: "s1", delta: -1, reason: "迟到"); e2.time = 2500
+    c.scores = [e1, e2]
+    func score(_ k: SchoolClass, _ id: String, _ r: Rules) -> Double { k.stats(r).first { $0.id == id }!.score }
+    let r1 = c.recharging(rules, ids: ["s1"], target: 100, time: 5000)
+    check(score(c, "s1", rules) == 96 && score(r1, "s1", rules) == 100 && score(r1, "s2", rules) == 100, "充值把积分设为目标分")
+    check(r1.scores == c.scores && r1.assignments == c.assignments && r1.stats(rules)[0].missing == 3 && r1.recharges[0].before["s1"] == 96, "充值保留流水、作业状态、未交次数，并记录充值前分数")
+    var later = c.recharging(rules, ids: ["s1", "s2"], target: 50, time: 5000)
+    var e3 = ScoreEntry(studentId: "s1", delta: 2, reason: "主动回答"); e3.time = 6000
+    later.scores.append(e3)
+    var a4 = Assignment(title: "作业4", subject: "数学"); a4.createdAt = 7000; a4.statuses = ["s1": "EXCELLENT", "s2": "MISSING"]
+    later.assignments.append(a4)
+    check(score(later, "s1", rules) == 53 && score(later, "s2", rules) == 48, "充值后新作业与加减分继续累计")
+    var zero = rules; zero.initial = 0; zero.missing = -10
+    check(score(r1, "s1", zero) == 100, "修改规则不改变充值后的基准")
+    var twice = r1
+    var e4 = ScoreEntry(studentId: "s1", delta: -4, reason: "违纪"); e4.time = 6000
+    twice.scores.append(e4)
+    twice = twice.recharging(rules, ids: ["s1"], target: 80, time: 7000)
+    check(score(twice, "s1", rules) == 80 && twice.recharges.last?.before["s1"] == 96, "最近一次充值生效")
+    var undone = twice; undone.recharges.removeLast()
+    check(score(undone, "s1", rules) == 96, "删除记录即撤销充值")
+    let json = try! JSONEncoder().encode(twice)
+    let back = try! JSONDecoder().decode(SchoolClass.self, from: json)
+    check(back.recharges == twice.recharges, "充值记录可编码/解码")
+    let legacy = try! JSONDecoder().decode(SchoolClass.self, from: Data(#"{"name":"旧班级"}"#.utf8))
+    check(legacy.recharges.isEmpty, "旧数据没有 recharges 字段也能读取")
+}
 // ---------- 统计表识别 / 统计名单 / 草稿（与 tools/web-tests/stats.test.mjs 同样的用例） ----------
 do {
     print("== 统计表识别")
@@ -260,44 +299,6 @@ do {
     }
     total += 1
     if compareStudentNumbers("02", "2") == 0 { pass += 1; print("✓ 前导零不改变学号的数字顺序") }
-}
-do {
-    print("== 按作业重置积分")
-    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
-    let rules = Rules()
-    var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三")])
-    c.assignments = [("a1", Int64(1000), "MISSING"), ("a2", 2000, "EXCELLENT"), ("a3", 3000, "LATE")].map { id, time, status in
-        var a = Assignment(title: id, subject: "数学", statuses: ["s1": status]); a.id = id; a.createdAt = time; a.comments = ["s1": "保留备注"]; return a
-    }
-    c.scores = [("m0", Int64(1500), 3.0, "表现", "manual"), ("m1", 2500, 2, "进步", "manual"), ("r0", 2600, -4, "重置分数至 0", "manual"), ("r1", 3500, 5, "调整", "reset")].map { id, time, delta, reason, kind in
-        var e = ScoreEntry(studentId: "s1", delta: delta, reason: reason, kind: kind); e.id = id; e.time = time; return e
-    }
-    let reset = c.startingScorePeriod("a2", time: 5000)
-    check(c.stats(rules)[0].score == 104 && reset.stats(rules)[0].score == 102, "包含选中作业，结转范围内手动分，排除旧重置调整")
-    check(reset.assignments == c.assignments && reset.scores == c.scores && reset.stats(rules)[0].missing == 1, "所有作业、备注、积分流水及未交次数保留")
-    var zero = rules; zero.initial = 0
-    check(reset.stats(zero)[0].score == 2, "本轮仍可随时修改基准分")
-    check(reset.scoreBoundaryIndex(reset.assignments) == 1 && reset.scoreBoundaryIndex(Array(reset.assignments.suffix(1))) == nil, "分割线定位正确，范围外不误标")
-    var future = c; var entry = ScoreEntry(studentId: "s1", delta: 20, reason: "时钟偏差"); entry.id = "future"; entry.time = 7000; future.scores.append(entry)
-    var noCarry = future.startingScorePeriod("a2", keepManualSinceStart: false, time: 5000)
-    check(noCarry.stats(rules)[0].score == 100, "不结转旧手动分，排除已有未来记录")
-    entry.id = "new"; entry.time = 5000; entry.delta = 1.5; noCarry.scores.append(entry)
-    check(noCarry.stats(rules)[0].score == 101.5, "重置后的新加减分继续累计")
-    var edited = reset; edited.assignments[0].statuses["s1"] = "EXCELLENT"
-    check(edited.stats(rules)[0].score == 102 && edited.stats(rules)[0].missing == 0, "旧作业补登记改变历史次数，不改变本轮积分")
-    let compensated = reset.resettingScores(rules, ids: ["s1"], target: 0)
-    check(compensated.stats(rules)[0].score == 0 && compensated.startingScorePeriod("a3", time: nowMillis() + 1000).stats(rules)[0].score == 99, "本轮指定分数重置仍可用，新一轮排除旧调整")
-    check(reset.restoringScoreHistory(time: 6000).stats(rules)[0].score == 104, "恢复历史计分可逆")
-    var same = c; same.assignments = same.assignments.map { a in var a = a; a.createdAt = 2000; return a }
-    let tied = same.startingScorePeriod("a2", time: 5000)
-    check(tied.assignments.map { tied.countsTowardScore($0) } == [false, true, true], "同毫秒作业仍准确包含所选起点")
-    var removed = tied; removed.assignments.remove(at: 1)
-    check(removed.activeScoreReset?.assignmentTitle == "a2" && removed.scoreBoundaryIndex(removed.assignments) == 1, "删除起点作业后保留计分分界")
-    let back = try! JSONDecoder().decode(SchoolClass.self, from: JSONEncoder().encode(reset))
-    check(back == reset, "新备份保存积分起点并完整还原")
-    let legacy = try! JSONDecoder().decode(SchoolClass.self, from: Data("{\"name\":\"旧班级\"}".utf8))
-    check(legacy.scoreResets.isEmpty, "旧版备份默认全部历史计分")
-    check(reset.startingScorePeriod("bad") == reset && reset.startingScorePeriod("a3", time: 6000).activeScoreReset?.assignmentId == "a3", "无效起点不改数据，最新起点优先")
 }
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

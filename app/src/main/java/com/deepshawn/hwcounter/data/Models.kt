@@ -69,7 +69,6 @@ data class ScoreEntry(
     val delta: Double,
     val reason: String,
     val time: Long = System.currentTimeMillis(),
-    val kind: String = "manual",
 )
 
 @Serializable
@@ -82,7 +81,8 @@ data class SchoolClass(
     val emoji: String = "🎒",
     /** 座位表（可选） */
     val seating: Seating? = null,
-    val scoreResets: List<ScoreReset> = emptyList(),
+    /** 积分充值记录（见 Recharge.kt） */
+    val recharges: List<ScoreRecharge> = emptyList(),
 )
 
 /** 座位表：seats 为 学生id → 下标(行*cols+列)；frontAtTop 讲台是否在上方。三端同一格式 */
@@ -132,7 +132,7 @@ object RecogMode {
 
 @Serializable
 data class Settings(
-    val theme: String = "mint",
+    val theme: String = "hyper",
     /** 0 跟随系统 1 浅色 2 深色 */
     val dark: Int = 0,
     /** list / grid / seat / group */
@@ -185,24 +185,25 @@ fun SchoolClass.resetStudentScores(rules: ScoreRules, studentIds: Collection<Str
     if (!target.isFinite()) return this
     val ids = studentIds.toSet()
     val entries = studentStats(rules).filter { it.student.id in ids && it.score != target }.map {
-        ScoreEntry(studentId = it.student.id, delta = target - it.score, reason = "重置分数至 ${target.fmt()}", kind = "reset")
+        ScoreEntry(studentId = it.student.id, delta = target - it.score, reason = "重置分数至 ${target.fmt()}")
     }
     return if (entries.isEmpty()) this else copy(scores = scores + entries)
 }
 
 fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
-    val reset = activeScoreReset
-    val manual = scores.filter { reset == null || reset.includes(it) }.groupBy { it.studentId }.mapValues { e -> e.value.sumOf { it.delta } }
-    val counted = assignments.filter { reset == null || reset.includes(it) }.map { it.id }.toSet()
+    val last = latestRecharges()
+    val manual = HashMap<String, Double>()
+    for (e in scores) if (e.countsAfter(last[e.studentId])) manual[e.studentId] = (manual[e.studentId] ?: 0.0) + e.delta
     return students.map { st ->
+        val r = last[st.id]
         val counts = HashMap<HwStatus, Int>()
         var auto = 0.0
         for (a in assignments) {
             val s = a.statuses[st.id] ?: HwStatus.NONE
             counts[s] = (counts[s] ?: 0) + 1
-            if (a.id in counted) auto += rules.of(s)
+            if (a.countsAfter(r)) auto += rules.of(s)
         }
-        StudentStat(st, rules.initial + auto + (manual[st.id] ?: 0.0), counts)
+        StudentStat(st, (r?.target ?: rules.initial) + auto + (manual[st.id] ?: 0.0), counts)
     }
 }
 

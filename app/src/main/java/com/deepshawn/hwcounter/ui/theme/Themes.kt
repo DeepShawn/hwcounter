@@ -8,15 +8,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -38,6 +36,7 @@ data class AppPalette(
 )
 
 val Palettes = listOf(
+    AppPalette("hyper", "澎湃蓝", "💧", Color(0xFF3482FF), Color(0xFF00B4FF), Color(0xFFFF9F0A), Color(0xFFF7F7F7), Color(0xFF000000), listOf(Color(0xFF3482FF), Color(0xFF6E5BFF))),
     AppPalette("mint", "薄荷清新", "🌿", Color(0xFF0FA38A), Color(0xFF3D8BFD), Color(0xFFFFB74D), Color(0xFFF4FBF8), Color(0xFF0F1715), listOf(Color(0xFF12C2A0), Color(0xFF2F8FEA))),
     AppPalette("academy", "学院蓝", "🎓", Color(0xFF2F5BEA), Color(0xFF00A6D6), Color(0xFFFF8A65), Color(0xFFF5F7FF), Color(0xFF0E1220), listOf(Color(0xFF3A6BFF), Color(0xFF6A3DF0))),
     AppPalette("sakura", "樱花粉", "🌸", Color(0xFFE2557B), Color(0xFFB370E0), Color(0xFFFFB300), Color(0xFFFFF6F8), Color(0xFF1C1215), listOf(Color(0xFFFF7EA5), Color(0xFFB57BFF))),
@@ -70,54 +69,11 @@ private fun Color.mix(o: Color, t: Float) = Color(
     blue = blue + (o.blue - blue) * t, alpha = 1f,
 )
 
-private fun schemeFor(p: AppPalette, dark: Boolean): ColorScheme = if (!dark) lightColorScheme(
-    primary = p.primary,
-    onPrimary = Color.White,
-    primaryContainer = p.primary.mix(Color.White, 0.82f),
-    onPrimaryContainer = p.primary.mix(Color.Black, 0.55f),
-    secondary = p.secondary,
-    onSecondary = Color.White,
-    secondaryContainer = p.secondary.mix(Color.White, 0.85f),
-    onSecondaryContainer = p.secondary.mix(Color.Black, 0.55f),
-    tertiary = p.tertiary,
-    tertiaryContainer = p.tertiary.mix(Color.White, 0.82f),
-    onTertiaryContainer = p.tertiary.mix(Color.Black, 0.6f),
-    background = p.lightBg,
-    surface = p.lightBg,
-    surfaceVariant = p.primary.mix(Color(0xFFF2F2F2), 0.9f),
-    surfaceContainerLowest = Color.White,
-    surfaceContainerLow = p.lightBg.mix(Color.White, 0.6f),
-    surfaceContainer = p.lightBg.mix(p.primary, 0.04f),
-    surfaceContainerHigh = p.lightBg.mix(p.primary, 0.07f),
-    surfaceContainerHighest = p.lightBg.mix(p.primary, 0.1f),
-    outlineVariant = p.primary.mix(Color(0xFFDDDDDD), 0.85f),
-) else darkColorScheme(
-    primary = p.primary.mix(Color.White, 0.25f),
-    onPrimary = Color(0xFF101010),
-    primaryContainer = p.primary.mix(Color.Black, 0.55f),
-    onPrimaryContainer = p.primary.mix(Color.White, 0.75f),
-    secondary = p.secondary.mix(Color.White, 0.25f),
-    secondaryContainer = p.secondary.mix(Color.Black, 0.6f),
-    onSecondaryContainer = p.secondary.mix(Color.White, 0.75f),
-    tertiary = p.tertiary.mix(Color.White, 0.2f),
-    tertiaryContainer = p.tertiary.mix(Color.Black, 0.6f),
-    onTertiaryContainer = p.tertiary.mix(Color.White, 0.75f),
-    background = p.darkBg,
-    surface = p.darkBg,
-    surfaceVariant = p.darkBg.mix(p.primary, 0.14f),
-    surfaceContainerLowest = p.darkBg.mix(Color.Black, 0.4f),
-    surfaceContainerLow = p.darkBg.mix(p.primary, 0.05f),
-    surfaceContainer = p.darkBg.mix(p.primary, 0.08f),
-    surfaceContainerHigh = p.darkBg.mix(p.primary, 0.12f),
-    surfaceContainerHighest = p.darkBg.mix(p.primary, 0.16f),
-    outlineVariant = p.darkBg.mix(p.primary, 0.3f),
-)
-
 object StatusColors {
     fun of(s: HwStatus, dark: Boolean): Color = when (s) {
         HwStatus.NONE -> if (dark) Color(0xFF5C5F66) else Color(0xFFB8BCC4)
         HwStatus.SUBMITTED -> Color(0xFF1DB57A)
-        HwStatus.EXCELLENT -> Color(0xFFFFB300)
+        HwStatus.EXCELLENT -> if (dark) Color(0xFFFFB300) else Color(0xFFD99A00)
         HwStatus.LATE -> Color(0xFFFF8A3D)
         HwStatus.MISSING -> Color(0xFFF0475A)
         HwStatus.LEAVE -> Color(0xFF4A8CFF)
@@ -126,12 +82,35 @@ object StatusColors {
     fun container(s: HwStatus, dark: Boolean): Color = of(s, dark).copy(alpha = if (dark) 0.22f else 0.14f)
 }
 
+/** miuix 颜色 → Material3 颜色：未重写的旧页面（Material 组件）也跟随 HyperOS 配色 */
+private fun bridge(m: top.yukonga.miuix.kmp.theme.Colors, dark: Boolean): ColorScheme {
+    val base = if (dark) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        primary = m.primary, onPrimary = m.onPrimary,
+        primaryContainer = m.tertiaryContainer, onPrimaryContainer = m.onTertiaryContainer,
+        secondary = m.primary.mix(if (dark) Color.White else Color.Black, 0.15f), onSecondary = m.onPrimary,
+        secondaryContainer = m.secondaryContainer, onSecondaryContainer = m.onSecondaryVariant,
+        tertiary = m.primaryVariant, tertiaryContainer = m.tertiaryContainerVariant, onTertiaryContainer = m.onTertiaryContainer,
+        background = m.surface, onBackground = m.onSurface,
+        surface = m.surface, onSurface = m.onSurface,
+        surfaceVariant = m.secondaryContainer, onSurfaceVariant = m.onSurfaceVariantSummary,
+        surfaceContainerLowest = m.surfaceContainer, surfaceContainerLow = m.surfaceContainer,
+        surfaceContainer = m.surfaceContainer, surfaceContainerHigh = m.secondaryContainer,
+        surfaceContainerHighest = m.surfaceContainerHigh,
+        inverseSurface = m.onSurface, inverseOnSurface = m.surface,
+        outline = m.outline, outlineVariant = m.dividerLine,
+        error = m.error, onError = m.onError, errorContainer = m.errorContainer, onErrorContainer = m.onErrorContainer,
+        scrim = m.windowDimming,
+    )
+}
+
 @Composable
 fun HwTheme(
     paletteKey: String,
     darkMode: Int,
     shapeStyle: Int,
     compact: Boolean,
+    ui: UiPrefs = UiPrefs(),
     content: @Composable () -> Unit,
 ) {
     val p = paletteOf(paletteKey)
@@ -140,28 +119,49 @@ fun HwTheme(
         2 -> true
         else -> isSystemInDarkTheme()
     }
-    val ctx = LocalContext.current
-    val scheme = if (p.key == "dynamic" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-    } else schemeFor(p, dark)
-    val gradient = if (p.key == "dynamic") listOf(scheme.primary, scheme.tertiary) else p.gradient
-    val corner = when (shapeStyle) { 0 -> 6; 2 -> 30; else -> 18 }
+    // 澎湃蓝 = miuix 原生配色；动态取色 = 系统壁纸取色（Android 12+）；其余主题用主色生成 Monet 色板
+    val controller = remember(p.key, dark) {
+        when {
+            p.key == "hyper" -> top.yukonga.miuix.kmp.theme.ThemeController(
+                if (dark) top.yukonga.miuix.kmp.theme.ColorSchemeMode.Dark else top.yukonga.miuix.kmp.theme.ColorSchemeMode.Light,
+            )
+            p.key == "dynamic" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> top.yukonga.miuix.kmp.theme.ThemeController(
+                if (dark) top.yukonga.miuix.kmp.theme.ColorSchemeMode.MonetDark else top.yukonga.miuix.kmp.theme.ColorSchemeMode.MonetLight,
+            )
+            else -> top.yukonga.miuix.kmp.theme.ThemeController(
+                if (dark) top.yukonga.miuix.kmp.theme.ColorSchemeMode.MonetDark else top.yukonga.miuix.kmp.theme.ColorSchemeMode.MonetLight,
+                keyColor = p.primary,
+            )
+        }
+    }
+    val corner = when (shapeStyle) { 0 -> 8; 2 -> 28; else -> 18 }
     val shapes = Shapes(
         extraSmall = RoundedCornerShape((corner / 3).dp),
         small = RoundedCornerShape((corner / 2).dp),
         medium = RoundedCornerShape(corner.dp),
-        large = RoundedCornerShape((corner + 6).dp),
-        extraLarge = RoundedCornerShape((corner + 12).dp),
+        large = RoundedCornerShape((corner + 4).dp),
+        extraLarge = RoundedCornerShape((corner + 10).dp),
     )
     val base = Typography()
     val typography = base.copy(
-        headlineLarge = base.headlineLarge.copy(fontWeight = FontWeight.Black),
+        headlineLarge = base.headlineLarge.copy(fontWeight = FontWeight.Bold),
         headlineMedium = base.headlineMedium.copy(fontWeight = FontWeight.Bold),
-        titleLarge = base.titleLarge.copy(fontWeight = FontWeight.Bold),
+        headlineSmall = base.headlineSmall.copy(fontWeight = FontWeight.Bold),
+        titleLarge = base.titleLarge.copy(fontWeight = FontWeight.SemiBold),
         titleMedium = base.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-        labelLarge = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.2.sp),
+        labelLarge = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
     )
-    CompositionLocalProvider(LocalExtra provides Extra(p, gradient, dark, compact, corner)) {
-        MaterialTheme(colorScheme = scheme, shapes = shapes, typography = typography, content = content)
+    top.yukonga.miuix.kmp.theme.MiuixTheme(controller = controller, smoothRounding = !ui.lowPerf) {
+        val m = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+        val scheme = bridge(m, dark)
+        val gradient = if (p.key == "dynamic" || p.key == "hyper") listOf(m.primary, m.primary.mix(Color(0xFF7A5CFF), 0.45f)) else p.gradient
+        CompositionLocalProvider(
+            LocalExtra provides Extra(p, gradient, dark, compact, corner),
+            LocalUiPrefs provides ui,
+            // 低性能模式：关闭越界回弹（拉伸/弹簧）以减少绘制
+            androidx.compose.foundation.LocalOverscrollFactory provides if (ui.lowPerf) null else androidx.compose.foundation.LocalOverscrollFactory.current,
+        ) {
+            MaterialTheme(colorScheme = scheme, shapes = shapes, typography = typography, content = content)
+        }
     }
 }

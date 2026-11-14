@@ -68,6 +68,10 @@ import kotlin.random.Random
 @Composable
 fun statusColor(s: HwStatus): Color = StatusColors.of(s, LocalExtra.current.isDark)
 
+/** 图表用的状态色（与界面状态色一致，未登记用中性灰） */
+@Composable
+fun statusChartColor(s: HwStatus): Color = statusColor(s)
+
 @Composable
 fun statusContainer(s: HwStatus): Color = StatusColors.container(s, LocalExtra.current.isDark)
 
@@ -84,7 +88,9 @@ fun GradientHeader(
     Box(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(bottomStart = bottomRadius, bottomEnd = bottomRadius))
+            .statusBarsPadding()
+            .padding(start = 12.dp, end = 12.dp, top = 6.dp)
+            .clip(RoundedCornerShape(26.dp))
             .background(gradientBrush()),
     ) {
         // 装饰气泡
@@ -93,9 +99,7 @@ fun GradientHeader(
             drawCircle(Color.White.copy(alpha = 0.07f), radius = size.minDimension * 0.35f, center = Offset(size.width * 0.05f, size.height * 0.95f))
         }
         Column(
-            Modifier
-                .statusBarsPadding()
-                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp),
+            Modifier.padding(start = 18.dp, end = 18.dp, top = 10.dp, bottom = 18.dp),
             content = content,
         )
     }
@@ -199,8 +203,8 @@ fun StatTile(
 ) {
     Surface(
         modifier = modifier.then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
-        shape = MaterialTheme.shapes.medium,
-        color = color.copy(alpha = if (LocalExtra.current.isDark) 0.18f else 0.10f),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLowest,
     ) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -218,10 +222,8 @@ fun StatTile(
 
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier, action: @Composable RowScope.() -> Unit = {}) {
-    Row(modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(width = 4.dp, height = 16.dp).clip(CircleShape).background(gradientBrush()))
-        Spacer(Modifier.width(8.dp))
-        Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+    Row(modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(text, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
         action()
     }
 }
@@ -234,11 +236,9 @@ fun AppCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
-        modifier = modifier.then(if (onClick != null) Modifier.clip(MaterialTheme.shapes.large).clickable { onClick() } else Modifier),
-        shape = MaterialTheme.shapes.large,
+        modifier = modifier.then(if (onClick != null) Modifier.clip(RoundedCornerShape(16.dp)).clickable { onClick() } else Modifier),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLowest,
-        tonalElevation = 1.dp,
-        shadowElevation = if (LocalExtra.current.isDark) 0.dp else 1.dp,
     ) {
         Column(Modifier.padding(padding), content = content)
     }

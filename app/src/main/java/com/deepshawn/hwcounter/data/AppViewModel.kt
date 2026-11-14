@@ -291,14 +291,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeScore(entryId: String) = updateClass { c -> c.copy(scores = c.scores.filterNot { it.id == entryId }) }
 
-    fun clearScores() = updateClass { c -> c.copy(scores = emptyList()) }
-
-    fun startScorePeriod(assignmentId: String, keepManualSinceStart: Boolean) = updateClass { it.startScorePeriod(assignmentId, keepManualSinceStart) }
-    fun restoreScoreHistory() = updateClass { it.restoreScoreHistory() }
+    fun clearScores() = updateClass { c -> c.copy(scores = emptyList(), recharges = emptyList()) }
 
     fun resetScores(studentIds: Collection<String>, target: Double) = updateClass { c ->
         c.resetStudentScores(_data.value.settings.rules, studentIds, target)
     }
+
+    /** 积分充值：只重置积分并留下记录，历史加减分与作业状态不变 */
+    fun rechargeScores(studentIds: Collection<String>, target: Double, note: String = "") = updateClass { c ->
+        c.recharge(_data.value.settings.rules, studentIds, target, note)
+    }
+
+    /** 撤销某次充值（删除记录，分数按全部历史重新计算） */
+    fun removeRecharge(id: String) = updateClass { c -> c.removeRecharge(id) }
 
     // ---------- 学生 ----------
     fun upsertStudent(s: Student) = updateClass { c ->
@@ -310,6 +315,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         c.copy(
             students = c.students.filterNot { it.id == id },
             scores = c.scores.filterNot { it.studentId == id },
+            recharges = c.recharges.mapNotNull { r ->
+                if (id !in r.studentIds) r else r.copy(studentIds = r.studentIds - id, before = r.before - id).takeIf { it.studentIds.isNotEmpty() }
+            },
             assignments = c.assignments.map { it.copy(statuses = it.statuses - id) },
             seating = c.seating?.let { it.copy(seats = it.seats - id) },
         )
@@ -330,7 +338,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             return r.students.size
         }
         updateClass { c ->
-            if (replace) c.copy(students = r.students, assignments = emptyList(), scores = emptyList(), scoreResets = emptyList(), name = r.className ?: c.name)
+            if (replace) c.copy(students = r.students, assignments = emptyList(), scores = emptyList(), recharges = emptyList(), name = r.className ?: c.name)
             else {
                 val byNo = c.students.associateBy { it.no }
                 val merged = c.students.map { old ->

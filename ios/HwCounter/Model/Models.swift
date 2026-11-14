@@ -171,11 +171,9 @@ struct ScoreEntry: Codable, Identifiable, Equatable {
     var delta: Double
     var reason: String
     var time: Int64 = nowMillis()
-    var kind = "manual"
 
-    init(studentId: String, delta: Double, reason: String, kind: String = "manual") {
+    init(studentId: String, delta: Double, reason: String) {
         self.studentId = studentId; self.delta = delta; self.reason = reason
-        self.kind = kind
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -184,7 +182,30 @@ struct ScoreEntry: Codable, Identifiable, Equatable {
         delta = try c.decodeIfPresent(Double.self, forKey: .delta) ?? 0
         reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
         time = try c.decodeIfPresent(Int64.self, forKey: .time) ?? nowMillis()
-        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "manual"
+    }
+}
+
+/// 积分充值：把选中学生的当前积分设为 target 并留下一条记录（与安卓 Recharge.kt / 网页 model.js 同格式同算法）。
+/// 当前积分 = target + 充值之后布置的作业自动计分 + 充值之后的手动加减分；历史记录全部保留，删除记录即撤销。
+struct ScoreRecharge: Codable, Identifiable, Equatable {
+    var id: String = newId()
+    var time: Int64 = nowMillis()
+    var target: Double
+    var studentIds: [String]
+    var before: [String: Double] = [:]
+    var note: String = ""
+
+    init(target: Double, studentIds: [String], before: [String: Double], note: String, time: Int64 = nowMillis()) {
+        self.target = target; self.studentIds = studentIds; self.before = before; self.note = note; self.time = time
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? newId()
+        time = try c.decodeIfPresent(Int64.self, forKey: .time) ?? nowMillis()
+        target = try c.decodeIfPresent(Double.self, forKey: .target) ?? 0
+        studentIds = try c.decodeIfPresent([String].self, forKey: .studentIds) ?? []
+        before = try c.decodeIfPresent([String: Double].self, forKey: .before) ?? [:]
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
     }
 }
 
@@ -197,7 +218,8 @@ struct SchoolClass: Codable, Identifiable, Equatable {
     var emoji: String = "🎒"
     /// 座位表（可选），与安卓版、网页版同一格式
     var seating: Seating? = nil
-    var scoreResets: [ScoreReset] = []
+    /// 积分充值记录
+    var recharges: [ScoreRecharge] = []
 
     init(name: String, emoji: String = "🎒", students: [Student] = []) {
         self.name = name; self.emoji = emoji; self.students = students
@@ -211,7 +233,7 @@ struct SchoolClass: Codable, Identifiable, Equatable {
         scores = try c.decodeIfPresent([ScoreEntry].self, forKey: .scores) ?? []
         emoji = try c.decodeIfPresent(String.self, forKey: .emoji) ?? "🎒"
         seating = try? c.decodeIfPresent(Seating.self, forKey: .seating)
-        scoreResets = try c.decodeIfPresent([ScoreReset].self, forKey: .scoreResets) ?? []
+        recharges = (try? c.decodeIfPresent([ScoreRecharge].self, forKey: .recharges)) ?? []
     }
 }
 
@@ -334,26 +356,50 @@ extension SchoolClass {
         let selected = Set(ids)
         var result = self
         result.scores += stats(rules).filter { selected.contains($0.id) && $0.score != target }.map {
-            ScoreEntry(studentId: $0.id, delta: target - $0.score, reason: "重置分数至 \(fmtNum(target))", kind: "reset")
+            ScoreEntry(studentId: $0.id, delta: target - $0.score, reason: "重置分数至 \(fmtNum(target))")
         }
         return result
     }
 
+    /// 每位学生最近一次生效的充值
+    func latestRecharges() -> [String: ScoreRecharge] {
+        var out: [String: ScoreRecharge] = [:]
+        for r in recharges.sorted(by: { $0.time != $1.time ? $0.time < $1.time : $0.id < $1.id }) {
+            for sid in r.studentIds { out[sid] = r }
+        }
+        return out
+    }
+
+    /// 积分充值：只新增记录，不改动任何历史数据
+    func recharging(_ rules: Rules, ids: [String], target: Double, note: String = "", time: Int64 = nowMillis()) -> SchoolClass {
+        guard target.isFinite else { return self }
+        let wanted = Set(ids)
+        let chosen = students.map(\.id).filter { wanted.contains($0) }
+        guard !chosen.isEmpty else { return self }
+        var now: [String: Double] = [:]
+        for st in stats(rules) { now[st.id] = st.score }
+        var result = self
+        var before: [String: Double] = [:]
+        for id in chosen { before[id] = now[id] ?? 0 }
+        result.recharges.append(ScoreRecharge(target: target, studentIds: chosen, before: before, note: note.trimmingCharacters(in: .whitespaces), time: time))
+        return result
+    }
+
     func stats(_ rules: Rules) -> [Stat] {
+        let last = latestRecharges()
         var manual: [String: Double] = [:]
-        let reset = activeScoreReset
-        for e in scores where reset?.includes(e) ?? true { manual[e.studentId, default: 0] += e.delta }
-        let counted = Set(assignments.filter { reset?.includes($0) ?? true }.map(\.id))
+        for e in scores where last[e.studentId].map({ e.time > $0.time }) ?? true { manual[e.studentId, default: 0] += e.delta }
         return students.map { st in
+            let r = last[st.id]
             var auto = 0.0, sub = 0, late = 0, miss = 0
             for a in assignments {
                 let s = a.status(st.id)
-                if counted.contains(a.id) { auto += rules.of(s) }
+                if r.map({ a.createdAt > $0.time }) ?? true { auto += rules.of(s) }
                 if s == .SUBMITTED || s == .EXCELLENT { sub += 1 }
                 if s == .LATE { late += 1 }
                 if s == .MISSING { miss += 1 }
             }
-            return Stat(student: st, score: rules.initial + auto + (manual[st.id] ?? 0), submitted: sub, late: late, missing: miss)
+            return Stat(student: st, score: (r?.target ?? rules.initial) + auto + (manual[st.id] ?? 0), submitted: sub, late: late, missing: miss)
         }
     }
 }

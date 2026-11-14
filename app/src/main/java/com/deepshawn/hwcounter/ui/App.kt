@@ -24,6 +24,23 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import com.deepshawn.hwcounter.ui.components.glass
+import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,9 +61,6 @@ import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -209,54 +223,118 @@ fun App(vm: AppViewModel, data: AppData) {
     val current = stack.last()
     val screenState = rememberSaveableStateHolder()
     val topLevel = current is Route.Home || current is Route.Students || current is Route.Scores || current is Route.Stats || current is Route.Settings
+    val ui = com.deepshawn.hwcounter.ui.theme.LocalUiPrefs.current
+    val backdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // 底栏页面：内容从玻璃底栏下穿过，需要留出底栏高度；二级页面：整体避开系统导航条
+    val bottomInset = if (topLevel) 92.dp + navBottom + (if (readOnly) 44.dp else 0.dp) else 16.dp + (if (readOnly) 44.dp else 0.dp)
+    val surface = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.surface
 
     CompositionLocalProvider(LocalKit provides kit) {
-        Box(Modifier.fillMaxSize()) {
-            Scaffold(
-                snackbarHost = { SnackbarHost(snack) },
-                bottomBar = {
-                  androidx.compose.foundation.layout.Column {
-                    if (readOnly) PreviewBanner { nav.tab(Route.Settings) }
-                    if (topLevel) {
-                        NavigationBar {
-                            tabs.filter { !(readOnly && it.route == Route.Students) }.forEach { t ->
-                                val sel = current == t.route
-                                NavigationBarItem(
-                                    selected = sel,
-                                    onClick = { if (!sel) { kit.haptic(); nav.tab(t.route) } },
-                                    icon = { Icon(if (sel) t.iconSel else t.icon, t.label) },
-                                    label = { Text(t.label) },
-                                )
-                            }
+        top.yukonga.miuix.kmp.basic.Scaffold(containerColor = surface, contentWindowInsets = WindowInsets(0)) { _ ->
+            Box(Modifier.fillMaxSize()) {
+                // 页面内容：记录成玻璃的背景层（玻璃关闭时不记录，省一次绘制）
+                Box(
+                    Modifier.fillMaxSize()
+                        .then(if (ui.glassOn) Modifier.layerBackdrop(backdrop) else Modifier)
+                        .background(surface),
+                ) {
+                    CompositionLocalProvider(com.deepshawn.hwcounter.ui.components.LocalBottomInset provides bottomInset) {
+                        val content: @Composable (Route) -> Unit = { route ->
+                            if (route in listOf(Route.Home, Route.Students, Route.Scores, Route.Stats, Route.Settings)) {
+                                screenState.SaveableStateProvider(route.toString()) { RouteContent(route, vm, data) }
+                            } else Box(Modifier.fillMaxSize().navigationBarsPadding()) { RouteContent(route, vm, data) }
+                        }
+                        if (ui.motion) {
+                            AnimatedContent(
+                                targetState = Pair(current, stack.size),
+                                transitionSpec = {
+                                    val forward = targetState.second > initialState.second
+                                    val back = targetState.second < initialState.second
+                                    val ease = top.yukonga.miuix.kmp.anim.DecelerateEasing(1.5f)
+                                    val transition = when {
+                                        forward -> (slideInHorizontally(tween(320, easing = ease)) { it } ) togetherWith (slideOutHorizontally(tween(320, easing = ease)) { -it / 4 } + fadeOut(tween(320), 0.6f))
+                                        back -> (slideInHorizontally(tween(320, easing = ease)) { -it / 4 } + fadeIn(tween(320), 0.6f)) togetherWith (slideOutHorizontally(tween(320, easing = ease)) { it })
+                                        else -> fadeIn(tween(160)) togetherWith fadeOut(tween(120))
+                                    }
+                                    transition.apply { targetContentZIndex = if (back) -1f else 1f }.using(null)
+                                },
+                                label = "nav",
+                            ) { (route, _) -> content(route) }
+                        } else {
+                            // 动效关闭：直接切换，不保留两份页面，切换最快
+                            androidx.compose.runtime.key(current, stack.size) { content(current) }
                         }
                     }
-                  }
-                },
-            ) { pad ->
-                Box(Modifier.fillMaxSize().padding(bottom = pad.calculateBottomPadding())) {
-                    AnimatedContent(
-                        targetState = Pair(current, stack.size),
-                        transitionSpec = {
-                            val forward = targetState.second > initialState.second
-                            val back = targetState.second < initialState.second
-                            val transition = when {
-                                forward -> (slideInHorizontally(tween(180)) { it / 8 } + fadeIn(tween(140))) togetherWith (slideOutHorizontally(tween(140)) { -it / 12 } + fadeOut(tween(90)))
-                                back -> (slideInHorizontally(tween(180)) { -it / 12 } + fadeIn(tween(140))) togetherWith (slideOutHorizontally(tween(140)) { it / 8 } + fadeOut(tween(90)))
-                                else -> fadeIn(tween(140)) togetherWith fadeOut(tween(90))
-                            }
-                            transition.using(null)
-                        },
-                        label = "nav",
-                    ) { (route, _) ->
-                        if (route in listOf(Route.Home, Route.Students, Route.Scores, Route.Stats, Route.Settings)) {
-                            screenState.SaveableStateProvider(route.toString()) { RouteContent(route, vm, data) }
-                        } else RouteContent(route, vm, data)
+                }
+                // 悬浮层：提示、预览横幅、液态玻璃底栏（不在背景层内，避免自我采样）
+                CompositionLocalProvider(com.deepshawn.hwcounter.ui.components.LocalBackdrop provides (if (ui.glassOn) backdrop else null)) {
+                    Column(
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        SnackbarHost(snack) { GlassSnackbar(it) }
+                        if (readOnly) PreviewBanner { nav.tab(Route.Settings) }
+                        if (topLevel) GlassTabBar(
+                            tabs = tabs.filter { !(readOnly && it.route == Route.Students) },
+                            current = current,
+                        ) { t -> if (current != t.route) { kit.haptic(); nav.tab(t.route) } }
                     }
                 }
+                if (!ui.lowPerf) Confetti(confetti)
+                com.deepshawn.hwcounter.ui.screens.CloudConflictDialog(vm)
             }
-            Confetti(confetti)
-            com.deepshawn.hwcounter.ui.screens.CloudConflictDialog(vm)
         }
+    }
+}
+
+/** 液态玻璃底部导航：悬浮胶囊，选中项带淡色胶囊高亮 */
+@Composable
+private fun GlassTabBar(tabs: List<Tab>, current: Route, onSelect: (Tab) -> Unit) {
+    val colors = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(34.dp)
+    androidx.compose.foundation.layout.Row(
+        Modifier.padding(horizontal = 18.dp).widthIn(max = 520.dp).fillMaxWidth().height(68.dp)
+            .glass(shape = shape, refraction = 22.dp)
+            .padding(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        tabs.forEach { t ->
+            val sel = current == t.route
+            val bg by androidx.compose.animation.animateColorAsState(if (sel) colors.primary.copy(alpha = 0.14f) else androidx.compose.ui.graphics.Color.Transparent, label = "tab")
+            val fg = if (sel) colors.primary else colors.onSurfaceVariantSummary
+            androidx.compose.foundation.layout.Column(
+                Modifier.weight(1f).fillMaxSize()
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
+                    .background(bg)
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null,
+                    ) { onSelect(t) }
+                    .semantics { this.selected = sel; this.role = androidx.compose.ui.semantics.Role.Tab },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+            ) {
+                Icon(if (sel) t.iconSel else t.icon, t.label, tint = fg, modifier = Modifier.size(24.dp))
+                Text(t.label, color = fg, fontSize = 11.sp, fontWeight = if (sel) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GlassSnackbar(data: androidx.compose.material3.SnackbarData) {
+    val colors = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+    androidx.compose.foundation.layout.Row(
+        Modifier.padding(horizontal = 24.dp, vertical = 8.dp).widthIn(max = 520.dp)
+            .glass(shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp), tint = colors.surfaceContainerHighest, refraction = 10.dp)
+            .padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(data.visuals.message, Modifier.weight(1f, fill = false).padding(vertical = 8.dp), fontSize = 14.sp, color = colors.onSurface, maxLines = 3)
+        data.visuals.actionLabel?.let { label ->
+            androidx.compose.material3.TextButton(onClick = { data.performAction() }) { Text(label, color = colors.primary, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold) }
+        } ?: Spacer(Modifier.width(12.dp))
     }
 }
 
@@ -339,10 +417,10 @@ fun rememberPhotoLauncher(onPhotos: (List<Uri>) -> Unit): PhotoLauncher {
 @Composable
 private fun PreviewBanner(onLogin: () -> Unit) {
     androidx.compose.foundation.layout.Row(
-        Modifier.fillMaxWidth()
-            .background(androidx.compose.ui.graphics.Color(0xFFFFF4E5))
+        Modifier.padding(bottom = 8.dp)
+            .glass(shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), tint = androidx.compose.ui.graphics.Color(0xFFFFF4E5), refraction = 8.dp, elevated = false)
             .clickable { onLogin() }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
     ) {
         Text("👀 预览模式 · 只读　", color = androidx.compose.ui.graphics.Color(0xFF6B4300), fontSize = 13.sp)

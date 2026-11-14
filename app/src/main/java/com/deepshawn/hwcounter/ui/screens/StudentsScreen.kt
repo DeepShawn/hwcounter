@@ -60,6 +60,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -73,7 +74,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.deepshawn.hwcounter.data.countsTowardScore
 import com.deepshawn.hwcounter.data.AppData
 import com.deepshawn.hwcounter.data.AppViewModel
 import com.deepshawn.hwcounter.data.HwStatus
@@ -82,6 +82,7 @@ import com.deepshawn.hwcounter.data.Student
 import com.deepshawn.hwcounter.data.fmt
 import com.deepshawn.hwcounter.data.signed
 import com.deepshawn.hwcounter.data.studentStats
+import com.deepshawn.hwcounter.data.ledger
 import com.deepshawn.hwcounter.export.Exporter
 import com.deepshawn.hwcounter.ui.LocalKit
 import com.deepshawn.hwcounter.ui.Route
@@ -147,7 +148,7 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
     }
     val list = c.students.filter { query.isBlank() || it.name.contains(query) || it.no.contains(query) || it.group.contains(query) }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + com.deepshawn.hwcounter.ui.components.LocalBottomInset.current)) {
         item {
             GradientHeader {
                 Text("名单管理", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
@@ -366,8 +367,9 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
     var edit by remember { mutableStateOf(false) }
     val fmt = remember { SimpleDateFormat("yyyy年M月d日", Locale.CHINA) }
     val assigns = c.assignments.sortedByDescending { it.createdAt }
+    val readOnlyState by vm.readOnly.collectAsState()
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp + com.deepshawn.hwcounter.ui.components.LocalBottomInset.current)) {
         item {
             GradientHeader {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -413,33 +415,39 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
         }
         item {
             SectionTitle("积分流水", Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                FilledTonalButton(onClick = { scoreDialog = true }) { Text("加减分") }
+                if (!readOnlyState) FilledTonalButton(onClick = { scoreDialog = true }) { Text("加减分") }
             }
         }
-        val entries = c.scores.filter { it.studentId == s.id }.sortedByDescending { it.time }
-        val autoRows = assigns.mapNotNull { a ->
-            val st = a.statuses[s.id] ?: HwStatus.NONE
-            val d = rules.of(st)
-            if (d == 0.0) null else Triple(a, st, d)
-        }
-        if (entries.isEmpty() && autoRows.isEmpty()) item { Text("暂无积分变化", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        items(entries, key = { it.id }) { e ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(e.delta.signed(), fontWeight = FontWeight.Black, color = if (e.delta >= 0) statusColor(HwStatus.SUBMITTED) else statusColor(HwStatus.MISSING), modifier = Modifier.width(52.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(e.reason)
-                    Text((if (c.countsTowardScore(e)) "" else "历史，不计入本轮 · ") + fmt.format(Date(e.time)), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val ledger = c.ledger(rules, s.id)
+        if (ledger.isEmpty()) item { Text("暂无积分变化", Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        items(ledger, key = { it.key }) { row ->
+            val dim = !row.counted
+            val isRecharge = row.kind == com.deepshawn.hwcounter.data.LedgerRow.Kind.RECHARGE
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp)
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(if (isRecharge) MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (dim) 0.35f else 0.8f) else androidx.compose.ui.graphics.Color.Transparent)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val color = when {
+                    isRecharge -> MaterialTheme.colorScheme.primary
+                    row.delta >= 0 -> statusColor(HwStatus.SUBMITTED)
+                    else -> statusColor(HwStatus.MISSING)
                 }
-                IconButton(onClick = { vm.removeScore(e.id); kit.undoable("已撤回该条积分") }) { Icon(Icons.Filled.Close, "删除", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-            }
-        }
-        items(autoRows, key = { "auto_" + it.first.id }) { (a, st, d) ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(d.signed(), fontWeight = FontWeight.Black, color = if (d >= 0) statusColor(HwStatus.SUBMITTED) else statusColor(HwStatus.MISSING), modifier = Modifier.width(52.dp))
+                Text(if (isRecharge) "💳" else row.delta.signed(), fontWeight = FontWeight.Black, color = color.copy(alpha = if (dim) 0.45f else 1f), modifier = Modifier.width(52.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("${a.subject}「${a.title}」${st.label}")
-                    Text("${if (c.countsTowardScore(a)) "自动计分" else "历史，不计入本轮"} · ${fmt.format(Date(a.createdAt))}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(row.title, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (dim) 0.5f else 1f))
+                    Text(
+                        (when (row.kind) {
+                            com.deepshawn.hwcounter.data.LedgerRow.Kind.AUTO -> "自动计分 · "
+                            com.deepshawn.hwcounter.data.LedgerRow.Kind.RECHARGE -> if (row.counted) "当前生效 · " else "已被之后的充值取代 · "
+                            else -> ""
+                        }) + fmt.format(Date(row.time)) + if (dim && !isRecharge) " · 充值前，不计入当前积分" else "",
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
+                if (row.entryId != null && !readOnlyState) IconButton(onClick = { vm.removeScore(row.entryId); kit.undoable("已撤回该条积分") }) { Icon(Icons.Filled.Close, "删除", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
     }

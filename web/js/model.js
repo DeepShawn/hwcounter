@@ -34,7 +34,7 @@ export function normalizeData(d) {
     students: (c.students || []).map((s) => ({ id: newId(), group: '', gender: '', note: '', longLeave: false, ...s })),
     assignments: (c.assignments || []).map((a) => ({ id: newId(), subject: '', createdAt: Date.now(), statuses: {}, comments: {}, countedBooks: null, pinned: false, ...a })),
     scores: (c.scores || []).map((e) => ({ id: newId(), time: Date.now(), ...e })),
-    scoreResets: c.scoreResets || [],
+    recharges: (c.recharges || []).map((r) => ({ id: newId(), time: Date.now(), studentIds: [], before: {}, note: '', ...r })),
   }));
   return out;
 }
@@ -73,23 +73,48 @@ export function summary(c, a) {
   return result;
 }
 
+/**
+ * 积分充值（与安卓 Recharge.kt 同算法）：每位学生最近一次充值生效，
+ * 当前积分 = 充值分数 + 充值之后布置的作业自动计分 + 充值之后的手动加减分。
+ */
+export function latestRecharges(c) {
+  const out = {};
+  const list = [...(c.recharges || [])].sort((a, b) => a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  for (const r of list) for (const sid of r.studentIds || []) out[sid] = r;
+  return out;
+}
+export const entryCounts = (e, r) => !r || e.time > r.time;
+export const assignmentCounts = (a, r) => !r || a.createdAt > r.time;
+
 export function studentStats(c, rules) {
   let byRules = statsCache.get(c);
   if (!byRules) { byRules = new WeakMap(); statsCache.set(c, byRules); }
   if (byRules.has(rules)) return byRules.get(rules);
+  const last = latestRecharges(c);
   const manual = {};
-  const reset = currentScoreReset(c);
-  for (const e of c.scores) if (scoreEntryCounts(c, e, reset)) manual[e.studentId] = (manual[e.studentId] || 0) + e.delta;
-  const counted = new Set(c.assignments.filter((a) => assignmentCounts(c, a, reset)).map((a) => a.id));
+  for (const e of c.scores) if (entryCounts(e, last[e.studentId])) manual[e.studentId] = (manual[e.studentId] || 0) + e.delta;
   const result = c.students.map((st) => {
+    const r = last[st.id];
     const counts = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
     let auto = 0;
-    for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; if (counted.has(a.id)) auto += ruleOf(rules, s); }
-    return { student: st, score: rules.initial + auto + (manual[st.id] || 0), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING };
+    for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; if (assignmentCounts(a, r)) auto += ruleOf(rules, s); }
+    return { student: st, score: (r ? r.target : rules.initial) + auto + (manual[st.id] || 0), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };
   });
   byRules.set(rules, result);
   return result;
 }
+
+/** 积分充值：只重置积分并新增一条记录，历史流水 / 作业状态 / 未交次数全部保留 */
+export function rechargeScores(c, rules, studentIds, target, note = '', time = Date.now()) {
+  if (!Number.isFinite(target)) return c;
+  const wanted = new Set(studentIds);
+  const ids = c.students.map((s) => s.id).filter((id) => wanted.has(id));
+  if (!ids.length) return c;
+  const now = Object.fromEntries(studentStats(c, rules).map((st) => [st.student.id, st.score]));
+  const r = { id: newId(), time, target, studentIds: ids, before: Object.fromEntries(ids.map((id) => [id, now[id] ?? 0])), note: String(note || '').trim() };
+  return { ...c, recharges: [...(c.recharges || []), r] };
+}
+export const removeRecharge = (c, id) => ({ ...c, recharges: (c.recharges || []).filter((r) => r.id !== id) });
 
 export function addStudentScores(c, studentIds, delta, reason) {
   if (!Number.isFinite(delta) || delta === 0) return c;
@@ -103,38 +128,8 @@ export function resetStudentScores(c, rules, studentIds, target) {
   if (!Number.isFinite(target)) return c;
   const ids = new Set(studentIds); const time = Date.now();
   const entries = studentStats(c, rules).filter((st) => ids.has(st.student.id) && st.score !== target)
-    .map((st) => ({ id: newId(), studentId: st.student.id, delta: target - st.score, reason: `重置分数至 ${fmtNum(target)}`, time, kind: 'reset' }));
+    .map((st) => ({ id: newId(), studentId: st.student.id, delta: target - st.score, reason: `重置分数至 ${fmtNum(target)}`, time }));
   return entries.length ? { ...c, scores: [...c.scores, ...entries] } : c;
-}
-
-export function currentScoreReset(c) {
-  const latest = (c.scoreResets || []).reduce((best, r) => !best || r.time > best.time || (r.time === best.time && r.id > best.id) ? r : best, null);
-  return latest?.assignmentId ? latest : null;
-}
-const isResetAdjustment = (e) => e.kind === 'reset' || /^重置分数至 [+-]?[0-9]+(?:\.[0-9]+)?$/.test(e.reason);
-export function assignmentCounts(c, a, reset = currentScoreReset(c)) {
-  return !reset || (a.createdAt >= reset.startAt && !(reset.excludedAssignmentIds || []).includes(a.id));
-}
-export function scoreEntryCounts(c, e, reset = currentScoreReset(c)) {
-  return !reset || (!(reset.ignoredScoreIds || []).includes(e.id) && !(isResetAdjustment(e) && e.time < reset.time) && e.time >= (reset.keepManualSinceStart === false ? reset.time : reset.startAt));
-}
-export function startScorePeriod(c, assignmentId, keepManualSinceStart = true, time = Date.now()) {
-  const ordered = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt);
-  const index = ordered.findIndex((a) => a.id === assignmentId);
-  if (index < 0) return c;
-  const a = ordered[index];
-  const reset = { id: newId(), assignmentId, assignmentTitle: a.title, startAt: a.createdAt, time, keepManualSinceStart,
-    excludedAssignmentIds: ordered.slice(0, index).filter((x) => x.createdAt === a.createdAt).map((x) => x.id),
-    ignoredScoreIds: c.scores.filter((e) => e.time >= time && (!keepManualSinceStart || isResetAdjustment(e))).map((e) => e.id) };
-  return { ...c, scoreResets: [...(c.scoreResets || []), reset] };
-}
-export function restoreScoreHistory(c, time = Date.now()) {
-  return { ...c, scoreResets: [...(c.scoreResets || []), { id: newId(), assignmentId: null, assignmentTitle: '', startAt: 0, time, keepManualSinceStart: true, excludedAssignmentIds: [], ignoredScoreIds: [] }] };
-}
-export function scoreBoundaryIndex(c, assignments) {
-  const reset = currentScoreReset(c);
-  return reset ? assignments.findIndex((a, i) => assignmentCounts(c, a, reset) &&
-    (a.id === reset.assignmentId || (i > 0 && !assignmentCounts(c, assignments[i - 1], reset)))) : -1;
 }
 
 export const fmtNum = (x) => { const r = Math.round(x * 10) / 10; return Number.isInteger(r) ? String(r) : r.toFixed(1); };
