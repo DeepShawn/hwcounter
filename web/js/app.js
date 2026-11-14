@@ -12,7 +12,7 @@ const html = htm.bind(h);
 const DATA_KEY = 'hw.data';
 const PREVIEW_KEY = 'hw.preview';
 const PALETTES = {
-  mint: ['#12c2a0', '#2f8fea', '🌿 薄荷清新'], academy: ['#3a6bff', '#6a3df0', '🎓 学院蓝'], sakura: ['#ff7ea5', '#b57bff', '🌸 樱花粉'],
+  hyper: ['#3482ff', '#6e5bff', '💧 澎湃蓝'], mint: ['#12c2a0', '#2f8fea', '🌿 薄荷清新'], academy: ['#3a6bff', '#6a3df0', '🎓 学院蓝'], sakura: ['#ff7ea5', '#b57bff', '🌸 樱花粉'],
   sunset: ['#ffa62b', '#ff5e62', '🌅 暖阳橙'], neon: ['#7f5cff', '#00d4ff', '🌃 赛博霓虹'], forest: ['#4c8c3f', '#1f5e54', '🌲 森林物语'],
   paper: ['#c79a63', '#8b5e34', '📒 纸本手账'], grape: ['#9b59b6', '#3498db', '🍇 葡萄汽水'], ink: ['#37474f', '#90a4ae', '🖌️ 水墨极简'],
 };
@@ -767,6 +767,25 @@ function Scores({ s }) {
   </div>`;
 }
 
+// ---------------- 本机显示偏好：动效默认关闭、液态玻璃、低性能模式（不随云端同步） ----------------
+const UI_KEY = 'hw.ui';
+export function readUiPrefs() { try { return { animations: false, glass: true, lowPerf: false, ...JSON.parse(localStorage.getItem(UI_KEY) || '{}') }; } catch { return { animations: false, glass: true, lowPerf: false }; } }
+export function applyUiPrefs(p = readUiPrefs()) {
+  const el = document.documentElement;
+  el.classList.toggle('no-motion', !p.animations || p.lowPerf);
+  el.classList.toggle('glass', p.glass && !p.lowPerf);
+  el.classList.toggle('low-perf', !!p.lowPerf);
+}
+function UiPrefsPanel() {
+  const [p, setP] = useState(readUiPrefs);
+  const set = (patch) => { const next = { ...p, ...patch }; setP(next); try { localStorage.setItem(UI_KEY, JSON.stringify(next)); } catch { /* 本机偏好 */ } applyUiPrefs(next); };
+  return html`
+    <label class="row between"><span><b>界面动效</b><div class="muted tiny">${p.lowPerf ? '低性能模式下始终关闭' : '默认关闭：所有操作即点即达'}</div></span><input type="checkbox" checked=${p.animations} disabled=${p.lowPerf} onChange=${(e) => set({ animations: e.target.checked })} /></label>
+    <label class="row between"><span><b>液态玻璃</b><div class="muted tiny">底部导航与弹窗背景模糊</div></span><input type="checkbox" checked=${p.glass} disabled=${p.lowPerf} onChange=${(e) => set({ glass: e.target.checked })} /></label>
+    <label class="row between"><span><b>低性能模式</b><div class="muted tiny">关闭模糊、阴影、动效，适合老旧设备</div></span><input type="checkbox" checked=${p.lowPerf} onChange=${(e) => set({ lowPerf: e.target.checked })} /></label>`;
+}
+applyUiPrefs();
+
 // ---------------- 设置（含云同步） ----------------
 function Settings({ s }) {
   const { data, update, say, sync, setSync, runSync, onLogin, onLogout } = s;
@@ -806,6 +825,8 @@ function Settings({ s }) {
     <div class="section">🎨 主题</div>
     <div class="card"><div class="chips">${Object.entries(PALETTES).map(([k, [a, b, n]]) => html`<button class=${'chip' + (data.settings.theme === k ? ' on' : '')} style=${{ background: `linear-gradient(135deg,${a},${b})`, color: '#fff', borderColor: 'transparent' }} onClick=${() => set((x) => ({ ...x, theme: k }))}>${n}</button>`)}</div>
       <div class="chips">${['跟随系统', '浅色', '深色'].map((l, i) => html`<button class=${'chip' + (data.settings.dark === i ? ' on' : '')} onClick=${() => set((x) => ({ ...x, dark: i }))}>${l}</button>`)}</div></div>
+    <div class="section">⚡ 流畅度与动效（仅本机）</div>
+    <div class="card"><${UiPrefsPanel} /></div>
     <div class="section">🧮 计分规则</div>
     <div class="card">${[['initial', '初始分'], ['submitted', '✅ 已交'], ['excellent', '🌟 优秀'], ['late', '🐢 迟交'], ['missing', '❌ 未交'], ['leave', '🏖️ 请假']].map(([k, l]) => html`
       <div class="row between rule"><span>${l}</span><input class="input num" type="number" step="0.5" value=${data.settings.rules[k]} onChange=${(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) set((x) => ({ ...x, rules: { ...x.rules, [k]: v } })); }} /></div>`)}</div>

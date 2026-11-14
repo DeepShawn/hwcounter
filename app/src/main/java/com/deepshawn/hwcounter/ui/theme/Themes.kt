@@ -73,7 +73,7 @@ object StatusColors {
     fun of(s: HwStatus, dark: Boolean): Color = when (s) {
         HwStatus.NONE -> if (dark) Color(0xFF5C5F66) else Color(0xFFB8BCC4)
         HwStatus.SUBMITTED -> Color(0xFF1DB57A)
-        HwStatus.EXCELLENT -> Color(0xFFFFB300)
+        HwStatus.EXCELLENT -> if (dark) Color(0xFFFFB300) else Color(0xFFD99A00)
         HwStatus.LATE -> Color(0xFFFF8A3D)
         HwStatus.MISSING -> Color(0xFFF0475A)
         HwStatus.LEAVE -> Color(0xFF4A8CFF)

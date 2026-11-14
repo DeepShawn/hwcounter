@@ -148,7 +148,7 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
     }
     val list = c.students.filter { query.isBlank() || it.name.contains(query) || it.no.contains(query) || it.group.contains(query) }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + com.deepshawn.hwcounter.ui.components.LocalBottomInset.current)) {
         item {
             GradientHeader {
                 Text("名单管理", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)

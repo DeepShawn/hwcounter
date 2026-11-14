@@ -17,6 +17,7 @@ struct Palette: Identifiable {
     var gradient: LinearGradient { LinearGradient(colors: [primary, secondary], startPoint: .topLeading, endPoint: .bottomTrailing) }
 
     static let all: [Palette] = [
+        Palette(id: "hyper", name: "💧 澎湃蓝", a: 0x3482FF, b: 0x6E5BFF),
         Palette(id: "mint", name: "🌿 薄荷清新", a: 0x12C2A0, b: 0x2F8FEA),
         Palette(id: "academy", name: "🎓 学院蓝", a: 0x3A6BFF, b: 0x6A3DF0),
         Palette(id: "sakura", name: "🌸 樱花粉", a: 0xFF7EA5, b: 0xB57BFF),
@@ -27,7 +28,7 @@ struct Palette: Identifiable {
         Palette(id: "grape", name: "🍇 葡萄汽水", a: 0x9B59B6, b: 0x3498DB),
         Palette(id: "ink", name: "🖌️ 水墨极简", a: 0x37474F, b: 0x90A4AE),
     ]
-    static func of(_ id: String) -> Palette { all.first { $0.id == id } ?? all[0] }
+    static func of(_ id: String) -> Palette { all.first { $0.id == id } ?? all[1] }
 }
 
 extension HwStatus {

@@ -155,7 +155,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
 
     val photo = rememberPhotoLauncher { uris -> photoTarget?.let { kit.nav.push(Route.Recognize(it, uris)) } }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp + com.deepshawn.hwcounter.ui.components.LocalBottomInset.current)) {
         item {
             GradientHeader {
                 Row(verticalAlignment = Alignment.CenterVertically) {

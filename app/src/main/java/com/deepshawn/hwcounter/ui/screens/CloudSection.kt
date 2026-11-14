@@ -77,7 +77,7 @@ fun CloudSection(vm: AppViewModel) {
     val fmt = remember { SimpleDateFormat("yyyy年M月d日", Locale.CHINA) }
 
     SectionTitle("☁️ 云端同步", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-    AppCard(Modifier.padding(horizontal = 16.dp)) {
+    AppCard(Modifier.padding(horizontal = 12.dp)) {
         if (st.email == null) {
             Text("现在是预览模式（只读）。登录后才能修改，数据自动在安卓、iPad、网页版之间同步。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))

@@ -32,6 +32,15 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import com.deepshawn.hwcounter.ui.components.MiuixPage
+import com.deepshawn.hwcounter.ui.components.group
+import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.extra.SuperArrow
+import top.yukonga.miuix.kmp.extra.SuperDropdown
+import top.yukonga.miuix.kmp.extra.SuperSwitch
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
+import kotlin.math.roundToInt
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
@@ -124,86 +133,105 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
     fun ai(f: (AiConfig) -> AiConfig) = vm.updateSettings { it.copy(ai = f(it.ai)) }
     fun rules(f: (ScoreRules) -> ScoreRules) = vm.updateSettings { it.copy(rules = f(it.rules)) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        GradientHeader {
-            Text("设置", color = Color.White, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-            Text("打造你的专属作业通", color = Color.White.copy(alpha = 0.85f))
-        }
-
-        CloudSection(vm)
+    val ui = com.deepshawn.hwcounter.ui.theme.LocalUiPrefs.current
+    fun prefs(f: (com.deepshawn.hwcounter.ui.theme.UiPrefs) -> com.deepshawn.hwcounter.ui.theme.UiPrefs) = com.deepshawn.hwcounter.ui.theme.UiPrefsStore.update(ctx, f)
+    val layouts = listOf("grid", "list", "seat", "group")
+    MiuixPage(title = "设置") {
+        item(key = "cloud") { CloudSection(vm) }
 
         // ---------------- 外观 ----------------
-        SectionTitle("🎨 主题风格", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-        FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Palettes.forEach { p ->
-                val sel = p.key == s.theme
-                Column(
-                    Modifier.width(96.dp).clip(MaterialTheme.shapes.medium)
-                        .then(if (sel) Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium) else Modifier)
-                        .clickable { vm.updateSettings { it.copy(theme = p.key) }; kit.haptic() }
-                        .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-                        .padding(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box(Modifier.fillMaxWidth().height(44.dp).clip(MaterialTheme.shapes.small).background(Brush.linearGradient(p.gradient)), contentAlignment = Alignment.Center) {
-                        Text(p.emoji, fontSize = 20.sp)
+        item(key = "themes") {
+            SmallTitle("🎨 主题风格")
+            FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Palettes.forEach { p ->
+                    val sel = p.key == s.theme
+                    Column(
+                        Modifier.width(80.dp).clip(RoundedCornerShape(16.dp))
+                            .background(MiuixTheme.colorScheme.surfaceContainer)
+                            .then(if (sel) Modifier.border(2.dp, MiuixTheme.colorScheme.primary, RoundedCornerShape(16.dp)) else Modifier)
+                            .clickable { vm.updateSettings { it.copy(theme = p.key) }; kit.haptic() }
+                            .padding(8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Box(Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(10.dp)).background(Brush.linearGradient(p.gradient)), contentAlignment = Alignment.Center) {
+                            Text(p.emoji, fontSize = 18.sp)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(p.name, fontSize = 11.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text(p.name, fontSize = 12.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
                 }
             }
         }
-        AppCard(Modifier.padding(16.dp)) {
-            Text("深色模式", style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.height(6.dp))
-            Segmented(listOf("跟随系统", "浅色", "深色"), s.dark) { i -> vm.updateSettings { it.copy(dark = i) } }
-            Spacer(Modifier.height(14.dp))
-            Text("圆角风格", style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.height(6.dp))
-            Segmented(listOf("方正", "圆润", "超圆"), s.shape) { i -> vm.updateSettings { it.copy(shape = i) } }
-            Spacer(Modifier.height(14.dp))
-            Text("学生排版", style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.height(6.dp))
-            val layouts = listOf("grid", "list", "seat", "group")
-            Segmented(listOf("卡片", "列表", "座位", "分组"), layouts.indexOf(s.layout).coerceAtLeast(0)) { i -> vm.updateSettings { it.copy(layout = layouts[i]) } }
-            SwitchRow("紧凑模式", "卡片更小，一屏显示更多学生", s.compact) { v -> vm.updateSettings { it.copy(compact = v) } }
+        group(null, key = "appearance") {
+            SuperDropdown(items = listOf("跟随系统", "浅色", "深色"), selectedIndex = s.dark, title = "深色模式", onSelectedIndexChange = { i -> vm.updateSettings { it.copy(dark = i) } })
+            SuperDropdown(items = listOf("方正", "圆润", "超圆"), selectedIndex = s.shape, title = "圆角风格", onSelectedIndexChange = { i -> vm.updateSettings { it.copy(shape = i) } })
+            SuperDropdown(items = listOf("卡片", "列表", "座位", "分组"), selectedIndex = layouts.indexOf(s.layout).coerceAtLeast(0), title = "学生排版", onSelectedIndexChange = { i -> vm.updateSettings { it.copy(layout = layouts[i]) } })
+            SuperSwitch(checked = s.compact, onCheckedChange = { v -> vm.updateSettings { it.copy(compact = v) } }, title = "紧凑模式", summary = "卡片更小，一屏显示更多学生")
+        }
+
+        // ---------------- 流畅度 ----------------
+        group("⚡ 流畅度与动效（仅本机）", key = "perf") {
+            SuperSwitch(
+                checked = ui.animations, onCheckedChange = { v -> prefs { it.copy(animations = v) } },
+                title = "界面动效", enabled = !ui.lowPerf,
+                summary = if (ui.lowPerf) "低性能模式下始终关闭" else if (ui.animations) "页面切换、弹窗、图表生长等过渡动画" else "默认关闭：所有操作即点即达，最跟手",
+            )
+            SuperSwitch(
+                checked = ui.glass, onCheckedChange = { v -> prefs { it.copy(glass = v) } },
+                title = "液态玻璃", enabled = !ui.lowPerf && android.os.Build.VERSION.SDK_INT >= 31,
+                summary = when {
+                    android.os.Build.VERSION.SDK_INT < 31 -> "需要 Android 12 及以上，当前使用半透明效果"
+                    ui.lowPerf -> "低性能模式下已关闭"
+                    android.os.Build.VERSION.SDK_INT < 33 -> "底栏与顶栏背景模糊（折射需要 Android 13）"
+                    else -> "底栏与顶栏背景模糊 + 边缘折射高光"
+                },
+            )
+            SuperSwitch(
+                checked = ui.lowPerf, onCheckedChange = { v -> prefs { it.copy(lowPerf = v) }; kit.toast(if (v) "已开启低性能模式" else "已关闭低性能模式") },
+                title = "低性能模式",
+                summary = "适合老旧或卡顿的设备：关闭液态玻璃、动效、平滑圆角、阴影、回弹和彩带",
+            )
         }
 
         // ---------------- 计分 ----------------
-        SectionTitle("🧮 计分规则", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-        AppCard(Modifier.padding(horizontal = 16.dp)) {
-            val r = s.rules
-            RuleRow("初始分", r.initial, 10.0) { v -> rules { it.copy(initial = v) } }
-            RuleRow("✅ 已交", r.submitted) { v -> rules { it.copy(submitted = v) } }
-            RuleRow("🌟 优秀", r.excellent) { v -> rules { it.copy(excellent = v) } }
-            RuleRow("🐢 迟交", r.late) { v -> rules { it.copy(late = v) } }
-            RuleRow("❌ 未交", r.missing) { v -> rules { it.copy(missing = v) } }
-            RuleRow("🏖️ 请假", r.leave) { v -> rules { it.copy(leave = v) } }
-            Text("修改后所有历史作业的自动计分会立即按新规则重算", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        group("🧮 计分规则", key = "rules") {
+            Column(Modifier.padding(16.dp)) {
+                val r = s.rules
+                RuleRow("初始分", r.initial, 10.0) { v -> rules { it.copy(initial = v) } }
+                RuleRow("✅ 已交", r.submitted) { v -> rules { it.copy(submitted = v) } }
+                RuleRow("🌟 优秀", r.excellent) { v -> rules { it.copy(excellent = v) } }
+                RuleRow("🐢 迟交", r.late) { v -> rules { it.copy(late = v) } }
+                RuleRow("❌ 未交", r.missing) { v -> rules { it.copy(missing = v) } }
+                RuleRow("🏖️ 请假", r.leave) { v -> rules { it.copy(leave = v) } }
+                Text("修改后所有历史作业的自动计分会立即按新规则重算；已积分充值的同学从充值分数起算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            }
         }
 
         // ---------------- 识别 ----------------
-        SectionTitle("🔍 识别引擎", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-        AppCard(Modifier.padding(horizontal = 16.dp)) {
-            Segmented(listOf("本地离线", "AI 大模型", "本地+AI"), s.recogMode) { i -> vm.updateSettings { it.copy(recogMode = i) } }
-            Text(
-                when (s.recogMode) {
-                    RecogMode.LOCAL -> "使用内置的 ML Kit 中文 OCR + 二维码识别，完全离线、免费、隐私安全。"
-                    RecogMode.AI -> "把照片发送给你配置的多模态大模型，能理解更复杂的场景并数出本数。"
-                    else -> "先本地识别，再用 AI 补漏并数本数，准确率最高。"
+        group("🔍 识别引擎", key = "recog") {
+            SuperDropdown(
+                items = listOf("本地离线", "AI 大模型", "本地 + AI"), selectedIndex = s.recogMode, title = "识别方式",
+                summary = when (s.recogMode) {
+                    RecogMode.LOCAL -> "内置 ML Kit 中文 OCR + 二维码，完全离线、免费、隐私安全"
+                    RecogMode.AI -> "照片发送给你配置的多模态大模型，能理解更复杂的场景并数出本数"
+                    else -> "先本地识别，再用 AI 补漏并数本数，准确率最高"
                 },
-                fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp),
+                onSelectedIndexChange = { i -> vm.updateSettings { it.copy(recogMode = i) } },
             )
-            Spacer(Modifier.height(12.dp))
-            Text("学号最少位数：${s.minIdLength}", style = MaterialTheme.typography.labelLarge)
-            Slider(s.minIdLength.toFloat(), { v -> vm.updateSettings { it.copy(minIdLength = v.toInt()) } }, valueRange = 2f..10f, steps = 7)
-            SwitchRow("模糊匹配", "允许 1 位误识（唯一匹配时才采纳）", s.fuzzy) { v -> vm.updateSettings { it.copy(fuzzy = v) } }
-            SwitchRow("姓名匹配", "封面上写了姓名也能识别", s.matchNames) { v -> vm.updateSettings { it.copy(matchNames = v) } }
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Text("学号最少位数：${s.minIdLength}", fontSize = 15.sp)
+                Spacer(Modifier.height(8.dp))
+                top.yukonga.miuix.kmp.basic.Slider(value = s.minIdLength.toFloat(), onValueChange = { v -> vm.updateSettings { it.copy(minIdLength = v.roundToInt()) } }, valueRange = 2f..10f, steps = 7)
+            }
+            SuperSwitch(checked = s.fuzzy, onCheckedChange = { v -> vm.updateSettings { it.copy(fuzzy = v) } }, title = "模糊匹配", summary = "允许 1 位误识（唯一匹配时才采纳）")
+            SuperSwitch(checked = s.matchNames, onCheckedChange = { v -> vm.updateSettings { it.copy(matchNames = v) } }, title = "姓名匹配", summary = "封面上写了姓名也能识别")
         }
 
+        item(key = "ai") {
+            Column {
         if (s.recogMode != RecogMode.LOCAL || s.ai.apiKey.isNotBlank()) {
-            SectionTitle("🤖 AI 大模型", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-            AppCard(Modifier.padding(horizontal = 16.dp)) {
+            SmallTitle("🤖 AI 大模型")
+            AppCard(Modifier.padding(horizontal = 12.dp)) {
                 Text("快速预设", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(6.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -276,9 +304,13 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
             }
         }
 
+            }
+        }
+        item(key = "subjects") {
+            Column {
         // ---------------- 科目 / 理由 ----------------
-        SectionTitle("📚 科目", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-        AppCard(Modifier.padding(horizontal = 16.dp)) {
+        SmallTitle("📚 科目与加减分理由")
+        AppCard(Modifier.padding(horizontal = 12.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 s.subjects.forEach { sub ->
                     Chip2("$sub ✕", false, { vm.updateSettings { it.copy(subjects = it.subjects - sub) } })
@@ -306,33 +338,35 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
             }
         }
 
+            }
+        }
+
         // ---------------- 反馈 ----------------
-        SectionTitle("✨ 交互反馈", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-        AppCard(Modifier.padding(horizontal = 16.dp)) {
-            SwitchRow("震动反馈", null, s.haptic) { v -> vm.updateSettings { it.copy(haptic = v) } }
-            SwitchRow("提示音", "扫描识别成功时“嘀”一声", s.sound) { v -> vm.updateSettings { it.copy(sound = v) } }
-            SwitchRow("彩带庆祝", "全员交齐时放彩带 🎉", s.confetti) { v -> vm.updateSettings { it.copy(confetti = v) } }
+        group("✨ 交互反馈", key = "feedback") {
+            SuperSwitch(checked = s.haptic, onCheckedChange = { v -> vm.updateSettings { it.copy(haptic = v) } }, title = "震动反馈")
+            SuperSwitch(checked = s.sound, onCheckedChange = { v -> vm.updateSettings { it.copy(sound = v) } }, title = "提示音", summary = "扫描识别成功时“嘀”一声")
+            SuperSwitch(checked = s.confetti, onCheckedChange = { v -> vm.updateSettings { it.copy(confetti = v) } }, title = "彩带庆祝", summary = if (ui.lowPerf) "低性能模式下不显示" else "全员交齐时放彩带 🎉")
         }
 
         // ---------------- 数据 ----------------
-        SectionTitle("💾 数据", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-        AppCard(Modifier.padding(horizontal = 16.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(onClick = { backup.launch("作业通备份_${com.deepshawn.hwcounter.export.Exporter.fileStamp()}.json") }, Modifier.weight(1f)) { Text("备份全部数据") }
-                FilledTonalButton(onClick = { restore.launch(arrayOf("application/json", "*/*")) }, Modifier.weight(1f)) { Text("从备份恢复") }
-            }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { confirmReset = true }, Modifier.fillMaxWidth()) { Text("清空所有数据", color = MaterialTheme.colorScheme.error) }
-            Text("数据保存在本机，卸载前请先备份。", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+        group("💾 数据", key = "data") {
+            SuperArrow(title = "备份全部数据", summary = "导出为 JSON 文件", onClick = { backup.launch("作业通备份_${com.deepshawn.hwcounter.export.Exporter.fileStamp()}.json") })
+            SuperArrow(title = "从备份恢复", summary = "数据保存在本机，卸载前请先备份", onClick = { restore.launch(arrayOf("application/json", "*/*")) })
+            SuperArrow(
+                title = "清空所有数据", onClick = { confirmReset = true },
+                titleColor = top.yukonga.miuix.kmp.basic.BasicComponentDefaults.titleColor(color = MiuixTheme.colorScheme.error),
+            )
         }
 
-        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(56.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Color(0xFF12C2A0), Color(0xFF2F5BEA)))), contentAlignment = Alignment.Center) {
-                Text("📚", fontSize = 26.sp)
+        item(key = "about") {
+            Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(Modifier.size(56.dp).clip(RoundedCornerShape(18.dp)).background(Brush.linearGradient(listOf(Color(0xFF3482FF), Color(0xFF6E5BFF)))), contentAlignment = Alignment.Center) {
+                    Text("📚", fontSize = 26.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("作业通 v${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.Bold)
+                Text("拍照识别 · 实时扫描 · 数本数 · 积分 · 统计", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }
-            Spacer(Modifier.height(8.dp))
-            Text("作业通 v${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.Bold)
-            Text("拍照识别 · 实时扫描 · 数本数 · 积分 · 统计", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 

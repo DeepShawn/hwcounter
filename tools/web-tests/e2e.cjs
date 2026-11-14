@@ -270,7 +270,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   scored = await readClass(); added = scored.scores.slice(initialClass.scores.length);
   check(added.length === 2 && added.every((e) => e.delta === -1.5 && e.reason === '扣分'), '支持统一扣小数分及默认理由');
 
-  // 5e) 基准100改0：保留手动积分和未交次数；重置分数保留历史
+  // 5e) 基准100改0：保留手动积分和未交次数；积分充值保留历史
   const beforeBase = await scoreRow('张锦宇').locator('.score').textContent();
   const beforeMissing = await scoreRow('张锦宇').locator('.muted').textContent();
   await page.getByRole('button', { name: '修改基准分', exact: true }).click();
@@ -286,28 +286,34 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   const unselectedScore = await scoreRow('王芳').locator('.score').textContent();
   await page.getByRole('button', { name: '☑️ 多选', exact: true }).click();
   await scoreRow('张锦宇').click(); await scoreRow('李子涵').click();
-  await page.getByRole('button', { name: '重置分数', exact: true }).click();
+  await page.getByRole('button', { name: '💳 积分充值', exact: true }).click();
   await page.fill('.modal input[type=number]', '0');
-  await page.getByRole('button', { name: '确认重置', exact: true }).click();
+  await page.fill('.modal input:not([type=number])', '期中重新计分');
+  await page.getByRole('button', { name: '确认充值', exact: true }).click();
   await page.waitForSelector('.modal', { state: 'hidden' });
   let reset = await readClass();
-  check(await scoreRow('张锦宇').locator('.score').textContent() === '0' && await scoreRow('李子涵').locator('.score').textContent() === '0' && await scoreRow('王芳').locator('.score').textContent() === unselectedScore, '重置选中学生至0分，未选中的学生不变');
-  check(JSON.stringify(reset.scores.slice(0, scored.scores.length)) === JSON.stringify(scored.scores) && JSON.stringify(reset.assignments) === JSON.stringify(initialClass.assignments) && await scoreRow('张锦宇').locator('.muted').textContent() === beforeMissing, '重置保留原有加减分、作业备注及未交次数');
+  check(await scoreRow('张锦宇').locator('.score').textContent() === '0' && await scoreRow('李子涵').locator('.score').textContent() === '0' && await scoreRow('王芳').locator('.score').textContent() === unselectedScore, '充值选中学生至0分，未选中的学生不变');
+  check(JSON.stringify(reset.scores) === JSON.stringify(scored.scores) && JSON.stringify(reset.assignments) === JSON.stringify(initialClass.assignments) && await scoreRow('张锦宇').locator('.muted').textContent() === beforeMissing, '充值不改动原有加减分、作业备注及未交次数');
+  check(reset.recharges.length === 1 && reset.recharges[0].target === 0 && reset.recharges[0].note === '期中重新计分' && reset.recharges[0].studentIds.length === 2 && Number.isFinite(reset.recharges[0].before[reset.recharges[0].studentIds[0]]), '充值留下记录（分数、人员、充值前分数、备注）');
   await page.click('.toast button:has-text("撤销")');
-  check(JSON.stringify((await readClass()).scores) === JSON.stringify(scored.scores), '重置可整批撤销');
-  await page.getByRole('button', { name: '重置全班分数', exact: true }).click();
+  check(JSON.stringify((await readClass()).recharges || []) === '[]' && await scoreRow('王芳').locator('.score').textContent() === unselectedScore, '充值可整批撤销');
+  await page.getByRole('button', { name: '💳 全班积分充值', exact: true }).click();
   await page.fill('.modal input[type=number]', '0');
-  await page.getByRole('button', { name: '确认重置', exact: true }).click();
+  await page.getByRole('button', { name: '确认充值', exact: true }).click();
   await page.waitForSelector('.modal', { state: 'hidden' });
   reset = await readClass();
-  check((await page.locator('.score-row .score').allTextContents()).every((v) => v === '0') && reset.scores.slice(scored.scores.length).every((e) => e.reason === '重置分数至 0'), '全班重置至0分，并新增可追溯的重置流水');
+  check((await page.locator('.score-row .score').allTextContents()).every((v) => v === '0') && reset.recharges.length === 1 && reset.recharges[0].studentIds.length === reset.students.length, '全班充值至0分，并新增一条可追溯的充值记录');
+  await page.getByRole('button', { name: /充值记录/ }).click();
+  check(await page.locator('.modal .recharge-item').count() === 1, '充值记录列表展示每次充值');
+  await page.click('.modal .modal-title .icon-btn');
+  await page.waitForSelector('.modal', { state: 'hidden' });
   await page.setViewportSize({ width: 1024, height: 1366 });
-  await page.screenshot({ path: `${OUT}/5e-reset-scores.png` });
+  await page.screenshot({ path: `${OUT}/5e-recharge-scores.png` });
   await page.waitForTimeout(5000);
-  check(JSON.stringify(db.row.data.classes[0].scores) === JSON.stringify(reset.scores), '批量积分及重置流水自动同步');
+  check(JSON.stringify(db.row.data.classes[0].recharges) === JSON.stringify(reset.recharges) && JSON.stringify(db.row.data.classes[0].scores) === JSON.stringify(scored.scores), '充值记录自动同步，原有流水不变');
   await page.reload();
   await page.click('.tabs button:has-text("积分")');
-  check((await page.locator('.score-row .score').allTextContents()).every((v) => v === '0') && JSON.stringify((await readClass()).scores) === JSON.stringify(reset.scores), '刷新后重置分数及原有流水保留');
+  check((await page.locator('.score-row .score').allTextContents()).every((v) => v === '0') && JSON.stringify((await readClass()).recharges) === JSON.stringify(reset.recharges), '刷新后充值分数及记录保留');
 
   // 5c) 统计表识别（粘贴）→ 存为新作业草稿 → 只在本机 → 上传
   await page.click('.tabs button:has-text("首页")');

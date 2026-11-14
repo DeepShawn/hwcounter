@@ -226,7 +226,8 @@ fun App(vm: AppViewModel, data: AppData) {
     val ui = com.deepshawn.hwcounter.ui.theme.LocalUiPrefs.current
     val backdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val bottomInset = (if (topLevel) 92.dp else 16.dp) + (if (readOnly) 44.dp else 0.dp) + navBottom
+    // 底栏页面：内容从玻璃底栏下穿过，需要留出底栏高度；二级页面：整体避开系统导航条
+    val bottomInset = if (topLevel) 92.dp + navBottom + (if (readOnly) 44.dp else 0.dp) else 16.dp + (if (readOnly) 44.dp else 0.dp)
     val surface = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.surface
 
     CompositionLocalProvider(LocalKit provides kit) {
@@ -242,7 +243,7 @@ fun App(vm: AppViewModel, data: AppData) {
                         val content: @Composable (Route) -> Unit = { route ->
                             if (route in listOf(Route.Home, Route.Students, Route.Scores, Route.Stats, Route.Settings)) {
                                 screenState.SaveableStateProvider(route.toString()) { RouteContent(route, vm, data) }
-                            } else RouteContent(route, vm, data)
+                            } else Box(Modifier.fillMaxSize().navigationBarsPadding()) { RouteContent(route, vm, data) }
                         }
                         if (ui.motion) {
                             AnimatedContent(
