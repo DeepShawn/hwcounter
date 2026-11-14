@@ -120,7 +120,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 )
             }
         }
-        group("📈 交齐率趋势", key = "trend") {
+        group("交齐率趋势", key = "trend") {
             val pts = report.points
             TrendLine(
                 values = pts.map { it.summary.rate },
@@ -129,7 +129,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 modifier = Modifier.padding(16.dp),
             )
         }
-        group("🧱 每次作业构成", key = "stack") {
+        group("每次作业构成", key = "stack") {
             val pts = report.points
             StackedColumns(
                 columns = pts.map { it.summary.counts },
@@ -138,7 +138,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 modifier = Modifier.padding(16.dp),
             )
         }
-        group("🍩 状态分布", key = "donut") {
+        group("状态分布", key = "donut") {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Donut(ChartStatusOrder.map { statusChartColor(it) to (report.totals[it] ?: 0).toFloat() }, Modifier.size(132.dp), stroke = 18.dp) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -163,16 +163,16 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
         }
         item(key = "heat") { Heatmap(c, report, onOpen = { kit.nav.push(Route.Assign(it)) }) }
 
-        if (report.subjects.size > 1) group("📚 各科对比", key = "subjects") {
+        if (report.subjects.size > 1) group("各科对比", key = "subjects") {
             HBars(report.subjects.map { Triple(it.subject, it.rate, "${pctText(it.rate)} · ${it.count}次") }, Modifier.padding(16.dp))
         }
         val days = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
         val wd = report.weekday.mapIndexedNotNull { i, v -> v?.let { Triple(days[i], it, pctText(it)) } }
-        if (wd.size >= 2) group("🗓️ 星期分布（平均交齐率）", key = "weekday") {
+        if (wd.size >= 2) group("星期分布（平均交齐率）", key = "weekday") {
             HBars(wd, Modifier.padding(16.dp), color = colors.primary.copy(alpha = 0.85f))
         }
 
-        group("🔔 需要关注", key = "attention") {
+        group("需要关注", key = "attention") {
             if (report.attention.isEmpty()) Text("这段时间没有缺交，太棒了！🎉", Modifier.padding(16.dp), color = colors.onSurfaceVariantSummary)
             report.attention.forEach { s ->
                 SuperArrow(
@@ -183,7 +183,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 )
             }
         }
-        if (report.improved.isNotEmpty()) group("🚀 进步之星（后半段比前半段交得更好）", key = "improved") {
+        if (report.improved.isNotEmpty()) group("进步之星（后半段比前半段交得更好）", key = "improved") {
             report.improved.forEach { s ->
                 SuperArrow(
                     title = s.student.name, summary = "交齐率提升 ${(s.trend * 100).toInt()} 个百分点 · 现在 ${pctText(s.rate)}",
@@ -192,7 +192,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 )
             }
         }
-        group("🌟 全勤之星 ${report.perfectAttendance.size} 人（无缺交、无迟交）", key = "stars") {
+        group("全勤之星 ${report.perfectAttendance.size} 人（无缺交、无迟交）", key = "stars") {
             if (report.perfectAttendance.isEmpty()) Text("暂时还没有，继续加油！", Modifier.padding(16.dp), color = colors.onSurfaceVariantSummary)
             else FlowRow(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 report.perfectAttendance.forEach { s ->
@@ -200,7 +200,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 }
             }
         }
-        if (report.scoreBins.isNotEmpty()) group("🧮 当前积分分布", key = "scores") {
+        if (report.scoreBins.isNotEmpty()) group("当前积分分布", key = "scores") {
             Column(Modifier.padding(16.dp)) {
                 Histogram(report.scoreBins)
                 if (report.groups.size > 1) {
@@ -212,7 +212,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 }
             }
         }
-        group("📝 分析报告", key = "report") {
+        group("分析报告", key = "report") {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("把以上分析整理成一段文字，可直接发到家长群或写进教学记录。", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -226,7 +226,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                         ctx.startActivity(Intent.createChooser(i, "分享分析报告"))
                     }, modifier = Modifier.weight(1f))
                 }
-                TextButton("📋 导出各次统计名单 Excel", onClick = {
+                TextButton("导出各次统计名单 Excel", onClick = {
                     val f = java.io.File(com.deepshawn.hwcounter.export.Exporter.exportDir(ctx), "${c.name}_各次作业统计名单_${com.deepshawn.hwcounter.export.Exporter.fileStamp()}.xlsx".replace("/", "_"))
                     f.outputStream().use { com.deepshawn.hwcounter.export.Exporter.writeClassStatList(c, it) }
                     com.deepshawn.hwcounter.export.Exporter.shareFile(ctx, f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "分享统计名单")
@@ -261,7 +261,7 @@ private fun Heatmap(c: com.deepshawn.hwcounter.data.SchoolClass, report: Analyti
     val cell = 18.dp; val gap = 3.dp
     val density = LocalDensity.current
     Column {
-        top.yukonga.miuix.kmp.basic.SmallTitle("🔥 作业热力图（${cols.size} 次）")
+        top.yukonga.miuix.kmp.basic.SmallTitle("作业热力图（${cols.size} 次）")
         top.yukonga.miuix.kmp.basic.Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp).fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 TabRowWithContour(listOf("按学号", "按缺交"), sort, { sort = it })

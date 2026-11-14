@@ -71,6 +71,11 @@ jobs:
             - 📲 iPad：下方 `HwCounter-iPad-unsigned-*.ipa`（iPadOS 16+，未签名，需用 AltStore / Sideloadly / 爱思助手 等用自己的 Apple ID 签名安装）
             - 🌐 网页版：https://deepshawn.github.io/hwcounter/ （可“添加到主屏幕”离线使用）
 
+            ### 🛠️ v2.0.1 修复与布局优化（Android）
+            - 修复：打开积分充值、积分操作菜单、充值记录、设置中的下拉选择时闪退
+            - 修复：深色模式下部分页面文字看不清
+            - 首页、名单、积分、个人详情重新排版：更紧凑、统一的 HyperOS 风格；统计与设置标题去掉表情符号，积分分布按实际分数范围分档
+
             ### 💧 全新界面：miuix（HyperOS 风格）+ Liquid Glass 液态玻璃（Android）
             - 悬浮液态玻璃底栏（背景模糊 + 边缘折射高光）、磨砂顶栏，大标题随滚动收起
             - 新增默认主题“澎湃蓝”，其余主题按主色生成 Monet 色板；设置、积分、统计页全部重做

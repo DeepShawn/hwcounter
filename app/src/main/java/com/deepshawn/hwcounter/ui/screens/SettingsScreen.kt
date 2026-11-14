@@ -141,7 +141,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
 
         // ---------------- 外观 ----------------
         item(key = "themes") {
-            SmallTitle("🎨 主题风格")
+            SmallTitle("主题风格")
             FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Palettes.forEach { p ->
                     val sel = p.key == s.theme
@@ -170,7 +170,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
         }
 
         // ---------------- 流畅度 ----------------
-        group("⚡ 流畅度与动效（仅本机）", key = "perf") {
+        group("流畅度与动效（仅本机）", key = "perf") {
             SuperSwitch(
                 checked = ui.animations, onCheckedChange = { v -> prefs { it.copy(animations = v) } },
                 title = "界面动效", enabled = !ui.lowPerf,
@@ -194,21 +194,21 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
         }
 
         // ---------------- 计分 ----------------
-        group("🧮 计分规则", key = "rules") {
+        group("计分规则", key = "rules") {
             Column(Modifier.padding(16.dp)) {
                 val r = s.rules
                 RuleRow("初始分", r.initial, 10.0) { v -> rules { it.copy(initial = v) } }
-                RuleRow("✅ 已交", r.submitted) { v -> rules { it.copy(submitted = v) } }
-                RuleRow("🌟 优秀", r.excellent) { v -> rules { it.copy(excellent = v) } }
-                RuleRow("🐢 迟交", r.late) { v -> rules { it.copy(late = v) } }
-                RuleRow("❌ 未交", r.missing) { v -> rules { it.copy(missing = v) } }
-                RuleRow("🏖️ 请假", r.leave) { v -> rules { it.copy(leave = v) } }
+                RuleRow("已交", r.submitted) { v -> rules { it.copy(submitted = v) } }
+                RuleRow("优秀", r.excellent) { v -> rules { it.copy(excellent = v) } }
+                RuleRow("迟交", r.late) { v -> rules { it.copy(late = v) } }
+                RuleRow("未交", r.missing) { v -> rules { it.copy(missing = v) } }
+                RuleRow("请假", r.leave) { v -> rules { it.copy(leave = v) } }
                 Text("修改后所有历史作业的自动计分会立即按新规则重算；已积分充值的同学从充值分数起算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }
         }
 
         // ---------------- 识别 ----------------
-        group("🔍 识别引擎", key = "recog") {
+        group("识别引擎", key = "recog") {
             SuperDropdown(
                 items = listOf("本地离线", "AI 大模型", "本地 + AI"), selectedIndex = s.recogMode, title = "识别方式",
                 summary = when (s.recogMode) {
@@ -230,7 +230,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
         item(key = "ai") {
             Column {
         if (s.recogMode != RecogMode.LOCAL || s.ai.apiKey.isNotBlank()) {
-            SmallTitle("🤖 AI 大模型")
+            SmallTitle("AI 大模型")
             AppCard(Modifier.padding(horizontal = 12.dp)) {
                 Text("快速预设", style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.height(6.dp))
@@ -309,7 +309,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
         item(key = "subjects") {
             Column {
         // ---------------- 科目 / 理由 ----------------
-        SmallTitle("📚 科目与加减分理由")
+        SmallTitle("科目与加减分理由")
         AppCard(Modifier.padding(horizontal = 12.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 s.subjects.forEach { sub ->
@@ -342,14 +342,14 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
         }
 
         // ---------------- 反馈 ----------------
-        group("✨ 交互反馈", key = "feedback") {
+        group("交互反馈", key = "feedback") {
             SuperSwitch(checked = s.haptic, onCheckedChange = { v -> vm.updateSettings { it.copy(haptic = v) } }, title = "震动反馈")
             SuperSwitch(checked = s.sound, onCheckedChange = { v -> vm.updateSettings { it.copy(sound = v) } }, title = "提示音", summary = "扫描识别成功时“嘀”一声")
             SuperSwitch(checked = s.confetti, onCheckedChange = { v -> vm.updateSettings { it.copy(confetti = v) } }, title = "彩带庆祝", summary = if (ui.lowPerf) "低性能模式下不显示" else "全员交齐时放彩带 🎉")
         }
 
         // ---------------- 数据 ----------------
-        group("💾 数据", key = "data") {
+        group("数据", key = "data") {
             SuperArrow(title = "备份全部数据", summary = "导出为 JSON 文件", onClick = { backup.launch("作业通备份_${com.deepshawn.hwcounter.export.Exporter.fileStamp()}.json") })
             SuperArrow(title = "从备份恢复", summary = "数据保存在本机，卸载前请先备份", onClick = { restore.launch(arrayOf("application/json", "*/*")) })
             SuperArrow(

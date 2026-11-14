@@ -207,13 +207,13 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         show = menu, title = "积分操作", onDismiss = { menu = false },
         actions = buildList {
             if (!readOnly) {
-                add(SheetAction("💳 全班积分充值", "只重置积分，保留全部历史记录", enabled = c.students.isNotEmpty()) { exitSelect(); rechargeFor = c.students.map { it.id } })
-                add(SheetAction("🎉 全班 +1", "全班表现好", enabled = c.students.isNotEmpty()) {
+                add(SheetAction("全班积分充值", "只重置积分，保留全部历史记录", enabled = c.students.isNotEmpty()) { exitSelect(); rechargeFor = c.students.map { it.id } })
+                add(SheetAction("全班 +1", "全班表现好", enabled = c.students.isNotEmpty()) {
                     vm.addScore(c.students.map { it.id }, 1.0, "全班表现好"); kit.celebrate(); kit.undoable("全班 +1 🎉")
                 })
                 add(SheetAction("修改基准分", "当前 ${rules.initial.fmt()} 分，适用于所有班级") { editBase = true })
             }
-            add(SheetAction("🧾 充值记录", if (c.recharges.isEmpty()) "暂无" else "共 ${c.recharges.size} 次", enabled = c.recharges.isNotEmpty()) { history = true })
+            add(SheetAction("充值记录", if (c.recharges.isEmpty()) "暂无" else "共 ${c.recharges.size} 次", enabled = c.recharges.isNotEmpty()) { history = true })
             add(SheetAction("修改计分规则", "已交 / 优秀 / 迟交 / 未交 / 请假") { kit.nav.tab(Route.Settings) })
         },
     )
@@ -255,7 +255,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
             at != null -> "，从 ${fmtDay(at)} 起计分"
             else -> ""
         }
-        kit.undoable("💳 已为 ${targets.size} 人充值到 ${value.fmt()} 分$start，历史记录已保留")
+        kit.undoable("已为 ${targets.size} 人充值到 ${value.fmt()} 分$start，历史记录已保留")
     }
     RechargeHistorySheet(history, c.recharges, c.students, readOnly, onDismiss = { history = false }) { r ->
         vm.removeRecharge(r.id); kit.undoable("已撤销 ${fmtStamp(r.time)} 的充值")
@@ -290,7 +290,7 @@ private fun RechargeDialog(
     val colors = MiuixTheme.colorScheme
     val shortFmt = remember { SimpleDateFormat("M月d日", Locale.CHINA) }
     HyperDialog(
-        show = show, title = "💳 积分充值 · ${targets.size} 人", onDismiss = onDismiss,
+        show = show, title = "积分充值 · ${targets.size} 人", onDismiss = onDismiss,
         summary = "只重置积分并留下充值记录。原有加减分、作业状态、备注和未交次数全部保留，可随时查看和撤销。",
         confirmText = "确认充值", confirmEnabled = value != null && (when_ != 1 || aid != null),
         onConfirm = { value?.let { onConfirm(targets, it, note, at, aid) } },
@@ -370,7 +370,7 @@ private fun RechargeHistorySheet(show: Boolean, recharges: List<ScoreRecharge>, 
     val colors = MiuixTheme.colorScheme
     val names = remember(students) { students.associate { it.id to it.name } }
     var confirm by remember { mutableStateOf<ScoreRecharge?>(null) }
-    SuperBottomSheet(show = show, title = "🧾 积分充值记录", onDismissRequest = onDismiss) {
+    SuperBottomSheet(show = show, title = "积分充值记录", onDismissRequest = onDismiss) {
         Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (recharges.isEmpty()) Text("暂无充值记录", color = colors.onSurfaceVariantSummary)
             recharges.sortedWith(compareByDescending<ScoreRecharge> { it.start }.thenByDescending { it.time }).forEach { r ->
@@ -476,7 +476,7 @@ private fun SelectionBar(count: Int, modifier: Modifier, onAll: () -> Unit, onCl
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             TextButton("批量加减分", onClick = onScore, enabled = count > 0, modifier = Modifier.weight(1f), colors = ButtonDefaults.textButtonColorsPrimary())
-            TextButton("💳 积分充值", onClick = onRecharge, enabled = count > 0, modifier = Modifier.weight(1f))
+            TextButton("积分充值", onClick = onRecharge, enabled = count > 0, modifier = Modifier.weight(1f))
         }
     }
 }
