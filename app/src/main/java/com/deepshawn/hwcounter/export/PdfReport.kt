@@ -425,6 +425,37 @@ object PdfReport {
             e.exams.map { x -> val s = e.stats.getValue(x.id); listOf(SimpleDateFormat("M月d日", Locale.CHINA).format(Date(x.date)), x.subject, x.title, x.fullScore.fmt(), "${s.count}", "${s.absent}", s.avg.fmt(), s.median.fmt(), s.max.fmt(), s.std.fmt(), pct(s.passRate), pct(s.excellentRate)) },
         )
         if (e.subjects.size > 1) { p.sub("各科平均得分率"); bars(p, e.subjects.map { Triple(it.first, it.second.toFloat(), pct(it.second)) }, Color.rgb(0x7A, 0x5C, 0xFF)) }
+        if (e.quality.isNotEmpty()) {
+            p.sub("难度与区分度", 50f)
+            table(p, listOf("考试", "平均得分率", "难度", "下四分位", "上四分位", "区分度"), listOf(1.8f, 0.9f, 0.6f, 0.8f, 0.8f, 1f),
+                e.quality.map { q -> listOf("${q.exam.subject} ${q.exam.title}".trim(), pct(q.difficulty), Analytics.difficultyText(q.difficulty), q.q1.fmt(), q.q3.fmt(), "%.2f ".format(q.discrimination) + Analytics.discriminationText(q.discrimination)) })
+        }
+        if (e.levels.any { it.second > 0 }) { p.sub("成绩层级（按平均得分率）"); p.text(e.levels.joinToString("，") { "${it.first} ${it.second} 人" }, 9.5f); p.gap(4f) }
+        fun prog(title: String, l: List<Analytics.ExamProgress>, col: Int) {
+            if (l.isEmpty()) return
+            p.sub(title, 50f)
+            table(p, listOf("姓名", "最近一场", "得分率", "之前相对平均", "最近相对平均", "变化"), listOf(1f, 1.6f, 0.8f, 1f, 1f, 0.7f),
+                l.map { x -> listOf(x.student.name, x.last.title, pct(x.lastPct), (x.before * 100).roundToInt().let { if (it >= 0) "+$it" else "$it" }, (x.after * 100).roundToInt().let { if (it >= 0) "+$it" else "$it" }, (x.delta * 100).roundToInt().let { if (it >= 0) "+$it" else "$it" }) },
+                l.map { listOf(null, null, null, null, null, col) })
+        }
+        prog("考试进步之星", e.stars, GOOD); prog("考试退步关注", e.watch, BAD)
+        e.flow?.let { f ->
+            p.sub("层级流动：${f.from.title} → ${f.to.title}", 90f)
+            table(p, listOf("上场 → 本场") + f.labels, listOf(1.4f, 1f, 1f, 1f, 1f), f.matrix.mapIndexed { i, r -> listOf(f.labels[i]) + r.map { if (it == 0) "" else "$it" } },
+                f.matrix.mapIndexed { i, r -> listOf<Int?>(null) + r.indices.map { j -> if (j < i) GOOD else if (j > i) BAD else null } })
+            p.note("升档 ${f.up} 人 · 降档 ${f.down} 人 · 不变 ${f.same} 人")
+        }
+        fun names(t: String, l: List<String>, col: Int = INK) { if (l.isNotEmpty()) { p.text("$t：" + l.joinToString("、"), 9.5f, col); p.gap(3f) } }
+        if (e.nearPass.isNotEmpty() || e.nearExcellent.isNotEmpty() || e.rising.isNotEmpty() || e.falling.isNotEmpty() || e.imbalance.isNotEmpty() || e.diligentLow.isNotEmpty()) p.sub("重点学生")
+        names("临界及格（55–60%）", e.nearPass.map { "${it.student.name} ${pct(it.avgPct ?: 0.0)}" }, WARN)
+        names("临界优秀（80–85%）", e.nearExcellent.map { "${it.student.name} ${pct(it.avgPct ?: 0.0)}" }, PRIMARY)
+        names("连续三场上升", e.rising.map { it.student.name }, GOOD)
+        names("连续三场下滑", e.falling.map { it.student.name }, BAD)
+        names("成绩稳定", e.steady.map { it.student.name })
+        names("偏科", e.imbalance.map { "${it.student.name}（${it.best.first}${pct(it.best.second)} / ${it.worst.first}${pct(it.worst.second)}）" })
+        names("作业交得齐但考试不理想", e.diligentLow.map { "${it.student.name}（交${pct(it.hwRate)} 考${pct(it.examPct)}）" }, WARN)
+        names("作业常缺但考试不错", e.skipButGood.map { "${it.student.name}（交${pct(it.hwRate)} 考${pct(it.examPct)}）" })
+        if (e.genders.size == 2) { p.sub("男女生对比"); bars(p, e.genders.map { Triple("${it.first}生 ${it.second}人", it.third.toFloat(), pct(it.third)) }, Color.rgb(0x7A, 0x5C, 0xFF)) }
         if (e.insights.isNotEmpty()) {
             p.sub("考试结论")
             e.insights.forEach { s -> p.text("• ${s.text}", 10f); p.gap(2f) }

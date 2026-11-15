@@ -148,12 +148,14 @@ class ShotsTest {
             click("‹"); save("${prefix}_29_stats_prev_month")
             click("自定义"); save("${prefix}_29b_stats_custom")
             click("本轮"); save("${prefix}_30_stats_period")
-            click("考试"); save("${prefix}_31_stats_exam"); scroll(); save("${prefix}_32_stats_exam"); scroll(); save("${prefix}_33_stats_exam"); scroll(); save("${prefix}_34_stats_exam")
+            click("考试"); save("${prefix}_31_stats_exam")
+            for (i in 2..9) { scroll(); save("${prefix}_3${i}_stats_exam") }
         }
 
         tab("首页")
         safe { top(); click("考试"); save("${prefix}_40_exams") }
-        safe { click("第一次月考"); save("${prefix}_41_exam_detail"); scroll(); save("${prefix}_42_exam_detail") }
+        safe { click("期中考试"); save("${prefix}_41_exam_detail"); scroll(); save("${prefix}_42_exam_detail"); scroll(); save("${prefix}_42b_exam_detail"); scroll(); save("${prefix}_42c_exam_detail"); back() }
+        safe { top(); click("第一次月考"); save("${prefix}_41b_exam_detail") }
         safe { top(); click("按学号"); save("${prefix}_43_exam_by_no") }
         safe { click("多选"); click("张锦宇"); click("李子涵"); save("${prefix}_46_exam_select"); click("记为缺考"); save("${prefix}_47_exam_absent") }
         safe { rule.onAllNodes(hasText("林静") and hasClickAction()).onFirst().performTouchInput { longClick() }; save("${prefix}_48_exam_row_menu"); click("查看个人详情"); back() }
