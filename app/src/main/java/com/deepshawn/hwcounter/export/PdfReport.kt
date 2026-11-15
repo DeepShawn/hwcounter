@@ -140,7 +140,8 @@ object PdfReport {
             text(t, 14f, INK, true, x = M + 12f)
             y += 6f
         }
-        fun sub(t: String) { ensure(30f); y += 4f; text(t, 11f, INK, true); y += 3f }
+        /** 小标题；need = 标题后紧跟内容需要的高度，避免标题孤零零留在页底 */
+        fun sub(t: String, need: Float = 30f) { ensure(need + 22f); y += 4f; text(t, 11f, INK, true); y += 3f }
         fun note(t: String) { text(t, 9f, MUTED); y += 2f }
     }
 
@@ -266,14 +267,14 @@ object PdfReport {
         if (r.points.isEmpty()) return
         p.heading("二、趋势与构成")
         val f = SimpleDateFormat("M/d", Locale.CHINA)
-        p.sub("每次作业交齐率（虚线为平均 ${pct(r.points.map { it.summary.rate }.average())}）")
+        p.sub("每次作业交齐率（虚线为平均 ${pct(r.points.map { it.summary.rate }.average())}）", 146f)
         line(p, r.points.map { it.summary.rate }, r.points.map { f.format(Date(it.assignment.createdAt)) })
         if (r.points.size >= 4) p.note("线性趋势：平均每次${if (r.slope >= 0) "上升" else "下降"} ${"%.1f".format(abs(r.slope * 100))} 个百分点" + if (r.longestPerfectRun >= 2) " · 最长连续 ${r.longestPerfectRun} 次全员交齐" else "")
         if (r.buckets.size >= 2) {
-            p.sub("按${r.bucketUnit}汇总")
+            p.sub("按${r.bucketUnit}汇总", 116f)
             line(p, r.buckets.map { it.rate }, r.buckets.map { it.label }, 90f, GOOD)
         }
-        p.sub("状态构成（人次）")
+        p.sub("状态构成（人次）", 40f)
         val total = r.totals.values.sum().coerceAtLeast(1)
         p.ensure(40f)
         var x = M; val t = p.y; val w = W - 2 * M
@@ -294,7 +295,7 @@ object PdfReport {
         p.heading("三、进步之星与退步关注")
         p.note("比较方式：${pg.basis}。综合指数 = 交齐率变化×45% + 按时率×20% + 优秀率×15% + 考试得分率×20%。")
         fun block(title: String, list: List<Analytics.StudentProgress>, color: Int) {
-            p.sub("$title（${list.size} 人）")
+            p.sub("$title（${list.size} 人）", 50f)
             if (list.isEmpty()) { p.note("暂无"); return }
             table(
                 p, listOf("姓名", "以往 → 重置后交齐率", "考试得分率", "指数", "主要变化"), listOf(1f, 1.6f, 1.2f, 0.6f, 3f),
@@ -383,7 +384,7 @@ object PdfReport {
             table(p, listOf("原因", "次数", "涉及人数", "合计"), listOf(2.4f, 0.8f, 0.8f, 0.8f), r.reasons.map { listOf(it.reason, "${it.count}", "${it.people}", it.total.signed()) }, r.reasons.map { listOf(null, null, null, if (it.total >= 0) GOOD else BAD) })
         }
         if (r.scoreTrend.size >= 2) {
-            p.sub("全班平均积分走势")
+            p.sub("全班平均积分走势", 120f)
             val v = r.scoreTrend.map { it.second }; val lo = v.min(); val hi = v.max(); val span = (hi - lo).coerceAtLeast(1.0)
             line(p, v.map { ((it - lo) / span * 0.8 + 0.1).toFloat() }, r.scoreTrend.map { SimpleDateFormat("M/d", Locale.CHINA).format(Date(it.first.createdAt)) }, 80f, Color.rgb(0x7A, 0x5C, 0xFF))
             p.note("纵轴按 ${lo.fmt()} – ${hi.fmt()} 分缩放；最新平均 ${v.last().fmt()} 分")
@@ -415,7 +416,7 @@ object PdfReport {
         if (e.exams.isEmpty()) return
         p.heading("八、考试")
         if (e.avgPct.size >= 2) {
-            p.sub("平均得分率走势")
+            p.sub("平均得分率走势", 116f)
             line(p, e.avgPct.map { it.second.toFloat() }, e.avgPct.map { SimpleDateFormat("M/d", Locale.CHINA).format(Date(it.first.date)) }, 90f, Color.rgb(0x7A, 0x5C, 0xFF))
         }
         table(

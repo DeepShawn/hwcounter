@@ -557,7 +557,10 @@ object Analytics {
         val resets = classResets(c)
         val r = resets.asReversed().firstOrNull { rr -> sorted.count { rr.counts(it.createdAt) } >= 2 && sorted.count { !rr.counts(it.createdAt) } >= 2 }
         val (before, after, basis) = if (r != null) {
-            Triple(sorted.filter { !r.counts(it.createdAt) }, sorted.filter { r.counts(it.createdAt) }, "以往（${r.startLabel(::fmtDay).removePrefix("从 ").removeSuffix(" 起")}之前）vs 重置后")
+            Triple(sorted.filter { !r.counts(it.createdAt) }, sorted.filter { r.counts(it.createdAt) }, run {
+                val at = if (r.assignmentId != null) "「${r.assignmentTitle.ifBlank { "所选作业" }}」" else fmtDay(r.start)
+                "重置前（$at 之前）vs 重置后（$at 起）"
+            })
         } else {
             val h = sorted.size / 2
             Triple(sorted.take(h), sorted.drop(h), "还没有全班重置：前 $h 次 vs 后 ${sorted.size - h} 次")

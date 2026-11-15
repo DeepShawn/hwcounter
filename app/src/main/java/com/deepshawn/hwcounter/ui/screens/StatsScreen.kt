@@ -481,7 +481,7 @@ private fun LazyListScope.homeworkSections(
     }
     group("分析报告", key = "report") {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("把本页全部分析（含考试）整理成文字报告或多表 Excel，一键分享。", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            Text("把本页全部分析（含考试、进步与退步）整理成文字、PDF 或多表 Excel，一键分享。", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             TextButton("生成分析报告", onClick = onReport, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColorsPrimary())
         }
     }
