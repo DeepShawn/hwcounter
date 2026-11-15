@@ -155,6 +155,8 @@ class ShotsTest {
         safe { top(); click("考试"); save("${prefix}_40_exams") }
         safe { click("第一次月考"); save("${prefix}_41_exam_detail"); scroll(); save("${prefix}_42_exam_detail") }
         safe { top(); click("按学号"); save("${prefix}_43_exam_by_no") }
+        safe { click("多选"); click("张锦宇"); click("李子涵"); save("${prefix}_46_exam_select"); click("记为缺考"); save("${prefix}_47_exam_absent") }
+        safe { rule.onAllNodes(hasText("林静") and hasClickAction()).onFirst().performTouchInput { longClick() }; save("${prefix}_48_exam_row_menu"); click("查看个人详情"); back() }
         safe { back(); rule.onAllNodes(hasContentDescription("导入成绩")).onFirst().performClick(); save("${prefix}_44_exam_import") }
         safe { home(); tab("首页"); top(); click("批量加分"); save("${prefix}_45_batch_home"); back() }
         home()

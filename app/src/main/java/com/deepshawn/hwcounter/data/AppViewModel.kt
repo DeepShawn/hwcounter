@@ -321,6 +321,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val ids = studentIds.toSet()
         c.copy(exams = c.exams.map { e -> if (e.id != examId) e else e.copy(scores = e.scores - ids, absent = (e.absent + ids).distinct()) })
     }
+    /** 取消缺考（scores=false）或清除成绩（scores=true） */
+    fun clearExamMarks(examId: String, studentIds: Collection<String>, scores: Boolean) = updateClass { c ->
+        val ids = studentIds.toSet()
+        c.copy(exams = c.exams.map { e -> if (e.id != examId) e else if (scores) e.copy(scores = e.scores - ids) else e.copy(absent = e.absent - ids) })
+    }
     fun setGroupLeader(group: String, studentId: String?) = updateClass { it.setGroupLeader(group, studentId) }
 
     /** 撤销某次重置（删除记录，分数按全部历史重新计算） */

@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import com.deepshawn.hwcounter.ui.components.glass
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -289,6 +292,10 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
     var editInfo by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var editScore by remember { mutableStateOf<com.deepshawn.hwcounter.data.Student?>(null) }
+    var rowMenu by remember { mutableStateOf<com.deepshawn.hwcounter.data.Student?>(null) }
+    var selecting by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    fun exitSelect() { selecting = false; selected = emptySet() }
     val st = remember(e, c.students) { e.stat(c.students) }
     val ranks = remember(e) { e.ranks() }
     val prev = remember(c, e) { c.previousExam(e) }
@@ -304,8 +311,42 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
     MiuixPage(
         title = e.title,
         onBack = { kit.nav.pop() },
+        extraBottom = if (selecting) 120.dp else 0.dp,
         actions = {
-            if (!readOnly) IconButton(onClick = { menu = true }, modifier = Modifier.padding(end = 16.dp)) { Icon(Icons.Filled.MoreVert, "更多", tint = colors.onSurface) }
+            if (!readOnly) TextButton(
+                if (selecting) "完成" else "多选", onClick = { if (selecting) exitSelect() else selecting = true },
+                minHeight = 34.dp, insideMargin = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                colors = if (selecting) ButtonDefaults.textButtonColorsPrimary() else ButtonDefaults.textButtonColors(),
+            )
+            if (!readOnly) IconButton(onClick = { menu = true }, modifier = Modifier.padding(start = 4.dp, end = 16.dp)) { Icon(Icons.Filled.MoreVert, "更多", tint = colors.onSurface) }
+        },
+        floating = {
+            if (selecting && !readOnly) Column(
+                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp + com.deepshawn.hwcounter.ui.components.LocalBottomInset.current)
+                    .widthIn(max = 560.dp).fillMaxWidth().glass(RoundedCornerShape(24.dp)).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                val pad = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("已选 ${selected.size} 人", Modifier.weight(1f).padding(start = 6.dp), fontWeight = FontWeight.SemiBold)
+                    TextButton("全选", onClick = { selected = c.students.map { it.id }.toSet() }, minHeight = 34.dp, insideMargin = pad)
+                    Spacer(Modifier.width(6.dp))
+                    TextButton("未录入", onClick = { selected = c.students.filter { it.id !in e.scores && it.id !in e.absent }.map { it.id }.toSet() }, minHeight = 34.dp, insideMargin = pad)
+                    Spacer(Modifier.width(6.dp))
+                    TextButton("清空", onClick = { selected = emptySet() }, minHeight = 34.dp, insideMargin = pad)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton("记为缺考", enabled = selected.isNotEmpty(), colors = ButtonDefaults.textButtonColorsPrimary(), modifier = Modifier.weight(1f), onClick = {
+                        val n = selected.size; vm.markAbsent(e.id, selected); exitSelect(); kit.undoable("已把 $n 人记为缺考")
+                    })
+                    TextButton("取消缺考", enabled = selected.any { it in e.absent }, modifier = Modifier.weight(1f), onClick = {
+                        val ids = selected.filter { it in e.absent }; vm.clearExamMarks(e.id, ids, scores = false); exitSelect(); kit.undoable("已取消 ${ids.size} 人的缺考")
+                    })
+                    TextButton("清除成绩", enabled = selected.any { it in e.scores }, modifier = Modifier.weight(1f), onClick = {
+                        val ids = selected.filter { it in e.scores }; vm.clearExamMarks(e.id, ids, scores = true); exitSelect(); kit.undoable("已清除 ${ids.size} 人的成绩")
+                    })
+                }
+            }
         },
     ) {
         item(key = "sub") {
@@ -363,12 +404,23 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
             val r = ranks[s.id]
             val pr = prevRanks[s.id]
             val delta = rules.deltaFor(e, s.id)
+            val sel = s.id in selected
             Row(
                 Modifier.listCell(i, rows.size)
-                    .combinedClickable(onClick = { if (!readOnly) editScore = s else kit.nav.push(Route.StudentDetail(s.id)) }, onLongClick = { kit.nav.push(Route.StudentDetail(s.id)) })
+                    .background(if (sel) colors.primary.copy(alpha = 0.10f) else Color.Transparent)
+                    .combinedClickable(
+                        onClick = { when { selecting -> selected = if (sel) selected - s.id else selected + s.id; !readOnly -> editScore = s; else -> kit.nav.push(Route.StudentDetail(s.id)) } },
+                        onLongClick = { if (readOnly || selecting) kit.nav.push(Route.StudentDetail(s.id)) else rowMenu = s },
+                    )
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (selecting) {
+                    Box(Modifier.size(22.dp).clip(CircleShape).background(if (sel) colors.primary else colors.secondaryContainer), contentAlignment = Alignment.Center) {
+                        if (sel) Icon(Icons.Filled.Check, null, Modifier.size(14.dp), tint = Color.White)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                }
                 Text(
                     if (sort == 0) r?.toString() ?: "–" else s.no.takeLast(3), Modifier.width(34.dp), fontWeight = FontWeight.Bold, fontSize = if (sort == 0) 15.sp else 12.sp,
                     color = if (sort == 0 && r != null && r <= 3) Color(0xFFFF9F0A) else colors.onSurfaceVariantSummary,
@@ -409,6 +461,16 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
         SheetAction(if (e.autoScore) "这场不加减积分" else "这场按分数档加减积分") { vm.upsertExam(e.copy(autoScore = !e.autoScore)) },
         SheetAction("删除考试", danger = true) { deleting = true },
     ), onDismiss = { menu = false })
+    rowMenu?.let { s ->
+        val isAbsent = s.id in e.absent
+        ActionSheet(true, "${s.name}" + (e.scores[s.id]?.let { " · ${it.fmt()} 分" } ?: if (isAbsent) " · 缺考" else " · 未录入"), buildList {
+            add(SheetAction(if (e.scores[s.id] != null) "修改成绩" else "录入成绩") { editScore = s })
+            if (isAbsent) add(SheetAction("取消缺考", "改回未录入") { vm.clearExamMarks(e.id, listOf(s.id), scores = false); kit.undoable("已取消 ${s.name} 的缺考") })
+            else add(SheetAction("记为缺考", if (e.scores[s.id] != null) "会清除已录入的 ${e.scores[s.id]!!.fmt()} 分" else null) { vm.markAbsent(e.id, listOf(s.id)); kit.undoable("已把 ${s.name} 记为缺考") })
+            add(SheetAction("多选", "一次给几位同学记为缺考 / 清除成绩") { selecting = true; selected = setOf(s.id) })
+            add(SheetAction("查看个人详情") { kit.nav.push(Route.StudentDetail(s.id)) })
+        }, onDismiss = { rowMenu = null })
+    }
     if (editInfo) ExamInfoDialog(e, data.settings.subjects, onDismiss = { editInfo = false }) { vm.upsertExam(it); editInfo = false }
     if (deleting) HyperDialog(true, "删除「${e.title}」？", { deleting = false }, summary = "成绩和按分数档加减的积分会一起删除，可撤销。", confirmText = "删除", danger = true, onConfirm = {
         deleting = false; vm.deleteExam(e.id); kit.nav.pop(); kit.undoable("已删除「${e.title}」")
@@ -418,7 +480,7 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
         val v = text.trim().toDoubleOrNull()?.takeIf { it >= 0 && it <= e.fullScore * 2 }
         HyperDialog(
             true, "${s.name} 的成绩", { editScore = null },
-            summary = "满分 ${e.fullScore.fmt()}" + if (rules.enabled && e.autoScore) " · 按分数档加减积分" else "",
+            summary = "满分 ${e.fullScore.fmt()}" + (if (rules.enabled && e.autoScore) " · 按分数档加减积分" else "") + (if (s.id in e.absent) " · 当前：缺考" else if (e.scores[s.id] != null) " · 记为缺考会清除已录入的分数" else ""),
             confirmText = "保存", confirmEnabled = v != null,
             onConfirm = { vm.setExamScore(e.id, s.id, v); editScore = null; kit.haptic() },
         ) {
@@ -451,6 +513,8 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
     var busy by remember { mutableStateOf(false) }
     var how by remember { mutableStateOf("") }
     var absentRest by rememberSaveable { mutableStateOf(false) }
+    /** 预览里手动改为缺考的同学（覆盖识别出的分数） */
+    var forceAbsent by remember(table) { mutableStateOf(setOf<String>()) }
     val ai = data.settings.ai
     val useAi = data.settings.recogMode != com.deepshawn.hwcounter.data.RecogMode.LOCAL && ai.apiKey.isNotBlank()
     val result = remember(table, c.students) { table?.let { ExamImport.recognize(it, c.students) } }
@@ -535,7 +599,7 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
                             Spacer(Modifier.height(8.dp))
                             TextField(full, { full = it }, label = "满分（最高分 ${column?.max?.fmt()}，已自动推测）", singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(10.dp))
-                            val scores = result.scoresOf(col); val absent = result.absentOf(col)
+                            val scores = result.scoresOf(col) - forceAbsent; val absent = (result.absentOf(col) + forceAbsent).distinct()
                             val avg = if (scores.isEmpty()) 0.0 else scores.values.average()
                             Text("${scores.size} 人有成绩 · ${absent.size} 人缺考 · 平均 ${avg.fmt()}" + if (result.missingStudents.isNotEmpty()) " · ${result.missingStudents.size} 人不在表里" else "", fontSize = 13.sp, color = colors.onSurfaceSecondary)
                             if (result.missingStudents.isNotEmpty()) Row(Modifier.padding(top = 8.dp).clip(RoundedCornerShape(10.dp)).clickable { absentRest = !absentRest }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -562,7 +626,7 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
                                 if (target == null && result.columns.size > 1) TextButton("每列各存一场", onClick = {
                                     result.columns.forEachIndexed { k, cc ->
                                         val sc = result.scoresOf(k)
-                                        if (sc.isNotEmpty()) vm.upsertExam(Exam(title = cc.header, subject = data.settings.subjects.firstOrNull { cc.header.contains(it) } ?: "", fullScore = ExamImport.guessFull(cc.max), scores = sc, absent = (result.absentOf(k) + if (absentRest) result.missingStudents else emptyList()).distinct()))
+                                        if (sc.isNotEmpty()) vm.upsertExam(Exam(title = cc.header, subject = data.settings.subjects.firstOrNull { cc.header.contains(it) } ?: "", fullScore = ExamImport.guessFull(cc.max), scores = sc - forceAbsent, absent = (result.absentOf(k) + forceAbsent + if (absentRest) result.missingStudents else emptyList()).distinct()))
                                     }
                                     kit.toast("已保存 ${result.columns.size} 场考试"); kit.nav.pop()
                                 }, modifier = Modifier.weight(1f))
@@ -570,14 +634,22 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
                         }
                     }
                 }
-                item(key = "pv") { SmallTitle("预览") }
+                item(key = "pv") { SmallTitle("预览 · 点一行可改为缺考，再点改回") }
                 val preview = result.rows.sortedByDescending { it.values.getOrNull(col) ?: -1.0 }
                 itemsIndexed(preview, key = { _, r -> "p" + r.studentId }) { i, r ->
                     val s = c.students.first { it.id == r.studentId }
-                    Row(Modifier.listCell(i, preview.size).padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val forced = r.studentId in forceAbsent
+                    Row(
+                        Modifier.listCell(i, preview.size).clickable { forceAbsent = if (forced) forceAbsent - r.studentId else forceAbsent + r.studentId }.padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text("${s.no} ${s.name}", Modifier.weight(1f), fontSize = 14.sp)
                         val v = r.values.getOrNull(col)
-                        Text(if (v != null) v.fmt() else if (r.absent.getOrNull(col) == true) "缺考" else "—", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        if (forced && v != null) Text(v.fmt(), fontSize = 13.sp, color = colors.onSurfaceVariantSummary, textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough, modifier = Modifier.padding(end = 8.dp))
+                        Text(
+                            if (forced) "缺考" else if (v != null) v.fmt() else if (r.absent.getOrNull(col) == true) "缺考" else "—", fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                            color = if (forced) Color(0xFFE8792C) else colors.onSurface,
+                        )
                     }
                 }
             }
