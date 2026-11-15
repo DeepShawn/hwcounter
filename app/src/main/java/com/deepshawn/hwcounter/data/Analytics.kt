@@ -987,8 +987,8 @@ object Analytics {
         if (unstable.isNotEmpty()) ins += Insight(Level.INFO, "成绩波动较大：${unstable.take(5).joinToString("、") { it.student.name }}。")
         if (groups.size >= 2 && groups.first().second - groups.last().second >= 0.05)
             ins += Insight(Level.INFO, "小组平均得分率：${groups.first().first} 最高（${pct(groups.first().second)}），${groups.last().first} 最低（${pct(groups.last().second)}）。")
-        if (stars.isNotEmpty()) ins += Insight(Level.GOOD, "考试进步之星（最近一场比之前更靠前）：" + stars.take(5).joinToString("、") { "${it.student.name}（+${(it.delta * 100).roundToInt()}）" } + "。")
-        if (watch.isNotEmpty()) ins += Insight(Level.WARN, "考试退步关注：" + watch.take(5).joinToString("、") { "${it.student.name}（${(it.delta * 100).roundToInt()}）" } + "。")
+        if (stars.isNotEmpty()) ins += Insight(Level.GOOD, "考试进步之星（最近一场相对班级平均的位置比之前高）：" + stars.take(5).joinToString("、") { "${it.student.name}（高 ${(it.delta * 100).roundToInt()} 个百分点）" } + "。")
+        if (watch.isNotEmpty()) ins += Insight(Level.WARN, "考试退步关注（最近一场相对班级平均的位置比之前低）：" + watch.take(5).joinToString("、") { "${it.student.name}（低 ${(-it.delta * 100).roundToInt()} 个百分点）" } + "。")
         flow?.let { f -> if (f.up + f.down > 0) ins += Insight(if (f.up >= f.down) Level.GOOD else Level.WARN, "从「${f.from.title}」到「${f.to.title}」：${f.up} 人升档、${f.down} 人降档、${f.same} 人不变。") }
         if (nearPass.isNotEmpty()) ins += Insight(Level.WARN, "临界及格（平均 55%–60%）：${nearPass.take(6).joinToString("、") { it.student.name }}，是提升及格率的重点。")
         if (nearEx.isNotEmpty()) ins += Insight(Level.INFO, "临界优秀（平均 80%–85%）：${nearEx.take(6).joinToString("、") { it.student.name }}。")
