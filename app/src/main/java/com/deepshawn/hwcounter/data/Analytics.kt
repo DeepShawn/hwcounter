@@ -734,6 +734,10 @@ object Analytics {
         if (exam != null && exam.exams.isNotEmpty()) {
             appendLine(); appendLine("五、考试")
             exam.exams.forEach { e -> val s = exam.stats.getValue(e.id); appendLine("${fmtDay(e.date)} ${e.subject}「${e.title}」：平均 ${s.avg.fmt()}/${e.fullScore.fmt()}，中位 ${s.median.fmt()}，最高 ${s.max.fmt()}，及格率 ${pct(s.passRate)}，优秀率 ${pct(s.excellentRate)}") }
+            exam.quality.takeIf { it.isNotEmpty() }?.let { q -> appendLine("难度与区分度：" + q.joinToString("；") { "${it.exam.title} 难度${difficultyText(it.difficulty)}（${pct(it.difficulty)}）、区分度${discriminationText(it.discrimination)}（${"%.2f".format(it.discrimination)}）" }) }
+            if (exam.levels.isNotEmpty()) appendLine("层级（按平均得分率）：" + exam.levels.joinToString("，") { "${it.first} ${it.second} 人" })
+            if (exam.stars.isNotEmpty()) appendLine("考试进步之星：" + exam.stars.joinToString("、") { "${it.student.name}（${it.last.title} ${pct(it.lastPct)}，相对位置 +${(it.delta * 100).roundToInt()}）" })
+            if (exam.watch.isNotEmpty()) appendLine("考试退步关注：" + exam.watch.joinToString("、") { "${it.student.name}（${it.last.title} ${pct(it.lastPct)}，相对位置 ${(it.delta * 100).roundToInt()}）" })
             exam.insights.forEach { appendLine("• ${it.text}") }
         }
     }.trimEnd()
@@ -769,7 +773,119 @@ object Analytics {
         val top: List<ExamStudent>,
         val groups: List<Pair<String, Double>>,
         val insights: List<Insight>,
+        /** 每场难度（平均得分率）与区分度（前 27% 与后 27% 的得分率差） */
+        val quality: List<ExamQuality> = emptyList(),
+        /** 考试进步之星 / 退步关注（最近一场相对班级平均的位置 vs 之前各场） */
+        val stars: List<ExamProgress> = emptyList(),
+        val watch: List<ExamProgress> = emptyList(),
+        /** 最近两场（同科）之间的层级流动 */
+        val flow: Flow? = null,
+        /** 临界生：平均得分率 55–60%（差一点及格）、80–85%（差一点优秀） */
+        val nearPass: List<ExamStudent> = emptyList(),
+        val nearExcellent: List<ExamStudent> = emptyList(),
+        /** 偏科：最好与最差科目的得分率相差 ≥ 15 个百分点 */
+        val imbalance: List<Imbalance> = emptyList(),
+        /** 成绩稳定（≥3 场且波动 < 5 个百分点）、连续上升、连续下滑（最近 3 场相对位置） */
+        val steady: List<ExamStudent> = emptyList(),
+        val rising: List<ExamStudent> = emptyList(),
+        val falling: List<ExamStudent> = emptyList(),
+        /** 作业与考试对照：作业交得齐但考试不理想 / 作业常缺但考试不错 */
+        val diligentLow: List<HwVsExam> = emptyList(),
+        val skipButGood: List<HwVsExam> = emptyList(),
+        /** 性别对比：性别、人数、平均得分率 */
+        val genders: List<Triple<String, Int, Double>> = emptyList(),
+        /** 各层级人数（按平均得分率）：优秀 / 良好 / 及格 / 不及格 */
+        val levels: List<Pair<String, Int>> = emptyList(),
     )
+
+    data class ExamQuality(val exam: Exam, val difficulty: Double, val discrimination: Double, val q1: Double, val q3: Double)
+    data class ExamProgress(val student: Student, val before: Double, val after: Double, val delta: Double, val last: Exam, val lastPct: Double)
+    data class Flow(val from: Exam, val to: Exam, val labels: List<String>, val matrix: List<List<Int>>, val up: Int, val down: Int, val same: Int)
+    data class Imbalance(val student: Student, val best: Pair<String, Double>, val worst: Pair<String, Double>)
+    data class HwVsExam(val student: Student, val hwRate: Float, val examPct: Double)
+
+    /** 单场考试的深入分析 */
+    data class ExamDeep(
+        val stat: ExamStat,
+        val q1: Double, val q3: Double, val range: Double,
+        val difficulty: Double, val discrimination: Double, val top27: Double, val bottom27: Double,
+        val nearPass: List<Pair<Student, Double>>, val nearExcellent: List<Pair<Student, Double>>, val failing: List<Pair<Student, Double>>,
+        val rankUp: List<Triple<Student, Int, Int>>, val rankDown: List<Triple<Student, Int, Int>>,
+        val enteredTop: List<Student>, val leftTop: List<Student>, val topN: Int,
+        val genders: List<Triple<String, Int, Double>>, val groups: List<Triple<String, Int, Double>>,
+        val absent: List<Student>, val missing: List<Student>,
+        val prev: Exam?, val prevStat: ExamStat?,
+        val insights: List<Insight>,
+    )
+
+    /** 四分位（线性插值） */
+    fun quantile(sorted: List<Double>, q: Double): Double {
+        if (sorted.isEmpty()) return 0.0
+        val pos = (sorted.size - 1) * q; val lo = kotlin.math.floor(pos).toInt(); val hi = kotlin.math.ceil(pos).toInt()
+        return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo)
+    }
+
+    /** 区分度：前 27% 与后 27% 的平均得分率之差（≥0.4 很好，0.3–0.4 良好，0.2–0.3 一般，<0.2 偏低） */
+    private fun discrimination(v: List<Double>, full: Double): Triple<Double, Double, Double> {
+        if (v.size < 4 || full <= 0) return Triple(0.0, 0.0, 0.0)
+        val k = maxOf(1, (v.size * 0.27).roundToInt()); val d = v.sortedDescending()
+        val top = d.take(k).average() / full; val bot = d.takeLast(k).average() / full
+        return Triple(top - bot, top, bot)
+    }
+
+    fun discriminationText(d: Double) = when { d >= 0.4 -> "很好"; d >= 0.3 -> "良好"; d >= 0.2 -> "一般"; else -> "偏低" }
+    fun difficultyText(p: Double) = when { p >= 0.85 -> "偏易"; p >= 0.7 -> "适中"; p >= 0.55 -> "偏难"; else -> "很难" }
+
+    fun examDeep(c: SchoolClass, e: Exam): ExamDeep {
+        val st = e.stat(c.students)
+        val ids = c.students.map { it.id }.toSet()
+        val byId = c.students.associateBy { it.id }
+        val v = e.scores.filterKeys { it in ids }.values.filter { it.isFinite() }.sorted()
+        val full = e.fullScore.takeIf { it > 0 } ?: 100.0
+        val (disc, top27, bot27) = discrimination(v, full)
+        fun pctOf(id: String) = e.scores[id]?.let { it / full }
+        val withPct = c.students.mapNotNull { s -> pctOf(s.id)?.let { s to it } }
+        val prev = c.previousExam(e)
+        val ranks = e.ranks(); val pr = prev?.ranks().orEmpty()
+        val moves = c.students.mapNotNull { s -> val a = pr[s.id]; val b = ranks[s.id]; if (a != null && b != null && a != b) Triple(s, a, b) else null }
+        val topN = if (c.students.size >= 30) 10 else maxOf(3, c.students.size / 4)
+        val topNow = ranks.filterValues { it <= topN }.keys; val topPrev = pr.filterValues { it <= topN }.keys
+        fun grouped(key: (Student) -> String) = withPct.groupBy { key(it.first) }.filterKeys { it.isNotBlank() }
+            .map { (g, l) -> Triple(g, l.size, l.map { it.second }.average()) }.sortedByDescending { it.third }
+        val genders = grouped { it.gender.take(1) }.filter { it.first == "男" || it.first == "女" }
+        val groups = grouped { it.group.ifBlank { "未分组" } }
+        val nearPass = withPct.filter { it.second >= 0.55 && it.second < 0.6 }.sortedByDescending { it.second }
+        val nearEx = withPct.filter { it.second >= 0.8 && it.second < 0.85 }.sortedByDescending { it.second }
+        val failing = withPct.filter { it.second < 0.6 }.sortedBy { it.second }
+        val prevStat = prev?.stat(c.students)
+        val ins = ArrayList<Insight>()
+        if (st.count >= 4) {
+            ins += Insight(Level.INFO, "难度${difficultyText(st.avg / full)}（平均得分率 ${pct(st.avg / full)}），区分度${discriminationText(disc)}（前 27% 平均 ${pct(top27)}，后 27% 平均 ${pct(bot27)}）。")
+            if (st.std / full >= 0.18) ins += Insight(Level.WARN, "分数很分散（标准差 ${st.std.fmt()} 分），两极分化明显。")
+            else if (st.std / full < 0.08) ins += Insight(Level.INFO, "分数比较集中（标准差 ${st.std.fmt()} 分）。")
+        }
+        if (prev != null && prevStat != null && prevStat.count > 0 && st.count > 0) {
+            val d = ((st.avg / full - prevStat.avg / prev.fullScore) * 100).roundToInt()
+            if (abs(d) >= 2) ins += Insight(if (d > 0) Level.GOOD else Level.WARN, "平均得分率比上一场「${prev.title}」${if (d > 0) "提高" else "下降"} ${abs(d)} 个百分点" + "；及格率 ${pct(prevStat.passRate)} → ${pct(st.passRate)}。")
+        }
+        if (nearPass.isNotEmpty()) ins += Insight(Level.WARN, "差一点及格（55%–60%）：" + nearPass.joinToString("、") { it.first.name } + "，稍加辅导就能过线。")
+        if (nearEx.isNotEmpty()) ins += Insight(Level.INFO, "差一点优秀（80%–85%）：" + nearEx.joinToString("、") { it.first.name } + "。")
+        val ups = moves.filter { it.third < it.second }.sortedByDescending { it.second - it.third }
+        val downs = moves.filter { it.third > it.second }.sortedByDescending { it.third - it.second }
+        ups.firstOrNull()?.let { if (it.second - it.third >= 3) ins += Insight(Level.GOOD, "进步最大：${it.first.name}（第 ${it.second} → 第 ${it.third} 名）。") }
+        downs.firstOrNull()?.let { if (it.third - it.second >= 3) ins += Insight(Level.WARN, "退步最大：${it.first.name}（第 ${it.second} → 第 ${it.third} 名）。") }
+        if (genders.size == 2 && abs(genders[0].third - genders[1].third) >= 0.05) ins += Insight(Level.INFO, "${genders[0].first}生平均得分率 ${pct(genders[0].third)}，比${genders[1].first}生高 ${((genders[0].third - genders[1].third) * 100).roundToInt()} 个百分点。")
+        if (st.missing > 0) ins += Insight(Level.WARN, "还有 ${st.missing} 人没有录入成绩。")
+        return ExamDeep(
+            st, quantile(v, 0.25), quantile(v, 0.75), (v.maxOrNull() ?: 0.0) - (v.minOrNull() ?: 0.0),
+            st.avg / full, disc, top27, bot27, nearPass, nearEx, failing,
+            ups.take(8), downs.take(8),
+            if (prev == null) emptyList() else (topNow - topPrev).mapNotNull { byId[it] }, if (prev == null) emptyList() else (topPrev - topNow).filter { it in ranks || it in e.absent }.mapNotNull { byId[it] }, topN,
+            genders, groups,
+            c.students.filter { it.id in e.absent }, c.students.filter { it.id !in e.scores && it.id !in e.absent },
+            prev, prevStat, ins,
+        )
+    }
 
     fun examReport(c: SchoolClass, subject: String? = null): ExamReport {
         val exams = c.exams.filter { subject == null || it.subject == subject }.sortedBy { it.date }
@@ -803,6 +919,55 @@ object Analytics {
             if (v.isEmpty()) null else g to v.average()
         }.sortedByDescending { it.second }
 
+        // —— 更多考试分析 ——
+        val quality = exams.mapNotNull { e ->
+            val v = e.scores.filterKeys { id -> c.students.any { it.id == id } }.values.filter { it.isFinite() }.sorted()
+            if (v.isEmpty() || e.fullScore <= 0) null else ExamQuality(e, v.average() / e.fullScore, discrimination(v, e.fullScore).first, quantile(v, 0.25), quantile(v, 0.75))
+        }
+        val avgOf = exams.associate { e -> e.id to (stats.getValue(e.id).takeIf { it.count > 0 }?.avg?.div(e.fullScore) ?: 0.0) }
+        fun rel(e: Exam, sid: String) = e.scores[sid]?.let { it / e.fullScore - avgOf.getValue(e.id) }
+        val progressAll = c.students.mapNotNull { st ->
+            val taken = exams.filter { st.id in it.scores }
+            if (taken.size < 2) return@mapNotNull null
+            val last = taken.last()
+            val before = taken.dropLast(1).mapNotNull { rel(it, st.id) }.average()
+            val after = rel(last, st.id)!!
+            ExamProgress(st, before, after, after - before, last, last.scores.getValue(st.id) / last.fullScore)
+        }
+        val stars = progressAll.filter { it.delta >= 0.05 }.sortedByDescending { it.delta }.take(8)
+        val watch = progressAll.filter { it.delta <= -0.05 }.sortedBy { it.delta }.take(8)
+        val labels = listOf("优秀", "良好", "及格", "不及格")
+        fun level(p: Double) = when { p >= 0.85 -> 0; p >= 0.75 -> 1; p >= 0.6 -> 2; else -> 3 }
+        val flow = exams.lastOrNull()?.let { to -> c.previousExam(to)?.takeIf { f -> f in exams || subject == null }?.let { from ->
+            val m = List(4) { IntArray(4) }
+            var up = 0; var down = 0; var same = 0
+            c.students.forEach { s ->
+                val a = from.scores[s.id]?.div(from.fullScore); val b = to.scores[s.id]?.div(to.fullScore)
+                if (a != null && b != null) { val i = level(a); val j = level(b); m[i][j]++; if (j < i) up++ else if (j > i) down++ else same++ }
+            }
+            if (up + down + same == 0) null else Flow(from, to, labels, m.map { it.toList() }, up, down, same)
+        } }
+        val withAvg = students.filter { it.avgPct != null }
+        val nearPass = withAvg.filter { it.avgPct!! >= 0.55 && it.avgPct < 0.6 }.sortedByDescending { it.avgPct }
+        val nearEx = withAvg.filter { it.avgPct!! >= 0.8 && it.avgPct < 0.85 }.sortedByDescending { it.avgPct }
+        val imbalance = if (subject != null) emptyList() else c.students.mapNotNull { st ->
+            val bySub = exams.filter { st.id in it.scores && it.subject.isNotBlank() }.groupBy { it.subject }
+                .mapValues { (_, l) -> l.map { it.scores.getValue(st.id) / it.fullScore }.average() }
+            if (bySub.size < 2) return@mapNotNull null
+            val b = bySub.maxBy { it.value }; val w = bySub.minBy { it.value }
+            if (b.value - w.value >= 0.15) Imbalance(st, b.key to b.value, w.key to w.value) else null
+        }.sortedByDescending { it.best.second - it.worst.second }.take(8)
+        val steady = withAvg.filter { it.taken >= 3 && (it.stdPct ?: 1.0) < 0.05 }.sortedByDescending { it.avgPct }
+        fun lastRels(st: Student) = exams.filter { st.id in it.scores }.takeLast(3).mapNotNull { rel(it, st.id) }
+        val rising = withAvg.filter { s -> lastRels(s.student).let { r -> r.size == 3 && r[0] < r[1] && r[1] < r[2] && r[2] - r[0] >= 0.03 } }
+        val falling = withAvg.filter { s -> lastRels(s.student).let { r -> r.size == 3 && r[0] > r[1] && r[1] > r[2] && r[0] - r[2] >= 0.03 } }
+        val hw = c.students.associate { it.id to insight(it, c.assignments) }
+        val diligentLow = withAvg.mapNotNull { s -> hw[s.student.id]?.takeIf { it.expected >= 3 && it.rate >= 0.9f && s.avgPct!! < 0.6 }?.let { HwVsExam(s.student, it.rate, s.avgPct!!) } }.sortedBy { it.examPct }
+        val skipButGood = withAvg.mapNotNull { s -> hw[s.student.id]?.takeIf { it.expected >= 3 && it.rate < 0.75f && s.avgPct!! >= 0.8 }?.let { HwVsExam(s.student, it.rate, s.avgPct!!) } }.sortedByDescending { it.examPct }
+        val genders = withAvg.groupBy { it.student.gender.take(1) }.filterKeys { it == "男" || it == "女" }
+            .map { (g, l) -> Triple(g, l.size, l.mapNotNull { it.avgPct }.average()) }.sortedByDescending { it.third }
+        val levels = labels.mapIndexed { i, l -> l to withAvg.count { level(it.avgPct!!) == i } }
+
         val ins = ArrayList<Insight>()
         if (avgPct.size >= 3) {
             val sl = slope(avgPct.map { it.second }) * 100
@@ -822,6 +987,22 @@ object Analytics {
         if (unstable.isNotEmpty()) ins += Insight(Level.INFO, "成绩波动较大：${unstable.take(5).joinToString("、") { it.student.name }}。")
         if (groups.size >= 2 && groups.first().second - groups.last().second >= 0.05)
             ins += Insight(Level.INFO, "小组平均得分率：${groups.first().first} 最高（${pct(groups.first().second)}），${groups.last().first} 最低（${pct(groups.last().second)}）。")
-        return ExamReport(exams, stats, avgPct, subjects, students, improvers, decliners, struggling, top, groups, ins)
+        if (stars.isNotEmpty()) ins += Insight(Level.GOOD, "考试进步之星（最近一场相对班级平均的位置比之前高）：" + stars.take(5).joinToString("、") { "${it.student.name}（高 ${(it.delta * 100).roundToInt()} 个百分点）" } + "。")
+        if (watch.isNotEmpty()) ins += Insight(Level.WARN, "考试退步关注（最近一场相对班级平均的位置比之前低）：" + watch.take(5).joinToString("、") { "${it.student.name}（低 ${(-it.delta * 100).roundToInt()} 个百分点）" } + "。")
+        flow?.let { f -> if (f.up + f.down > 0) ins += Insight(if (f.up >= f.down) Level.GOOD else Level.WARN, "从「${f.from.title}」到「${f.to.title}」：${f.up} 人升档、${f.down} 人降档、${f.same} 人不变。") }
+        if (nearPass.isNotEmpty()) ins += Insight(Level.WARN, "临界及格（平均 55%–60%）：${nearPass.take(6).joinToString("、") { it.student.name }}，是提升及格率的重点。")
+        if (nearEx.isNotEmpty()) ins += Insight(Level.INFO, "临界优秀（平均 80%–85%）：${nearEx.take(6).joinToString("、") { it.student.name }}。")
+        if (imbalance.isNotEmpty()) ins += Insight(Level.INFO, "偏科：" + imbalance.take(4).joinToString("；") { "${it.student.name} ${it.best.first}${pct(it.best.second)}、${it.worst.first}${pct(it.worst.second)}" } + "。")
+        if (diligentLow.isNotEmpty()) ins += Insight(Level.WARN, "作业交得齐但考试不理想（可能“交了没学会”）：${diligentLow.take(6).joinToString("、") { it.student.name }}。")
+        if (skipButGood.isNotEmpty()) ins += Insight(Level.INFO, "作业常缺但考试不错（会但不交）：${skipButGood.take(6).joinToString("、") { it.student.name }}。")
+        if (rising.isNotEmpty()) ins += Insight(Level.GOOD, "连续三场上升：${rising.take(6).joinToString("、") { it.student.name }}。")
+        if (falling.isNotEmpty()) ins += Insight(Level.WARN, "连续三场下滑：${falling.take(6).joinToString("、") { it.student.name }}。")
+        quality.lastOrNull()?.let { q -> if (q.discrimination in 0.01..0.2) ins += Insight(Level.INFO, "「${q.exam.title}」区分度偏低（${"%.2f".format(q.discrimination)}），题目可能过易或过难，难以拉开差距。") }
+        if (genders.size == 2 && abs(genders[0].third - genders[1].third) >= 0.05) ins += Insight(Level.INFO, "${genders[0].first}生平均得分率比${genders[1].first}生高 ${((genders[0].third - genders[1].third) * 100).roundToInt()} 个百分点。")
+        return ExamReport(
+            exams, stats, avgPct, subjects, students, improvers, decliners, struggling, top, groups, ins,
+            quality = quality, stars = stars, watch = watch, flow = flow, nearPass = nearPass, nearExcellent = nearEx, imbalance = imbalance,
+            steady = steady, rising = rising, falling = falling, diligentLow = diligentLow, skipButGood = skipButGood, genders = genders, levels = levels,
+        )
     }
 }

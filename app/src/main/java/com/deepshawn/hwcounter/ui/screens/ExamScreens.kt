@@ -297,6 +297,7 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
     var selected by remember { mutableStateOf(setOf<String>()) }
     fun exitSelect() { selecting = false; selected = emptySet() }
     val st = remember(e, c.students) { e.stat(c.students) }
+    val deep = remember(c, e) { com.deepshawn.hwcounter.data.Analytics.examDeep(c, e) }
     val ranks = remember(e) { e.ranks() }
     val prev = remember(c, e) { c.previousExam(e) }
     val prevRanks = remember(prev) { prev?.ranks().orEmpty() }
@@ -378,6 +379,7 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
                 )
             }
         }
+        if (st.count >= 2) item(key = "deep") { ExamDeepCard(deep, e) { kit.nav.push(Route.StudentDetail(it)) } }
         if (e.absent.isNotEmpty()) item(key = "absent") {
             val names = c.students.filter { it.id in e.absent }.map { it.name }
             Text(
@@ -651,6 +653,53 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
                             color = if (forced) Color(0xFFE8792C) else colors.onSurface,
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+
+/** 单场考试深入分析：四分位、难度区分度、前后 27%、临界生、名次进退、前 N 名进出、小组与男女对比 */
+@Composable
+private fun ExamDeepCard(d: com.deepshawn.hwcounter.data.Analytics.ExamDeep, e: Exam, onOpen: (String) -> Unit) {
+    val colors = MiuixTheme.colorScheme
+    val A = com.deepshawn.hwcounter.data.Analytics
+    fun p(x: Double) = "${(x * 100).toInt()}%"
+    Column {
+        SmallTitle("深入分析")
+        HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+            Column(Modifier.padding(vertical = 14.dp)) {
+                Row {
+                    Num("下四分位", d.q1.fmt(), Modifier.weight(1f))
+                    Num("上四分位", d.q3.fmt(), Modifier.weight(1f))
+                    Num("极差", d.range.fmt(), Modifier.weight(1f))
+                    Num("难度", A.difficultyText(d.difficulty), Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(10.dp))
+                Row {
+                    Num("区分度", "%.2f".format(d.discrimination), Modifier.weight(1f))
+                    Num("前 27%", p(d.top27), Modifier.weight(1f))
+                    Num("后 27%", p(d.bottom27), Modifier.weight(1f))
+                    Num("不及格", "${d.failing.size} 人", Modifier.weight(1f))
+                }
+                if (d.insights.isNotEmpty()) com.deepshawn.hwcounter.ui.components.InsightList(d.insights, Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp))
+                val chips = ArrayList<Triple<String, List<Pair<com.deepshawn.hwcounter.data.Student, String>>, Color>>()
+                if (d.nearPass.isNotEmpty()) chips += Triple("差一点及格（55%–60%）", d.nearPass.map { it.first to p(it.second) }, Color(0xFFE8792C))
+                if (d.nearExcellent.isNotEmpty()) chips += Triple("差一点优秀（80%–85%）", d.nearExcellent.map { it.first to p(it.second) }, Color(0xFF3482FF))
+                if (d.rankUp.isNotEmpty()) chips += Triple("名次进步（比「${d.prev?.title}」）", d.rankUp.map { it.first to "${it.second}→${it.third}" }, Color(0xFF169B68))
+                if (d.rankDown.isNotEmpty()) chips += Triple("名次退步", d.rankDown.map { it.first to "${it.second}→${it.third}" }, Color(0xFFE5384D))
+                if (d.enteredTop.isNotEmpty()) chips += Triple("新进前 ${d.topN} 名", d.enteredTop.map { it to "↑" }, Color(0xFF169B68))
+                if (d.leftTop.isNotEmpty()) chips += Triple("跌出前 ${d.topN} 名", d.leftTop.map { it to "↓" }, Color(0xFFE5384D))
+                if (d.missing.isNotEmpty()) chips += Triple("未录入", d.missing.map { it to "—" }, colors.onSurfaceVariantSummary)
+                chips.forEach { (t, l, col) -> Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) { NameChips(t, l, col, onOpen) } }
+                if (d.groups.size > 1) {
+                    Text("小组平均得分率", fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, top = 14.dp))
+                    com.deepshawn.hwcounter.ui.components.HBars(d.groups.map { Triple(it.first, it.third.toFloat(), "${p(it.third)} · ${it.second}人") }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                }
+                if (d.genders.size == 2) {
+                    Text("男女生对比", fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, top = 6.dp))
+                    com.deepshawn.hwcounter.ui.components.HBars(d.genders.map { Triple("${it.first}生", it.third.toFloat(), "${p(it.third)} · ${it.second}人") }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 }
             }
         }

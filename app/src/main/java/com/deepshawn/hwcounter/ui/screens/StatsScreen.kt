@@ -164,7 +164,11 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 onBatch = if (readOnly) null else { ids, reason -> kit.nav.push(Route.BatchScore(ids, reason)) },
             )
         }
-        else examSections(c, examReport, subjectsWithExams, examSubject, { examSubject = it }, report.examCorrelation, onOpenExam = { kit.nav.push(Route.Exam(it)) }, onManage = { kit.nav.push(Route.Exams) }, onOpenStudent = { kit.nav.push(Route.StudentDetail(it)) })
+        else examSections(
+            c, examReport, subjectsWithExams, examSubject, { examSubject = it }, report.examCorrelation, onOpenExam = { kit.nav.push(Route.Exam(it)) }, onManage = { kit.nav.push(Route.Exams) }, onOpenStudent = { kit.nav.push(Route.StudentDetail(it)) },
+            onScore = if (readOnly) null else { ids, reason -> scoreFor = ids to reason },
+            onBatch = if (readOnly) null else { ids, reason -> kit.nav.push(Route.BatchScore(ids, reason)) },
+        )
     }
 
     ActionSheet(share, "一键生成分析报告", listOf(
@@ -681,6 +685,7 @@ private fun StudentTable(report: Analytics.Report, onOpen: (String) -> Unit) {
 private fun LazyListScope.examSections(
     c: SchoolClass, r: Analytics.ExamReport, subjects: List<String>, subjectIdx: Int, onSubject: (Int) -> Unit, corr: Double?,
     onOpenExam: (String) -> Unit, onManage: () -> Unit, onOpenStudent: (String) -> Unit,
+    onScore: ((List<String>, String) -> Unit)? = null, onBatch: ((List<String>, String) -> Unit)? = null,
 ) {
     if (subjects.size > 1) item(key = "esub") {
         Box(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) { HTabs(listOf("全部") + subjects, subjectIdx, onSubject, height = 36.dp) }
@@ -709,9 +714,16 @@ private fun LazyListScope.examSections(
                 KpiTile("优秀率", pct(ls.excellentRate), d { it.excellentRate }, Modifier.weight(1f))
                 KpiTile("低分率", pct(ls.lowRate), d { it.lowRate }, Modifier.weight(1f), goodWhenUp = false)
             }
-            Text("最近一场：${last.title} · 平均 ${ls.avg.fmt()} / ${last.fullScore.fmt()} · 标准差 ${ls.std.fmt()}" + if (r.exams.size > 1) " · 对比上一场" else "", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(start = 4.dp))
+            r.quality.lastOrNull()?.let { q ->
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    KpiTile("难度", Analytics.difficultyText(q.difficulty), null, Modifier.weight(1f))
+                    KpiTile("区分度", "%.2f".format(q.discrimination), null, Modifier.weight(1f))
+                }
+            }
+            Text("最近一场：${last.title} · 平均 ${ls.avg.fmt()} / ${last.fullScore.fmt()} · 标准差 ${ls.std.fmt()}" + (r.quality.lastOrNull()?.let { " · 区分度${Analytics.discriminationText(it.discrimination)}" } ?: "") + if (r.exams.size > 1) " · 对比上一场" else "", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(start = 4.dp))
         }
     }
+    if (r.stars.isNotEmpty() || r.watch.isNotEmpty()) item(key = "eprogress") { ExamProgressCard(r, onOpenStudent, onScore, onBatch) }
     if (r.avgPct.size >= 2) group("平均得分率走势", key = "etrend") {
         val f = SimpleDateFormat("M/d", Locale.CHINA)
         TrendLine(r.avgPct.map { it.second.toFloat() }, r.avgPct.map { f.format(Date(it.first.date)) }, r.avgPct.map { (e, v) -> "${f.format(Date(e.date))} ${e.title} 平均得分率 ${pct(v)}" }, Modifier.padding(16.dp))
@@ -722,6 +734,69 @@ private fun LazyListScope.examSections(
             SuperArrow(title = "${e.subject} ${e.title}".trim(), summary = "平均 ${s.avg.fmt()}/${e.fullScore.fmt()} · 及格 ${pct(s.passRate)} · 优秀 ${pct(s.excellentRate)} · ${s.count} 人", onClick = { onOpenExam(e.id) })
         }
         TextButton("管理考试 / 导入成绩", onClick = onManage, modifier = Modifier.padding(16.dp).fillMaxWidth())
+    }
+    if (r.levels.any { it.second > 0 }) group("成绩层级（按平均得分率）", key = "elevels") {
+        val colorsL = listOf(Color(0xFF169B68), Color(0xFF3482FF), Color(0xFFE8792C), Color(0xFFE5384D))
+        val total = r.levels.sumOf { it.second }.coerceAtLeast(1)
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().height(12.dp).clip(CircleShape)) {
+                r.levels.forEachIndexed { i, (_, n) -> if (n > 0) Box(Modifier.weight(n.toFloat()).height(12.dp).background(colorsL[i])) }
+            }
+            ChartLegend(r.levels.mapIndexed { i, (l, n) -> colorsL[i] to "$l $n 人（${pctText(n.toFloat() / total)}）" })
+            Text("优秀 ≥85%，良好 75–85%，及格 60–75%，不及格 <60%", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        }
+    }
+    r.flow?.let { f -> group("层级流动：${f.from.title} → ${f.to.title}", key = "eflow") { FlowTable(f) } }
+    if (r.quality.size >= 2) group("各场难度与区分度", key = "equality") {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Text("考试", Modifier.weight(1.6f), fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text("平均得分率", Modifier.weight(1f), fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.End)
+                Text("难度", Modifier.weight(0.6f), fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.End)
+                Text("区分度", Modifier.weight(0.9f), fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.End)
+            }
+            r.quality.asReversed().forEach { q ->
+                Row(Modifier.fillMaxWidth().clickable { onOpenExam(q.exam.id) }.padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${q.exam.subject} ${q.exam.title}".trim(), Modifier.weight(1.6f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(pct(q.difficulty), Modifier.weight(1f), fontSize = 13.sp, textAlign = TextAlign.End, fontWeight = FontWeight.SemiBold)
+                    Text(Analytics.difficultyText(q.difficulty), Modifier.weight(0.6f), fontSize = 12.sp, textAlign = TextAlign.End, color = MiuixTheme.colorScheme.onSurfaceSecondary)
+                    Text("%.2f ".format(q.discrimination) + Analytics.discriminationText(q.discrimination), Modifier.weight(0.9f), fontSize = 12.sp, textAlign = TextAlign.End, color = if (q.discrimination < 0.2) Color(0xFFE8792C) else MiuixTheme.colorScheme.onSurfaceSecondary)
+                }
+            }
+            Text("区分度 = 前 27% 与后 27% 学生的得分率之差：≥0.4 很好，0.3–0.4 良好，0.2–0.3 一般，<0.2 偏低。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+        }
+    }
+    if (r.nearPass.isNotEmpty() || r.nearExcellent.isNotEmpty()) group("临界生（重点提升对象）", key = "enear") {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (r.nearPass.isNotEmpty()) NameChips("差一点及格（55%–60%）", r.nearPass.map { it.student to pct(it.avgPct ?: 0.0) }, Color(0xFFE8792C), onOpenStudent)
+            if (r.nearExcellent.isNotEmpty()) NameChips("差一点优秀（80%–85%）", r.nearExcellent.map { it.student to pct(it.avgPct ?: 0.0) }, Color(0xFF3482FF), onOpenStudent)
+        }
+    }
+    if (r.rising.isNotEmpty() || r.falling.isNotEmpty() || r.steady.isNotEmpty()) group("成绩走向", key = "etrendStudents") {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (r.rising.isNotEmpty()) NameChips("连续三场上升", r.rising.map { it.student to pct(it.avgPct ?: 0.0) }, Color(0xFF169B68), onOpenStudent)
+            if (r.falling.isNotEmpty()) NameChips("连续三场下滑", r.falling.map { it.student to pct(it.avgPct ?: 0.0) }, Color(0xFFE5384D), onOpenStudent)
+            if (r.steady.isNotEmpty()) NameChips("成绩稳定（波动 < 5 个百分点）", r.steady.map { it.student to pct(it.avgPct ?: 0.0) }, Color(0xFF7A5CFF), onOpenStudent)
+            Text("按每场相对班级平均的位置判断，不受各场难度影响。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        }
+    }
+    if (r.diligentLow.isNotEmpty() || r.skipButGood.isNotEmpty()) group("作业与考试对照", key = "ehw") {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (r.diligentLow.isNotEmpty()) NameChips("作业交得齐但考试不理想（交齐 ≥90%，考试 <60%）", r.diligentLow.map { it.student to "交${pctText(it.hwRate)} 考${pct(it.examPct)}" }, Color(0xFFE8792C), onOpenStudent)
+            if (r.skipButGood.isNotEmpty()) NameChips("作业常缺但考试不错（交齐 <75%，考试 ≥80%）", r.skipButGood.map { it.student to "交${pctText(it.hwRate)} 考${pct(it.examPct)}" }, Color(0xFF3482FF), onOpenStudent)
+        }
+    }
+    if (r.imbalance.isNotEmpty()) group("偏科（最好与最差科目相差 ≥ 15 个百分点）", key = "eimb") {
+        r.imbalance.forEach { im ->
+            SuperArrow(
+                title = im.student.name,
+                summary = "${im.best.first} ${pct(im.best.second)} · ${im.worst.first} ${pct(im.worst.second)} · 相差 ${((im.best.second - im.worst.second) * 100).toInt()} 个百分点",
+                onClick = { onOpenStudent(im.student.id) },
+            )
+        }
+    }
+    if (r.genders.size == 2) group("男女生对比", key = "egender") {
+        HBars(r.genders.map { Triple("${it.first}生 ${it.second}人", it.third.toFloat(), pct(it.third)) }, Modifier.padding(16.dp), labelWidth = 72.dp)
     }
     if (r.subjects.size > 1) group("各科平均得分率", key = "esubj") {
         HBars(r.subjects.map { Triple(it.first, it.second.toFloat(), pct(it.second)) }, Modifier.padding(16.dp))
@@ -762,6 +837,91 @@ private fun LazyListScope.examSections(
         }
     }
     if (r.groups.size > 1) group("小组平均得分率", key = "egroups") { HBars(r.groups.map { Triple(it.first, it.second.toFloat(), pct(it.second)) }, Modifier.padding(16.dp)) }
+}
+
+/** 考试进步之星 / 退步关注：最近一场相对班级平均的位置 vs 之前各场 */
+@Composable
+private fun ExamProgressCard(r: Analytics.ExamReport, onOpen: (String) -> Unit, onScore: ((List<String>, String) -> Unit)?, onBatch: ((List<String>, String) -> Unit)?) {
+    val colors = MiuixTheme.colorScheme
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val list = if (tab == 0) r.stars else r.watch
+    val good = Color(0xFF169B68); val bad = Color(0xFFE5384D)
+    Column {
+        SmallTitle("考试进步之星 · 退步关注")
+        HCard(Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp).fillMaxWidth()) {
+            Column(Modifier.padding(vertical = 12.dp)) {
+                HTabs(listOf("进步之星 ${r.stars.size}", "退步关注 ${r.watch.size}"), tab, { tab = it }, Modifier.padding(horizontal = 12.dp), height = 36.dp)
+                Text("比较最近一场与之前各场“比班级平均高/低多少”，消除各场难度不同的影响。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                if (list.isEmpty()) Text(if (tab == 0) "暂时没有明显进步的同学（相对位置提高 5 个百分点以上）。" else "没有明显退步的同学。", fontSize = 14.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                list.forEach { p ->
+                    Row(Modifier.fillMaxWidth().clickable { onOpen(p.student.id) }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Avatar(p.student.name, size = 36.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(p.student.name, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.width(6.dp))
+                                val v = (p.delta * 100).toInt()
+                                Text(if (v >= 0) "+$v" else "$v", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = if (v >= 0) good else bad,
+                                    modifier = Modifier.clip(CircleShape).background((if (v >= 0) good else bad).copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 1.dp))
+                            }
+                            fun rel(x: Double) = (x * 100).toInt().let { if (it >= 0) "高于平均 $it" else "低于平均 ${-it}" }
+                            Text("「${p.last.title}」${pct(p.lastPct)}，${rel(p.after)}（之前${rel(p.before)}）", fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (onScore != null) TextButton(
+                            if (tab == 0) "加分" else "加减分", onClick = { onScore(listOf(p.student.id), if (tab == 0) "考试进步" else "考试退步提醒") },
+                            minHeight = 32.dp, minWidth = 56.dp, insideMargin = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+                if (onBatch != null && list.isNotEmpty()) TextButton(
+                    if (tab == 0) "给 ${list.size} 位考试进步之星加分" else "给 ${list.size} 人批量加减分",
+                    onClick = { onBatch(list.map { it.student.id }, if (tab == 0) "考试进步" else "考试退步提醒") },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth(),
+                    colors = if (tab == 0) ButtonDefaults.textButtonColorsPrimary() else ButtonDefaults.textButtonColors(),
+                )
+            }
+        }
+    }
+}
+
+/** 层级流动表：行 = 上一场层级，列 = 这一场层级 */
+@Composable
+private fun FlowTable(f: Analytics.Flow) {
+    val colors = MiuixTheme.colorScheme
+    Column(Modifier.padding(16.dp)) {
+        Row {
+            Text("上场 → 本场", Modifier.weight(1.2f), fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
+            f.labels.forEach { Text(it, Modifier.weight(1f), fontSize = 12.sp, color = colors.onSurfaceVariantSummary, textAlign = TextAlign.Center) }
+        }
+        val max = f.matrix.flatten().maxOrNull()?.coerceAtLeast(1) ?: 1
+        f.matrix.forEachIndexed { i, row ->
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(f.labels[i], Modifier.weight(1.2f), fontSize = 13.sp)
+                row.forEachIndexed { j, n ->
+                    val tint = when { j < i -> Color(0xFF169B68); j > i -> Color(0xFFE5384D); else -> colors.primary }
+                    Box(Modifier.weight(1f).padding(2.dp).height(32.dp).clip(RoundedCornerShape(8.dp)).background(if (n == 0) colors.secondaryContainer.copy(alpha = 0.5f) else tint.copy(alpha = 0.12f + 0.5f * n / max)), contentAlignment = Alignment.Center) {
+                        Text(if (n == 0) "" else "$n", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (n == 0) colors.onSurfaceVariantSummary else colors.onSurface)
+                    }
+                }
+            }
+        }
+        Text("升档 ${f.up} 人 · 降档 ${f.down} 人 · 不变 ${f.same} 人（绿色为升档，红色为降档）", fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 8.dp))
+    }
+}
+
+/** 带标题的一组名字标签 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun NameChips(title: String, items: List<Pair<com.deepshawn.hwcounter.data.Student, String>>, color: Color, onOpen: (String) -> Unit) {
+    Column {
+        Text(title, fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(bottom = 6.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items.forEach { (s, tag) ->
+                Text("${s.name} · $tag", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface, modifier = Modifier.clip(CircleShape).background(color.copy(alpha = 0.13f)).clickable { onOpen(s.id) }.padding(horizontal = 10.dp, vertical = 4.dp))
+            }
+        }
+    }
 }
 
 @Composable

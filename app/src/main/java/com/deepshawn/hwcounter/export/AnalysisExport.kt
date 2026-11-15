@@ -148,14 +148,45 @@ object AnalysisExport {
         }
         if (exam.exams.isNotEmpty()) {
             x.sheet("考试统计") {
-                widths = listOf(12.0, 8.0, 18.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0)
-                rowCells(header("日期", "科目", "考试", "满分", "人数", "缺考", "平均", "中位", "最高", "最低", "标准差", "及格率%", "良好率%", "优秀率%"))
+                widths = listOf(12.0, 8.0, 18.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 8.0, 10.0)
+                rowCells(header("日期", "科目", "考试", "满分", "人数", "缺考", "平均", "中位", "下四分位", "上四分位", "最高", "最低", "标准差", "及格率%", "良好率%", "优秀率%", "难度", "区分度"))
+                val q = exam.quality.associateBy { it.exam.id }
                 exam.exams.forEach { e ->
-                    val s = exam.stats.getValue(e.id)
-                    row(fmtDay(e.date), e.subject, e.title, e.fullScore, s.count, s.absent, s.avg.fmt(), s.median.fmt(), s.max, s.min, s.std.fmt(), pct(s.passRate), pct(s.goodRate), pct(s.excellentRate))
+                    val s = exam.stats.getValue(e.id); val qq = q[e.id]
+                    row(fmtDay(e.date), e.subject, e.title, e.fullScore, s.count, s.absent, s.avg.fmt(), s.median.fmt(), qq?.q1?.fmt() ?: "", qq?.q3?.fmt() ?: "", s.max, s.min, s.std.fmt(), pct(s.passRate), pct(s.goodRate), pct(s.excellentRate),
+                        qq?.let { "${Analytics.difficultyText(it.difficulty)} ${pct(it.difficulty)}%" } ?: "", qq?.let { "%.2f ".format(it.discrimination) + Analytics.discriminationText(it.discrimination) } ?: "")
                 }
                 row()
                 exam.insights.forEach { row(it.text) }
+            }
+            x.sheet("考试进退与分层") {
+                widths = listOf(20.0, 12.0, 14.0, 14.0, 14.0, 40.0)
+                rowCells(header("考试进步之星", "学号", "最近一场得分率%", "之前相对平均", "最近相对平均", "最近一场"))
+                exam.stars.forEach { p -> row(p.student.name, p.student.no, pct(p.lastPct), pct(p.before), pct(p.after), p.last.title) }
+                row()
+                rowCells(header("考试退步关注", "学号", "最近一场得分率%", "之前相对平均", "最近相对平均", "最近一场"))
+                exam.watch.forEach { p -> row(p.student.name, p.student.no, pct(p.lastPct), pct(p.before), pct(p.after), p.last.title) }
+                row()
+                exam.flow?.let { f ->
+                    rowCells(header("层级流动：${f.from.title} → ${f.to.title}", *f.labels.toTypedArray()))
+                    f.matrix.forEachIndexed { i, r -> row(f.labels[i], *r.toTypedArray()) }
+                    row("升档 ${f.up} 人，降档 ${f.down} 人，不变 ${f.same} 人")
+                    row()
+                }
+                rowCells(header("层级（按平均得分率）", "人数"))
+                exam.levels.forEach { row(it.first, it.second) }
+                row()
+                fun names(title: String, l: List<Analytics.ExamStudent>) { if (l.isNotEmpty()) { rowCells(header(title, "平均得分率%")); l.forEach { row(it.student.name, pct(it.avgPct ?: 0.0)) }; row() } }
+                names("临界及格（55–60%）", exam.nearPass); names("临界优秀（80–85%）", exam.nearExcellent)
+                names("连续三场上升", exam.rising); names("连续三场下滑", exam.falling); names("成绩稳定", exam.steady)
+                if (exam.imbalance.isNotEmpty()) { rowCells(header("偏科", "最好科目", "得分率%", "最差科目", "得分率%")); exam.imbalance.forEach { row(it.student.name, it.best.first, pct(it.best.second), it.worst.first, pct(it.worst.second)) }; row() }
+                if (exam.diligentLow.isNotEmpty() || exam.skipButGood.isNotEmpty()) {
+                    rowCells(header("作业与考试对照", "类别", "作业交齐率%", "考试平均得分率%"))
+                    exam.diligentLow.forEach { row(it.student.name, "交得齐但考得不好", pct(it.hwRate), pct(it.examPct)) }
+                    exam.skipButGood.forEach { row(it.student.name, "常缺交但考得不错", pct(it.hwRate), pct(it.examPct)) }
+                    row()
+                }
+                if (exam.genders.size == 2) { rowCells(header("性别", "人数", "平均得分率%")); exam.genders.forEach { row(it.first, it.second, pct(it.third)) } }
             }
             x.sheet("考试成绩") {
                 widths = listOf(12.0, 10.0) + exam.exams.flatMap { listOf(14.0, 8.0) } + listOf(12.0, 10.0)
