@@ -8,7 +8,8 @@ import kotlin.math.sqrt
 /**
  * 统计分析（纯计算，便于测试）。
  *
- * 作业：三种范围（全部 / 本轮：最近一次全班重置以来 / 近 10 次），每种都与“上一时段”对比；
+ * 作业：全部 / 本轮（最近一次全班重置以来）/ 近 10 次 / 年 / 季度 / 月 / 周 / 日 / 自定义，每种都与“上一时段”对比；
+ * 进步之星与退步关注（以往 vs 重置后）、各轮对比、按日周月汇总、积分来源与加减分原因、学生分层、缺交风险、偏科；
  * 核心指标、回归趋势、星期 / 科目 / 小组对比、学生明细、交齐率分布、积分走势与涨跌、
  * 数据完整度，以及自动生成的结论（[Insight]）和文字版分析报告。
  *
@@ -17,7 +18,13 @@ import kotlin.math.sqrt
  */
 object Analytics {
 
-    enum class Range(val label: String) { ALL("全部"), PERIOD("本轮"), RECENT10("近 10 次") }
+    enum class Range(val label: String, val calendar: Boolean = false) {
+        ALL("全部"), PERIOD("本轮"), RECENT10("近 10 次"),
+        YEAR("年", true), QUARTER("季度", true), MONTH("月", true), WEEK("周", true), DAY("日", true), CUSTOM("自定义"),
+    }
+
+    /** 统计范围：类型 + 往前翻几个周期（0 = 本周期，-1 = 上一个）+ 自定义起止日（含） */
+    data class Spec(val range: Range, val offset: Int = 0, val from: Long? = null, val to: Long? = null)
 
     // ---------------- 时间范围 ----------------
 
@@ -30,17 +37,64 @@ object Analytics {
         /** 范围起点（用来计算积分变化），null = 有记录以来 */
         val start: Long?,
         val label: String,
+        /** 范围终点（不含），null = 到现在 */
+        val end: Long? = null,
+        /** 上一时段的称呼，如“上月”“上一轮” */
+        val prevLabel: String = "上一时段",
     )
 
     /** 全班重置：覆盖至少一半同学的重置，按生效时间排序 */
     fun classResets(c: SchoolClass): List<ScoreRecharge> =
         c.recharges.filter { it.studentIds.size * 2 >= c.students.size.coerceAtLeast(1) }.sortedWith(compareBy({ it.start }, { it.time }))
 
-    fun window(c: SchoolClass, range: Range, dayFmt: (Long) -> String = ::fmtDay): Window {
+    /** 日历周期 [起, 止)：年 / 季度 / 月 / 周（周一起）/ 日，offset 往前（负）或往后（正）翻 */
+    fun periodBounds(range: Range, offset: Int, now: Long = System.currentTimeMillis()): Pair<Long, Long> {
+        val cal = Calendar.getInstance().apply { timeInMillis = startOfDay(now) }
+        val field: Int; val step: Int
+        when (range) {
+            Range.YEAR -> { cal.set(Calendar.DAY_OF_YEAR, 1); field = Calendar.YEAR; step = 1 }
+            Range.QUARTER -> { cal.set(Calendar.DAY_OF_MONTH, 1); cal.set(Calendar.MONTH, cal.get(Calendar.MONTH) / 3 * 3); field = Calendar.MONTH; step = 3 }
+            Range.MONTH -> { cal.set(Calendar.DAY_OF_MONTH, 1); field = Calendar.MONTH; step = 1 }
+            Range.WEEK -> { cal.add(Calendar.DAY_OF_YEAR, -((cal.get(Calendar.DAY_OF_WEEK) + 5) % 7)); field = Calendar.DAY_OF_YEAR; step = 7 }
+            else -> { field = Calendar.DAY_OF_YEAR; step = 1 }
+        }
+        cal.add(field, step * offset)
+        val a = cal.timeInMillis
+        cal.add(field, step)
+        return a to cal.timeInMillis
+    }
+
+    private val weekNames = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+    private fun md(t: Long) = java.text.SimpleDateFormat("M月d日", java.util.Locale.CHINA).format(java.util.Date(t))
+
+    /** 日历周期的名称，如“2026年11月”“2026年第4季度” */
+    fun periodLabel(range: Range, start: Long, end: Long, offset: Int): String {
+        val cal = Calendar.getInstance().apply { timeInMillis = start }
+        val y = cal.get(Calendar.YEAR); val m = cal.get(Calendar.MONTH) + 1
+        val name = when (range) {
+            Range.YEAR -> "${y}年"
+            Range.QUARTER -> "${y}年第${(m - 1) / 3 + 1}季度（${m}–${m + 2}月）"
+            Range.MONTH -> "${y}年${m}月"
+            Range.WEEK -> "${y}年${md(start)} – ${md(end - 1)}"
+            else -> "${fmtDay(start)} ${weekNames[(cal.get(Calendar.DAY_OF_WEEK) + 5) % 7]}"
+        }
+        val rel = when (offset) {
+            0 -> mapOf(Range.YEAR to "今年", Range.QUARTER to "本季度", Range.MONTH to "本月", Range.WEEK to "本周", Range.DAY to "今天")[range]
+            -1 -> mapOf(Range.YEAR to "去年", Range.QUARTER to "上季度", Range.MONTH to "上月", Range.WEEK to "上周", Range.DAY to "昨天")[range]
+            else -> null
+        }
+        return if (rel != null) "$name · $rel" else name
+    }
+
+    fun window(c: SchoolClass, range: Range, dayFmt: (Long) -> String = ::fmtDay): Window = window(c, Spec(range), dayFmt = dayFmt)
+
+    fun window(c: SchoolClass, spec: Spec, now: Long = System.currentTimeMillis(), dayFmt: (Long) -> String = ::fmtDay): Window {
         val sorted = c.assignments.sortedBy { it.createdAt }
+        val range = spec.range
+        fun between(a: Long, b: Long) = sorted.filter { it.createdAt >= a && it.createdAt < b }
         return when (range) {
             Range.ALL -> Window(range, sorted, emptyList(), null, null, "有记录以来全部 ${sorted.size} 次作业")
-            Range.RECENT10 -> Window(range, sorted.takeLast(10), sorted.dropLast(10).takeLast(10), null, sorted.takeLast(10).firstOrNull()?.createdAt, "最近 ${minOf(10, sorted.size)} 次作业")
+            Range.RECENT10 -> Window(range, sorted.takeLast(10), sorted.dropLast(10).takeLast(10), null, sorted.takeLast(10).firstOrNull()?.createdAt, "最近 ${minOf(10, sorted.size)} 次作业", prevLabel = "再往前 10 次")
             Range.PERIOD -> {
                 val resets = classResets(c)
                 val r = resets.lastOrNull()
@@ -49,8 +103,24 @@ object Analytics {
                     val prevReset = resets.dropLast(1).lastOrNull()
                     val cur = sorted.filter { r.counts(it.createdAt) }
                     val prev = sorted.filter { !r.counts(it.createdAt) && (prevReset == null || prevReset.counts(it.createdAt)) }
-                    Window(range, cur, prev, r, r.start, "本轮：${r.startLabel(dayFmt)}（${fmtDay(r.time)} 重置为 ${r.target.fmt()} 分）· ${cur.size} 次作业")
+                    Window(range, cur, prev, r, r.start, "本轮：${r.startLabel(dayFmt)}（${fmtDay(r.time)} 重置为 ${r.target.fmt()} 分）· ${cur.size} 次作业", prevLabel = "上一轮")
                 }
+            }
+            Range.CUSTOM -> {
+                val a = startOfDay(spec.from ?: sorted.firstOrNull()?.createdAt ?: now)
+                val toDay = startOfDay(maxOf(spec.to ?: now, a))
+                val b = Calendar.getInstance().apply { timeInMillis = toDay; add(Calendar.DAY_OF_YEAR, 1) }.timeInMillis
+                val days = Calendar.getInstance().let { cal -> var n = 0; cal.timeInMillis = a; while (cal.timeInMillis < b && n < 100000) { cal.add(Calendar.DAY_OF_YEAR, 1); n++ }; n }
+                val pa = Calendar.getInstance().apply { timeInMillis = a; add(Calendar.DAY_OF_YEAR, -days) }.timeInMillis
+                val cur = between(a, b)
+                Window(range, cur, between(pa, a), null, a, "${fmtDay(a)} – ${fmtDay(b - 1)}（$days 天）· ${cur.size} 次作业", end = b, prevLabel = "前 $days 天")
+            }
+            else -> {
+                val (a, b) = periodBounds(range, spec.offset, now)
+                val (pa, _) = periodBounds(range, spec.offset - 1, now)
+                val cur = between(a, b)
+                val prevName = mapOf(Range.YEAR to "上一年", Range.QUARTER to "上一季度", Range.MONTH to "上一月", Range.WEEK to "上一周", Range.DAY to "前一天")[range] ?: "上一时段"
+                Window(range, cur, between(pa, a), null, a, "${periodLabel(range, a, b, spec.offset)} · ${cur.size} 次作业", end = b, prevLabel = prevName)
             }
         }
     }
@@ -95,6 +165,8 @@ object Analytics {
         val rank: Int = 0,
         /** 范围内考试平均得分率（0–1），没有考试为 null */
         val examPct: Double? = null,
+        /** 最近连续交齐的次数（请假、未登记不打断） */
+        val handStreak: Int = 0,
     ) {
         val rate: Float get() = if (expected == 0) 1f else handedIn.toFloat() / expected
         val onTimeRate: Float get() = if (expected == 0) 1f else onTime.toFloat() / expected
@@ -103,6 +175,32 @@ object Analytics {
     data class SubjectStat(val subject: String, val count: Int, val rate: Float, val missing: Int, val onTimeRate: Float = rate)
 
     data class GroupStat(val name: String, val leader: Student?, val size: Int, val rate: Float, val missing: Int, val avgScore: Double, val scoreDelta: Double, val examPct: Double?)
+
+    /** 按日 / 周 / 月汇总的一段 */
+    data class Bucket(val label: String, val start: Long, val count: Int, val rate: Float, val onTimeRate: Float, val missing: Int)
+
+    /** 范围内全班积分来源 */
+    data class ScoreSources(val homework: Double = 0.0, val manualPlus: Double = 0.0, val manualMinus: Double = 0.0, val exam: Double = 0.0, val manualCount: Int = 0)
+
+    /** 手动加减分原因统计 */
+    data class ReasonStat(val reason: String, val count: Int, val total: Double, val people: Int)
+
+    /** 学生分层 */
+    data class Tier(val name: String, val desc: String, val level: Level, val students: List<StudentInsight>)
+
+    /** 下次缺交风险（近 8 次加权，越近权重越大） */
+    data class Risk(val student: Student, val prob: Double, val why: String)
+
+    /** 偏科：某一科交齐率明显低于自己的整体水平 */
+    data class WeakSubject(val student: Student, val subject: String, val subjectRate: Float, val overallRate: Float, val count: Int)
+
+    /** 各轮对比（以全班重置为分界） */
+    data class Round(val index: Int, val label: String, val start: Long?, val end: Long?, val kpi: Kpi, val examPct: Double?, val reset: ScoreRecharge?)
+
+    /** 进步 / 退步：以往（重置前）vs 重置后 */
+    data class Side(val expected: Int, val rate: Float, val onTimeRate: Float, val excellentRate: Float, val missing: Int, val examPct: Double?, val pace: Double)
+    data class StudentProgress(val student: Student, val before: Side, val after: Side, val index: Double, val reasons: List<String>)
+    data class Progress(val basis: String, val reset: ScoreRecharge?, val stars: List<StudentProgress>, val watch: List<StudentProgress>, val all: List<StudentProgress>)
 
     enum class Level { GOOD, INFO, WARN }
     data class Insight(val level: Level, val text: String)
@@ -140,6 +238,24 @@ object Analytics {
         /** 作业交齐率与考试得分率的相关系数 */
         val examCorrelation: Double? = null,
         val insights: List<Insight> = emptyList(),
+        val spec: Spec = Spec(range),
+        /** 按日 / 周 / 月汇总的交齐率（[bucketUnit] 为“日”“周”“月”） */
+        val buckets: List<Bucket> = emptyList(),
+        val bucketUnit: String = "",
+        val sources: ScoreSources = ScoreSources(),
+        val reasons: List<ReasonStat> = emptyList(),
+        val tiers: List<Tier> = emptyList(),
+        /** 连续交齐榜 */
+        val streakers: List<StudentInsight> = emptyList(),
+        val risk: List<Risk> = emptyList(),
+        val weakSubjects: List<WeakSubject> = emptyList(),
+        /** 学生交齐率的中位数与标准差（看两极分化） */
+        val rateMedian: Float = 0f,
+        val rateStd: Float = 0f,
+        val rounds: List<Round> = emptyList(),
+        val progress: Progress? = null,
+        /** 范围内的考试场次 */
+        val examCount: Int = 0,
     )
 
     /** 兼容旧接口：按范围选出作业和上一时段 */
@@ -193,8 +309,12 @@ object Analytics {
         return if (sxx == 0.0 || syy == 0.0) null else sxy / sqrt(sxx * syy)
     }
 
-    fun report(c: SchoolClass, rules: ScoreRules, range: Range, now: Long = System.currentTimeMillis()): Report {
-        val w = window(c, range)
+    fun report(c: SchoolClass, rules: ScoreRules, range: Range, now: Long = System.currentTimeMillis()): Report = report(c, rules, Spec(range), now)
+
+    fun report(c: SchoolClass, rules: ScoreRules, spec: Spec, now: Long = System.currentTimeMillis()): Report {
+        val range = spec.range
+        val w = window(c, spec, now)
+        val endT = w.end?.let { minOf(it - 1, now) }
         val list = w.assignments
         val points = list.map { Point(it, c.summary(it)) }
         val totals = HashMap<HwStatus, Int>()
@@ -215,14 +335,15 @@ object Analytics {
 
         // 积分：当前 / 范围起点
         val stats = c.studentStats(rules)
-        val nowScore = stats.associate { it.student.id to it.score }
+        // 过去的周期：积分取周期结束时的值
+        val nowScore = if (endT != null && endT < now) scoresAt(c, rules, endT) else stats.associate { it.student.id to it.score }
         val startScore: Map<String, Double> = when {
             w.reset != null -> c.students.associate { it.id to w.reset.target }
             w.start != null -> scoresAt(c, rules, w.start - 1)
             else -> c.students.associate { it.id to rules.initial }
         }
         val rankOf = stats.sortedByDescending { it.score }.mapIndexed { i, s -> s.student.id to i + 1 }.toMap()
-        val examsIn = c.exams.filter { e -> w.start == null || e.date >= w.start }.sortedBy { it.date }
+        val examsIn = c.exams.filter { e -> (w.start == null || e.date >= w.start) && (w.end == null || e.date < w.end) }.sortedBy { it.date }
         val examPctOf: Map<String, Double> = c.students.associate { st ->
             val v = examsIn.mapNotNull { e -> e.scores[st.id]?.let { if (e.fullScore > 0) it / e.fullScore else null } }
             st.id to (if (v.isEmpty()) Double.NaN else v.average())
@@ -242,14 +363,14 @@ object Analytics {
         val improved = students.filter { it.trend >= 0.2f && it.expected >= 4 }.sortedByDescending { it.trend }.take(5)
         val perfect = students.filter { it.expected > 0 && it.missing == 0 && it.late == 0 }
 
-        val scores = stats.map { it.score }
+        val scores = c.students.map { nowScore[it.id] ?: rules.initial }
         val scoreBins = if (scores.isEmpty()) emptyList() else {
             val lo = kotlin.math.floor(scores.min()).toInt()
             val hi = kotlin.math.floor(scores.max()).toInt()
             val step = maxOf(1, (hi - lo + 7) / 7)
             (lo..hi step step).map { b -> (if (step == 1) "$b" else "$b~${b + step - 1}") to scores.count { it >= b && it < b + step } }
         }
-        val groups = stats.groupBy { it.student.group.ifBlank { "未分组" } }.map { (g, l) -> g to l.sumOf { it.score } / l.size }.sortedByDescending { it.second }
+        val groups = c.students.groupBy { it.group.ifBlank { "未分组" } }.map { (g, l) -> g to l.sumOf { nowScore[it.id] ?: rules.initial } / l.size }.sortedByDescending { it.second }
         val byId = students.associateBy { it.student.id }
         val groupStats = c.students.groupBy { it.group.ifBlank { "未分组" } }.map { (g, members) ->
             val ins = members.mapNotNull { byId[it.id] }
@@ -278,14 +399,192 @@ object Analytics {
 
         val k = kpi(c, list)
         val prev = if (w.previous.isEmpty()) null else kpi(c, w.previous)
+        val (buckets, unit) = buckets(c, points, range)
+        val withData = students.filter { it.expected > 0 }
+        val rates = withData.map { it.rate }.sorted()
+        val median = if (rates.isEmpty()) 0f else if (rates.size % 2 == 1) rates[rates.size / 2] else (rates[rates.size / 2 - 1] + rates[rates.size / 2]) / 2
+        val mean = if (rates.isEmpty()) 0f else rates.average().toFloat()
+        val std = if (rates.size < 2) 0f else sqrt(rates.sumOf { ((it - mean) * (it - mean)).toDouble() } / rates.size).toFloat()
         val base = Report(
             range, w, points, k, prev, totals, weekday, subjects, students, attention, improved, perfect, scoreBins, groups,
             groupStats = groupStats, rateBins = rateBins, scoreTrend = scoreTrend, risers = risers, fallers = fallers,
             unregistered = unregistered, slope = slope(points.map { it.summary.rate.toDouble() }).toFloat(),
             longestPerfectRun = best, avgScore = if (scores.isEmpty()) 0.0 else scores.average(),
             avgScoreDelta = if (students.isEmpty()) 0.0 else students.map { it.scoreDelta }.average(), examCorrelation = corr,
+            spec = spec, buckets = buckets, bucketUnit = unit,
+            sources = sources(c, rules, list, w, examsIn), reasons = reasons(c, w),
+            tiers = tiers(withData), streakers = withData.filter { it.handStreak >= 3 }.sortedByDescending { it.handStreak }.take(8),
+            risk = risk(c), weakSubjects = weakSubjects(c, list, byId),
+            rateMedian = median, rateStd = std, rounds = rounds(c), progress = progress(c, rules), examCount = examsIn.size,
         )
         return base.copy(insights = insights(base, corrPairs))
+    }
+
+    // ---------------- 更多分析项 ----------------
+
+    /** 交齐率按日 / 周 / 月汇总：一天看不出汇总，一周按日，一月或一季按周，更长按月 */
+    fun buckets(c: SchoolClass, points: List<Point>, range: Range): Pair<List<Bucket>, String> {
+        if (points.size < 2 || range == Range.DAY) return emptyList<Bucket>() to ""
+        val first = points.first().assignment.createdAt; val last = points.last().assignment.createdAt
+        val span = (last - first) / 86_400_000L
+        val unit = when (range) {
+            Range.WEEK -> "日"
+            Range.MONTH, Range.QUARTER -> "周"
+            Range.YEAR -> "月"
+            else -> if (span <= 14) "日" else if (span <= 120) "周" else "月"
+        }
+        val cal = Calendar.getInstance()
+        fun keyOf(t: Long): Long {
+            cal.timeInMillis = startOfDay(t)
+            when (unit) {
+                "周" -> cal.add(Calendar.DAY_OF_YEAR, -((cal.get(Calendar.DAY_OF_WEEK) + 5) % 7))
+                "月" -> cal.set(Calendar.DAY_OF_MONTH, 1)
+            }
+            return cal.timeInMillis
+        }
+        val out = points.groupBy { keyOf(it.assignment.createdAt) }.toSortedMap().map { (k, l) ->
+            val exp = l.sumOf { it.summary.expected }
+            val label = when (unit) {
+                "月" -> java.text.SimpleDateFormat(if (span > 330) "yy年M月" else "M月", java.util.Locale.CHINA).format(java.util.Date(k))
+                "周" -> java.text.SimpleDateFormat("M/d", java.util.Locale.CHINA).format(java.util.Date(k)) + "周"
+                else -> java.text.SimpleDateFormat("M/d", java.util.Locale.CHINA).format(java.util.Date(k))
+            }
+            Bucket(
+                label, k, l.size,
+                if (exp == 0) 1f else l.sumOf { it.summary.handedIn }.toFloat() / exp,
+                if (exp == 0) 1f else l.sumOf { it.summary.c(HwStatus.SUBMITTED) + it.summary.c(HwStatus.EXCELLENT) }.toFloat() / exp,
+                l.sumOf { it.summary.c(HwStatus.MISSING) },
+            )
+        }
+        return (if (out.size >= 2) out else emptyList()) to unit
+    }
+
+    private fun inWindow(w: Window, t: Long) = (w.start == null || t >= w.start) && (w.end == null || t < w.end)
+
+    fun sources(c: SchoolClass, rules: ScoreRules, list: List<Assignment>, w: Window, exams: List<Exam>): ScoreSources {
+        var hw = 0.0
+        for (a in list) for (st in c.students) hw += rules.of(a.statuses[st.id] ?: HwStatus.NONE)
+        val manual = c.scores.filter { inWindow(w, it.time) }
+        val ex = exams.sumOf { e -> c.students.sumOf { rules.exam.deltaFor(e, it.id) } }
+        return ScoreSources(hw, manual.filter { it.delta > 0 }.sumOf { it.delta }, manual.filter { it.delta < 0 }.sumOf { it.delta }, ex, manual.size)
+    }
+
+    fun reasons(c: SchoolClass, w: Window): List<ReasonStat> =
+        c.scores.filter { inWindow(w, it.time) }.groupBy { it.reason.trim().ifBlank { if (it.delta > 0) "加分" else "扣分" } }
+            .map { (r, l) -> ReasonStat(r, l.size, l.sumOf { it.delta }, l.map { it.studentId }.distinct().size) }
+            .sortedWith(compareByDescending<ReasonStat> { it.count }.thenByDescending { abs(it.total) }).take(10)
+
+    fun tiers(list: List<StudentInsight>): List<Tier> {
+        val perfect = list.filter { it.missing == 0 && it.late == 0 && it.unregistered == 0 }
+        val rest = list - perfect.toSet()
+        val steady = rest.filter { it.rate >= 0.9f && it.missingStreak < 2 }
+        val wobble = rest.filter { it.rate >= 0.7f && it.rate < 0.9f && it.missingStreak < 2 }
+        val alert = rest.filter { it.rate < 0.7f || it.missingStreak >= 2 }
+        return listOf(
+            Tier("全勤", "没有缺交和迟交", Level.GOOD, perfect),
+            Tier("稳定", "交齐率 ≥ 90%", Level.GOOD, steady.sortedByDescending { it.rate }),
+            Tier("波动", "交齐率 70%–90%", Level.INFO, wobble.sortedByDescending { it.rate }),
+            Tier("需关注", "交齐率 < 70% 或连续未交", Level.WARN, alert.sortedBy { it.rate }),
+        )
+    }
+
+    /** 下次缺交风险：最近 8 次（不含请假、未登记），越近权重越大（0.75 衰减） */
+    fun risk(c: SchoolClass): List<Risk> {
+        val sorted = c.assignments.sortedByDescending { it.createdAt }
+        return c.students.mapNotNull { st ->
+            val marks = sorted.mapNotNull { a ->
+                when (a.statuses[st.id] ?: HwStatus.NONE) { HwStatus.MISSING -> 1.0; HwStatus.LATE -> 0.4; HwStatus.SUBMITTED, HwStatus.EXCELLENT -> 0.0; else -> null }
+            }.take(8)
+            if (marks.size < 3) return@mapNotNull null
+            var num = 0.0; var den = 0.0; var w = 1.0
+            for (m in marks) { num += w * m; den += w; w *= 0.75 }
+            val p = num / den
+            val recentMiss = marks.take(3).count { it == 1.0 }
+            if (p < 0.3) null else Risk(st, p, "近 ${marks.size} 次缺交 ${marks.count { it == 1.0 }} 次、迟交 ${marks.count { it == 0.4 }} 次" + if (recentMiss > 0) "，最近 3 次缺 $recentMiss 次" else "")
+        }.sortedByDescending { it.prob }.take(8)
+    }
+
+    fun weakSubjects(c: SchoolClass, list: List<Assignment>, byId: Map<String, StudentInsight>): List<WeakSubject> {
+        val bySubject = list.groupBy { it.subject.ifBlank { "其他" } }.filterValues { it.size >= 2 }
+        if (bySubject.size < 2) return emptyList()
+        return c.students.mapNotNull { st ->
+            val overall = byId[st.id] ?: return@mapNotNull null
+            if (overall.expected < 4) return@mapNotNull null
+            val worst = bySubject.mapNotNull { (sub, l) -> insight(st, l).takeIf { it.expected >= 2 }?.let { sub to it } }.minByOrNull { it.second.rate } ?: return@mapNotNull null
+            if (overall.rate - worst.second.rate < 0.2f) null else WeakSubject(st, worst.first, worst.second.rate, overall.rate, worst.second.expected)
+        }.sortedBy { it.subjectRate - it.overallRate }.take(8)
+    }
+
+    /** 以全班重置为分界的各轮 */
+    fun rounds(c: SchoolClass): List<Round> {
+        val resets = classResets(c)
+        if (resets.isEmpty()) return emptyList()
+        val sorted = c.assignments.sortedBy { it.createdAt }
+        val out = ArrayList<Round>()
+        for (i in 0..resets.size) {
+            val from = resets.getOrNull(i - 1)
+            val to = resets.getOrNull(i)
+            fun inside(t: Long) = (from == null || from.counts(t)) && (to == null || !to.counts(t))
+            val l = sorted.filter { inside(it.createdAt) }
+            if (l.isEmpty() && to != null) continue
+            val pcts = c.exams.filter { inside(it.date) }.flatMap { e -> e.scores.values.map { it / e.fullScore } }
+            val label = if (from == null) "首次重置前" else "第 $i 次重置后" + if (to == null) "（本轮）" else ""
+            out += Round(i, label, from?.start, to?.start, kpi(c, l), if (pcts.isEmpty()) null else pcts.average(), from)
+        }
+        return out
+    }
+
+    private fun side(c: SchoolClass, rules: ScoreRules, st: Student, list: List<Assignment>, exams: List<Exam>): Side {
+        val ins = insight(st, list)
+        val pts = list.mapNotNull { a -> (a.statuses[st.id] ?: HwStatus.NONE).takeIf { it != HwStatus.NONE && it != HwStatus.LEAVE }?.let { rules.of(it) } }
+        val ex = exams.mapNotNull { e -> e.scores[st.id]?.let { it / e.fullScore } }
+        return Side(
+            ins.expected - ins.unregistered, if (ins.expected - ins.unregistered == 0) 1f else ins.handedIn.toFloat() / (ins.expected - ins.unregistered),
+            if (ins.expected - ins.unregistered == 0) 1f else ins.onTime.toFloat() / (ins.expected - ins.unregistered),
+            if (ins.expected - ins.unregistered == 0) 0f else ins.excellent.toFloat() / (ins.expected - ins.unregistered),
+            ins.missing, if (ex.isEmpty()) null else ex.average(), if (pts.isEmpty()) 0.0 else pts.average(),
+        )
+    }
+
+    /**
+     * 进步之星 / 退步关注：比较“以往”（最近一次全班重置之前的全部记录）与“重置后”。
+     * 重置后至少要有 2 次作业才比较；不够时往前找上一次重置。还没有全班重置时，比较前半段与后半段。
+     * 综合指数 = 交齐率变化×0.45 + 按时率×0.2 + 优秀率×0.15 + 考试得分率×0.2（没有考试时按比例分给其他项）。
+     */
+    fun progress(c: SchoolClass, rules: ScoreRules): Progress? {
+        val sorted = c.assignments.sortedBy { it.createdAt }
+        if (sorted.size < 4 || c.students.isEmpty()) return null
+        val resets = classResets(c)
+        val r = resets.asReversed().firstOrNull { rr -> sorted.count { rr.counts(it.createdAt) } >= 2 && sorted.count { !rr.counts(it.createdAt) } >= 2 }
+        val (before, after, basis) = if (r != null) {
+            Triple(sorted.filter { !r.counts(it.createdAt) }, sorted.filter { r.counts(it.createdAt) }, run {
+                val at = if (r.assignmentId != null) "「${r.assignmentTitle.ifBlank { "所选作业" }}」" else fmtDay(r.start)
+                "重置前（$at 之前）vs 重置后（$at 起）"
+            })
+        } else {
+            val h = sorted.size / 2
+            Triple(sorted.take(h), sorted.drop(h), "还没有全班重置：前 $h 次 vs 后 ${sorted.size - h} 次")
+        }
+        val cut = after.first().createdAt
+        val exBefore = c.exams.filter { it.date < cut }; val exAfter = c.exams.filter { it.date >= cut }
+        val all = c.students.mapNotNull { st ->
+            val b = side(c, rules, st, before, exBefore); val a = side(c, rules, st, after, exAfter)
+            if (b.expected < 2 || a.expected < 2) return@mapNotNull null
+            val dr = (a.rate - b.rate).toDouble(); val dt = (a.onTimeRate - b.onTimeRate).toDouble(); val de = (a.excellentRate - b.excellentRate).toDouble()
+            val dx = if (a.examPct != null && b.examPct != null) a.examPct - b.examPct else null
+            val idx = if (dx != null) dr * 0.45 + dt * 0.2 + de * 0.15 + dx * 0.2 else (dr * 0.45 + dt * 0.2 + de * 0.15) / 0.8
+            val why = ArrayList<Pair<Double, String>>()
+            fun p(x: Float) = "${(x * 100).roundToInt()}%"
+            if (abs(dr) >= 0.05) why += abs(dr) to "交齐率 ${p(b.rate)}→${p(a.rate)}"
+            if (abs(dt) >= 0.08) why += abs(dt) * 0.8 to "按时率 ${p(b.onTimeRate)}→${p(a.onTimeRate)}"
+            if (abs(de) >= 0.08) why += abs(de) * 0.7 to "优秀率 ${p(b.excellentRate)}→${p(a.excellentRate)}"
+            if (dx != null && abs(dx) >= 0.04) why += abs(dx) to "考试得分率 ${(b.examPct!! * 100).roundToInt()}%→${(a.examPct!! * 100).roundToInt()}%"
+            if (abs(a.pace - b.pace) >= 0.3) why += 0.01 to "每次作业平均得分 ${b.pace.fmt()}→${a.pace.fmt()}"
+            StudentProgress(st, b, a, idx, why.sortedByDescending { it.first }.map { it.second })
+        }
+        val stars = all.filter { it.index >= 0.05 }.sortedByDescending { it.index }.take(8)
+        val watch = all.filter { it.index <= -0.05 || it.after.rate - it.before.rate <= -0.15f }.sortedBy { it.index }.take(8)
+        return Progress(basis, r, stars, watch, all)
     }
 
     fun insight(st: Student, list: List<Assignment>): StudentInsight {
@@ -304,9 +603,11 @@ object Analytics {
         }
         var streak = 0
         for (m in marks.asReversed()) if (m == 0) streak++ else break
+        var hand = 0
+        for (m in marks.asReversed()) if (m == 1) hand++ else break
         val half = marks.size / 2
         val trend = if (half < 2) 0f else marks.drop(marks.size - half).average().toFloat() - marks.take(half).average().toFloat()
-        return StudentInsight(st, expected, handed, missing, late, streak, trend, onTime, excellent, leave, none, longest)
+        return StudentInsight(st, expected, handed, missing, late, streak, trend, onTime, excellent, leave, none, longest, handStreak = hand)
     }
 
     private fun pct(x: Float) = "${(x * 100).roundToInt()}%"
@@ -324,7 +625,7 @@ object Analytics {
             out += Insight(if (per > 0) Level.GOOD else Level.WARN, "交齐率呈${if (per > 0) "上升" else "下降"}趋势，平均每次${if (per > 0) "提高" else "下降"} ${"%.1f".format(abs(per))} 个百分点。")
         r.previous?.let { p ->
             val d = ((k.handInRate - p.handInRate) * 100).roundToInt()
-            if (abs(d) >= 2) out += Insight(if (d > 0) Level.GOOD else Level.WARN, "与上一时段相比交齐率${if (d > 0) "提高" else "下降"} ${abs(d)} 个百分点（${pct(p.handInRate)} → ${pct(k.handInRate)}）。")
+            if (abs(d) >= 2) out += Insight(if (d > 0) Level.GOOD else Level.WARN, "与${r.window.prevLabel}相比交齐率${if (d > 0) "提高" else "下降"} ${abs(d)} 个百分点（${pct(p.handInRate)} → ${pct(k.handInRate)}）。")
             val m = ((k.missingRate - p.missingRate) * 100).roundToInt()
             if (abs(m) >= 2) out += Insight(if (m < 0) Level.GOOD else Level.WARN, "缺交率${if (m < 0) "降低" else "升高"} ${abs(m)} 个百分点。")
         }
@@ -348,7 +649,14 @@ object Analytics {
         if (low.isNotEmpty()) out += Insight(Level.WARN, "${low.size} 人交齐率低于 70%：${names(low)}。")
         val lates = r.students.filter { it.late >= 3 }.sortedByDescending { it.late }
         if (lates.isNotEmpty()) out += Insight(Level.INFO, "${names(lates)} 经常迟交（≥3 次）。")
-        if (r.improved.isNotEmpty()) out += Insight(Level.GOOD, "进步明显：${names(r.improved)}（后半段比前半段交得更好）。")
+        r.progress?.let { pg ->
+            if (pg.stars.isNotEmpty()) out += Insight(Level.GOOD, "进步之星（重置后比以往更好）：" + pg.stars.take(5).joinToString("、") { "${it.student.name}" + (it.reasons.firstOrNull()?.let { w -> "（$w）" } ?: "") } + "。")
+            if (pg.watch.isNotEmpty()) out += Insight(Level.WARN, "退步关注（重置后不如以往）：" + pg.watch.take(5).joinToString("、") { "${it.student.name}" + (it.reasons.firstOrNull()?.let { w -> "（$w）" } ?: "") } + "。")
+        }
+        if (r.risk.isNotEmpty()) out += Insight(Level.WARN, "下次缺交风险较高：" + r.risk.take(5).joinToString("、") { "${it.student.name}（${pct(it.prob)}）" } + "，可以提前提醒。")
+        if (r.weakSubjects.isNotEmpty()) out += Insight(Level.INFO, "偏科：" + r.weakSubjects.take(4).joinToString("；") { "${it.student.name}的${it.subject}交齐率 ${pct(it.subjectRate)}（整体 ${pct(it.overallRate)}）" } + "。")
+        if (r.rateStd >= 0.15f && r.students.size >= 6) out += Insight(Level.INFO, "交齐率两极分化：中位数 ${pct(r.rateMedian)}，标准差 ${(r.rateStd * 100).roundToInt()} 个百分点，少数同学拉低了整体。")
+        r.streakers.firstOrNull()?.let { if (it.handStreak >= 5) out += Insight(Level.GOOD, "${names(r.streakers.filter { s -> s.handStreak >= 5 }, 4)} 已连续 ${it.handStreak} 次及以上按要求交齐。") }
         if (r.perfectAttendance.isNotEmpty()) out += Insight(Level.GOOD, "${r.perfectAttendance.size} 人无缺交、无迟交。")
         // 小组
         val gs = r.groupStats.filter { it.name != "未分组" && it.size >= 2 }
@@ -358,6 +666,9 @@ object Analytics {
         }
         // 积分
         if (r.range != Range.ALL && abs(r.avgScoreDelta) >= 0.5) out += Insight(Level.INFO, "本时段全班平均积分${if (r.avgScoreDelta > 0) "增加" else "减少"} ${abs(r.avgScoreDelta).fmt()} 分。")
+        val src = r.sources
+        if (src.manualCount >= 3 && src.manualMinus < 0 && -src.manualMinus > src.manualPlus * 1.5) out += Insight(Level.INFO, "手动扣分（${src.manualMinus.fmt()}）明显多于加分（+${src.manualPlus.fmt()}），可以多用表扬加分。")
+        r.reasons.firstOrNull()?.let { if (it.count >= 3) out += Insight(Level.INFO, "最常见的加减分原因是“${it.reason}”（${it.count} 次，涉及 ${it.people} 人，合计 ${it.total.signed()}）。") }
         // 考试相关
         r.examCorrelation?.let { cr ->
             if (cr >= 0.3) {
@@ -371,10 +682,16 @@ object Analytics {
         return out
     }
 
+    /** 报告标题里的范围名 */
+    fun rangeTitle(r: Report) = when {
+        r.range.calendar || r.range == Range.CUSTOM -> r.window.label.substringBefore(" · ").substringBefore("（")
+        else -> r.range.label
+    }
+
     /** 文字版分析报告 */
     fun text(c: SchoolClass, r: Report, now: Long = System.currentTimeMillis(), exam: ExamReport? = null): String = buildString {
         val k = r.kpi
-        appendLine("📊 ${c.name} 作业与成绩分析报告（${r.range.label}）")
+        appendLine("📊 ${c.name} 作业与成绩分析报告（${rangeTitle(r)}）")
         appendLine("范围：${r.window.label}")
         appendLine("生成时间：${java.text.SimpleDateFormat("yyyy年M月d日 HH:mm", java.util.Locale.CHINA).format(java.util.Date(now))}")
         appendLine()
@@ -382,7 +699,7 @@ object Analytics {
         appendLine("共 ${k.assignments} 次作业，应交 ${k.expected} 人次。交齐率 ${pct(k.handInRate)}，按时率 ${pct(k.onTimeRate)}，优秀率 ${pct(k.excellentRate)}，缺交率 ${pct(k.missingRate)}，迟交率 ${pct(k.lateRate)}；全员交齐 ${k.perfect} 次（最长连续 ${r.longestPerfectRun} 次）。")
         appendLine("缺交 ${k.missing} 人次，迟交 ${k.late} 人次，请假 ${k.leave} 人次，未登记 ${k.unregistered} 人次。")
         r.previous?.let { p ->
-            appendLine("上一时段：交齐率 ${pct(p.handInRate)}，按时率 ${pct(p.onTimeRate)}，缺交率 ${pct(p.missingRate)}。")
+            appendLine("${r.window.prevLabel}：交齐率 ${pct(p.handInRate)}，按时率 ${pct(p.onTimeRate)}，缺交率 ${pct(p.missingRate)}。")
         }
         if (r.insights.isNotEmpty()) {
             appendLine(); appendLine("二、主要发现")
@@ -397,11 +714,23 @@ object Analytics {
         appendLine("交齐率分布：" + r.rateBins.joinToString("，") { "${it.first} ${it.second} 人" })
         appendLine(); appendLine("四、学生")
         if (r.attention.isNotEmpty()) appendLine("需要关注：" + r.attention.joinToString("；") { "${it.student.name} 缺交 ${it.missing} 次" + (if (it.missingStreak >= 2) "（连续 ${it.missingStreak} 次）" else "") + "，交齐率 ${pct(it.rate)}" })
-        if (r.improved.isNotEmpty()) appendLine("进步之星：" + r.improved.joinToString("、") { it.student.name })
+        r.progress?.let { pg ->
+            if (pg.stars.isNotEmpty()) appendLine("进步之星（${pg.basis}）：" + pg.stars.joinToString("；") { "${it.student.name} " + it.reasons.take(2).joinToString("，") })
+            if (pg.watch.isNotEmpty()) appendLine("退步关注（${pg.basis}）：" + pg.watch.joinToString("；") { "${it.student.name} " + it.reasons.take(2).joinToString("，") })
+        }
+        if (r.risk.isNotEmpty()) appendLine("缺交风险：" + r.risk.joinToString("；") { "${it.student.name} ${pct(it.prob)}（${it.why}）" })
+        if (r.weakSubjects.isNotEmpty()) appendLine("偏科提醒：" + r.weakSubjects.joinToString("；") { "${it.student.name} ${it.subject} ${pct(it.subjectRate)}（整体 ${pct(it.overallRate)}）" })
+        if (r.streakers.isNotEmpty()) appendLine("连续交齐：" + r.streakers.joinToString("、") { "${it.student.name} ${it.handStreak} 次" })
+        appendLine("学生分层：" + r.tiers.joinToString("；") { "${it.name} ${it.students.size} 人" } + "（交齐率中位数 ${pct(r.rateMedian)}，标准差 ${(r.rateStd * 100).roundToInt()} 个百分点）")
         if (r.perfectAttendance.isNotEmpty()) appendLine("全勤之星（${r.perfectAttendance.size} 人）：" + r.perfectAttendance.joinToString("、") { it.student.name })
         if (r.risers.isNotEmpty()) appendLine("积分上升最多：" + r.risers.joinToString("、") { "${it.student.name} ${it.scoreDelta.signed()}" })
         if (r.fallers.isNotEmpty()) appendLine("积分下降最多：" + r.fallers.joinToString("、") { "${it.student.name} ${it.scoreDelta.signed()}" })
         appendLine("积分：全班平均 ${r.avgScore.fmt()} 分" + if (r.range != Range.ALL) "，本时段变化 ${r.avgScoreDelta.signed()}" else "")
+        val src = r.sources
+        appendLine("积分来源：作业自动 ${src.homework.signed()}，手动加分 +${src.manualPlus.fmt()}，手动扣分 ${src.manualMinus.fmt()}，考试 ${src.exam.signed()}")
+        if (r.reasons.isNotEmpty()) appendLine("加减分原因：" + r.reasons.take(6).joinToString("；") { "${it.reason} ${it.count} 次（${it.total.signed()}）" })
+        if (r.buckets.isNotEmpty()) appendLine("按${r.bucketUnit}汇总交齐率：" + r.buckets.joinToString("，") { "${it.label} ${pct(it.rate)}" })
+        if (r.rounds.size > 1) appendLine("各轮对比：" + r.rounds.joinToString("；") { "${it.label} ${it.kpi.assignments} 次 交齐 ${pct(it.kpi.handInRate)}" + (it.examPct?.let { e -> " 考试 ${pct(e)}" } ?: "") })
         if (exam != null && exam.exams.isNotEmpty()) {
             appendLine(); appendLine("五、考试")
             exam.exams.forEach { e -> val s = exam.stats.getValue(e.id); appendLine("${fmtDay(e.date)} ${e.subject}「${e.title}」：平均 ${s.avg.fmt()}/${e.fullScore.fmt()}，中位 ${s.median.fmt()}，最高 ${s.max.fmt()}，及格率 ${pct(s.passRate)}，优秀率 ${pct(s.excellentRate)}") }

@@ -2,6 +2,8 @@
 
 package com.deepshawn.hwcounter.ui.screens
 
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -221,9 +223,11 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
                     Triple("数本数", Icons.Filled.Layers, Color(0xFFAE3EC9) to { kit.nav.push(Route.Stack(todayTarget?.id)) }),
                     Triple("统计表识别", Icons.Filled.TableChart, Color(0xFF0CA678) to { kit.nav.push(Route.StatTable(null)) }),
                     Triple("考试", Icons.Filled.School, Color(0xFF7A5CFF) to { kit.nav.push(Route.Exams) }),
+                    Triple("批量加分", Icons.Filled.EmojiEvents, Color(0xFFF59F00) to { kit.nav.push(Route.BatchScore()) }),
+                    Triple("分析报告", Icons.Filled.Insights, Color(0xFF3B5BDB) to { kit.nav.tab(Route.Stats) }),
                 )
                 Column(Modifier.padding(vertical = 10.dp)) {
-                    actions.chunked(4).forEach { row ->
+                    actions.chunked(5).forEach { row ->
                         Row(Modifier.fillMaxWidth()) {
                             row.forEach { (label, icon, pair) ->
                                 Column(

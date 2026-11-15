@@ -288,6 +288,8 @@ struct SchoolClass: Codable, Identifiable, Equatable {
     var exams: [Exam] = []
     /// 小组 → 组长学生 id
     var groupLeaders: [String: String] = [:]
+    /// 每月定期重置（与安卓 AutoReset.kt 同格式同算法）
+    var autoReset: AutoReset? = nil
 
     init(name: String, emoji: String = "🎒", students: [Student] = []) {
         self.name = name; self.emoji = emoji; self.students = students
@@ -304,6 +306,86 @@ struct SchoolClass: Codable, Identifiable, Equatable {
         recharges = (try? c.decodeIfPresent([ScoreRecharge].self, forKey: .recharges)) ?? []
         exams = (try? c.decodeIfPresent([Exam].self, forKey: .exams)) ?? []
         groupLeaders = (try? c.decodeIfPresent([String: String].self, forKey: .groupLeaders)) ?? [:]
+        autoReset = try? c.decodeIfPresent(AutoReset.self, forKey: .autoReset)
+    }
+}
+
+/// 每月定期重置：每月 day 号 0 点起全班积分重置为 target；记录 id 为 “auto-年月”，撤销的月份记入 skipped 不再补回
+struct AutoReset: Codable, Equatable {
+    var enabled = true
+    var target = 100.0
+    var day = 1
+    var note = "每月定期重置"
+    var since: Int64 = nowMillis()
+    var skipped: [String] = []
+
+    init(enabled: Bool = true, target: Double = 100, day: Int = 1, note: String = "每月定期重置") {
+        self.enabled = enabled; self.target = target; self.day = day; self.note = note
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        target = try c.decodeIfPresent(Double.self, forKey: .target) ?? 100
+        day = try c.decodeIfPresent(Int.self, forKey: .day) ?? 1
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? "每月定期重置"
+        since = try c.decodeIfPresent(Int64.self, forKey: .since) ?? nowMillis()
+        skipped = try c.decodeIfPresent([String].self, forKey: .skipped) ?? []
+    }
+
+    static func moment(_ y: Int, _ m: Int, _ day: Int) -> Int64 {
+        var dc = DateComponents(); dc.year = y; dc.month = m; dc.day = min(max(day, 1), 28)
+        return Int64((Calendar.current.date(from: dc) ?? Date()).timeIntervalSince1970 * 1000)
+    }
+
+    /// 开启之后、到 now 为止已到期的（最多 24 个），按时间先后：(yyyyMM, 时刻)
+    func due(_ now: Int64 = nowMillis()) -> [(String, Int64)] {
+        guard enabled, now > since else { return [] }
+        let d = Date(timeIntervalSince1970: Double(now) / 1000)
+        var y = Calendar.current.component(.year, from: d), m = Calendar.current.component(.month, from: d)
+        var out: [(String, Int64)] = []
+        for _ in 0..<24 {
+            let t = AutoReset.moment(y, m, day)
+            if t <= since { break }
+            if t <= now { out.append((String(format: "%04d%02d", y, m), t)) }
+            m -= 1; if m < 1 { m = 12; y -= 1 }
+        }
+        return out.reversed()
+    }
+}
+
+extension SchoolClass {
+    /// 补上到期的定期重置
+    func applyingAutoReset(_ rules: Rules, now: Int64 = nowMillis()) -> SchoolClass {
+        guard let ar = autoReset, ar.enabled, !students.isEmpty, ar.target.isFinite else { return self }
+        var c = self
+        for (k, t) in ar.due(now) {
+            let id = "auto-" + k
+            if ar.skipped.contains(k) || c.recharges.contains(where: { $0.id == id }) { continue }
+            var past = c
+            past.assignments = c.assignments.filter { $0.createdAt <= t - 1 }
+            past.scores = c.scores.filter { $0.time <= t - 1 }
+            past.exams = c.exams.filter { $0.date <= t - 1 }
+            past.recharges = c.recharges.filter { $0.start <= t - 1 }
+            var before: [String: Double] = [:]
+            for st in past.stats(rules) { before[st.id] = st.score }
+            var r = ScoreRecharge(target: ar.target, studentIds: c.students.map(\.id), before: before, note: ar.note.isEmpty ? "每月定期重置" : ar.note, time: t)
+            r.id = id; r.effectiveAt = t
+            c.recharges.append(r)
+        }
+        return c
+    }
+
+    /// 撤销重置；定期重置记下月份
+    func undoingRecharge(_ id: String) -> SchoolClass {
+        var c = self
+        c.recharges.removeAll { $0.id == id }
+        if id.hasPrefix("auto-") {
+            var ar = c.autoReset ?? AutoReset(enabled: false)
+            let k = String(id.dropFirst(5))
+            if !ar.skipped.contains(k) { ar.skipped.append(k) }
+            c.autoReset = ar
+        }
+        return c
     }
 }
 

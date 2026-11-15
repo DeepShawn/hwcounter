@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -116,10 +117,23 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
     val rules = data.settings.rules
     val colors = MiuixTheme.colorScheme
     var mode by rememberSaveable { mutableIntStateOf(0) }
-    var rangeIdx by rememberSaveable { mutableIntStateOf(0) }
     var share by remember { mutableStateOf(false) }
-    val range = Analytics.Range.entries[rangeIdx]
-    val report = remember(c, rules, range) { Analytics.report(c, rules, range) }
+    val readOnly by vm.readOnly.collectAsState()
+    // 范围：全部 / 本轮 / 近 10 次 / 按时间（年 季 月 周 日 自定义）
+    var top by rememberSaveable { mutableIntStateOf(0) }
+    var calIdx by rememberSaveable { mutableIntStateOf(2) }
+    var offset by rememberSaveable { mutableIntStateOf(0) }
+    var customFrom by rememberSaveable { mutableStateOf<Long?>(null) }
+    var customTo by rememberSaveable { mutableStateOf<Long?>(null) }
+    val calRanges = listOf(Analytics.Range.YEAR, Analytics.Range.QUARTER, Analytics.Range.MONTH, Analytics.Range.WEEK, Analytics.Range.DAY, Analytics.Range.CUSTOM)
+    val spec = when (top) {
+        0 -> Analytics.Spec(Analytics.Range.ALL)
+        1 -> Analytics.Spec(Analytics.Range.PERIOD)
+        2 -> Analytics.Spec(Analytics.Range.RECENT10)
+        else -> calRanges[calIdx].let { r -> if (r == Analytics.Range.CUSTOM) Analytics.Spec(r, from = customFrom ?: (System.currentTimeMillis() - 29 * 86_400_000L), to = customTo ?: System.currentTimeMillis()) else Analytics.Spec(r, offset) }
+    }
+    val report = remember(c, rules, spec) { Analytics.report(c, rules, spec) }
+    var scoreFor by remember { mutableStateOf<Pair<List<String>, String>?>(null) }
     val subjectsWithExams = remember(c.exams) { c.exams.map { it.subject }.filter { it.isNotBlank() }.distinct() }
     var examSubject by rememberSaveable { mutableIntStateOf(0) }
     val examReport = remember(c, examSubject, subjectsWithExams) { Analytics.examReport(c, subjectsWithExams.getOrNull(examSubject - 1)) }
@@ -137,7 +151,19 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 HTabs(listOf("作业", "考试"), mode, { mode = it })
             }
         }
-        if (mode == 0) homeworkSections(c, report, rangeIdx, { rangeIdx = it }, onOpenAssignment = { kit.nav.push(Route.Assign(it)) }, onOpenStudent = { kit.nav.push(Route.StudentDetail(it)) }, onReport = { share = true })
+        if (mode == 0) {
+            item(key = "range") {
+                RangePicker(
+                    top, { top = it; offset = 0 }, calIdx, { calIdx = it; offset = 0 }, offset, { offset = it },
+                    spec, report.window.label, onCustom = { a, b -> customFrom = a; customTo = b },
+                )
+            }
+            homeworkSections(
+                c, report, onOpenAssignment = { kit.nav.push(Route.Assign(it)) }, onOpenStudent = { kit.nav.push(Route.StudentDetail(it)) }, onReport = { share = true },
+                onScore = if (readOnly) null else { ids, reason -> scoreFor = ids to reason },
+                onBatch = if (readOnly) null else { ids, reason -> kit.nav.push(Route.BatchScore(ids, reason)) },
+            )
+        }
         else examSections(c, examReport, subjectsWithExams, examSubject, { examSubject = it }, report.examCorrelation, onOpenExam = { kit.nav.push(Route.Exam(it)) }, onManage = { kit.nav.push(Route.Exams) }, onOpenStudent = { kit.nav.push(Route.StudentDetail(it)) })
     }
 
@@ -147,30 +173,97 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
             kit.toast("已复制分析报告")
         },
         SheetAction("分享文字报告", "发到家长群或教研记录") { shareReportText(ctx, reportText()) },
-        SheetAction("导出 Excel 分析报告", "概览、结论、学生明细、每次作业、科目、小组、积分、考试") { exportExcelReport(ctx, c, report, Analytics.examReport(c)) },
+        SheetAction("导出 PDF 分析报告", "排版好的多页报告：图表、结论、进步与退步、学生明细，可直接打印") {
+            runCatching { exportPdfReport(ctx, c, report, Analytics.examReport(c)) }.onFailure { kit.toast("生成 PDF 失败：${it.message}") }
+        },
+        SheetAction("导出 Excel 分析报告", "概览、结论、学生明细、每次作业、进步退步、各轮、积分来源、考试") { exportExcelReport(ctx, c, report, Analytics.examReport(c)) },
         SheetAction("导出各次统计名单 Excel", "每次作业一行：未交、迟交、请假、未登记名单") {
             val f = java.io.File(com.deepshawn.hwcounter.export.Exporter.exportDir(ctx), "${c.name}_各次作业统计名单_${com.deepshawn.hwcounter.export.Exporter.fileStamp()}.xlsx".replace("/", "_"))
             f.outputStream().use { com.deepshawn.hwcounter.export.Exporter.writeClassStatList(c, it) }
             com.deepshawn.hwcounter.export.Exporter.shareFile(ctx, f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "分享统计名单")
         },
     ), onDismiss = { share = false })
+
+    scoreFor?.let { (ids, reason) ->
+        val targets = c.students.filter { it.id in ids }
+        if (targets.isNotEmpty() && !readOnly) ScoreDialog(targets, data.settings.quickReasons, { scoreFor = null }, initialReason = reason) { d, r ->
+            vm.addScore(targets.map { it.id }, d, r)
+            kit.haptic(true)
+            kit.undoable(if (targets.size == 1) "${targets[0].name} ${d.signed()}" else "${targets.size} 人 ${d.signed()}")
+            scoreFor = null
+        }
+    }
+}
+
+private fun exportPdfReport(ctx: Context, c: SchoolClass, r: Analytics.Report, e: Analytics.ExamReport) {
+    val f = java.io.File(com.deepshawn.hwcounter.export.Exporter.exportDir(ctx), "${c.name}_分析报告_${com.deepshawn.hwcounter.export.Exporter.fileStamp()}.pdf".replace("/", "_"))
+    f.outputStream().use { com.deepshawn.hwcounter.export.PdfReport.write(c, r, e, it) }
+    com.deepshawn.hwcounter.export.Exporter.shareFile(ctx, f, "application/pdf", "分享 PDF 分析报告")
+}
+
+/** 统计范围选择：全部 / 本轮 / 近 10 次 / 按时间（年、季度、月、周、日可前后翻；自定义起止日） */
+@Composable
+private fun RangePicker(
+    top: Int, onTop: (Int) -> Unit, calIdx: Int, onCal: (Int) -> Unit, offset: Int, onOffset: (Int) -> Unit,
+    spec: Analytics.Spec, label: String, onCustom: (Long, Long) -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    var pick by remember { mutableIntStateOf(0) } // 1 选开始日 2 选结束日
+    Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        HTabs(listOf("全部", "本轮", "近 10 次", "按时间"), top, onTop, height = 36.dp)
+        if (top == 3) {
+            HTabs(listOf("年", "季度", "月", "周", "日", "自定义"), calIdx, onCal, height = 34.dp)
+            if (spec.range == Analytics.Range.CUSTOM) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(com.deepshawn.hwcounter.data.fmtDay(spec.from ?: 0L), onClick = { pick = 1 }, modifier = Modifier.weight(1f), minHeight = 36.dp)
+                    Text("至", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                    TextButton(com.deepshawn.hwcounter.data.fmtDay(spec.to ?: 0L), onClick = { pick = 2 }, modifier = Modifier.weight(1f), minHeight = 36.dp)
+                }
+            } else {
+                val (a, b) = Analytics.periodBounds(spec.range, offset)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton("‹", onClick = { onOffset(offset - 1) }, minWidth = 48.dp, minHeight = 36.dp)
+                    Text(
+                        Analytics.periodLabel(spec.range, a, b, offset), Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickable { onOffset(0) }.padding(vertical = 6.dp),
+                        textAlign = TextAlign.Center, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    TextButton("›", onClick = { onOffset(offset + 1) }, enabled = offset < 0, minWidth = 48.dp, minHeight = 36.dp)
+                }
+            }
+        }
+        Text(label, fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp))
+    }
+    if (pick != 0) {
+        val init = if (pick == 1) spec.from else spec.to
+        val state = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = init?.let { it + java.util.TimeZone.getDefault().getOffset(it) })
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { pick = 0 },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    state.selectedDateMillis?.let { utc ->
+                        val day = com.deepshawn.hwcounter.data.startOfDay(utc - java.util.TimeZone.getDefault().getOffset(utc) + 12 * 3600_000L)
+                        val from = spec.from ?: day; val to = spec.to ?: day
+                        if (pick == 1) onCustom(day, maxOf(day, to)) else onCustom(minOf(from, day), day)
+                    }
+                    pick = 0
+                }) { androidx.compose.material3.Text("确定") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { pick = 0 }) { androidx.compose.material3.Text("取消") } },
+        ) { androidx.compose.material3.DatePicker(state) }
+    }
 }
 
 // ---------------- 作业 ----------------
 
 private fun LazyListScope.homeworkSections(
-    c: SchoolClass, report: Analytics.Report, rangeIdx: Int, onRange: (Int) -> Unit,
+    c: SchoolClass, report: Analytics.Report,
     onOpenAssignment: (String) -> Unit, onOpenStudent: (String) -> Unit, onReport: () -> Unit,
+    onScore: ((List<String>, String) -> Unit)?, onBatch: ((List<String>, String) -> Unit)?,
 ) {
     val k = report.kpi; val p = report.previous
-    item(key = "range") {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            HTabs(Analytics.Range.entries.map { it.label }, rangeIdx, onRange, height = 36.dp)
-            Text(report.window.label, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
-        }
-    }
     if (report.points.isEmpty()) {
-        item { EmptyState("📈", if (c.assignments.isEmpty()) "还没有作业数据" else "这个范围里没有作业", "布置并登记几次作业后，这里会出现趋势、热力图和分析报告") }
+        item { EmptyState("📈", if (c.assignments.isEmpty()) "还没有作业数据" else "这个范围里没有作业", if (c.assignments.isEmpty()) "布置并登记几次作业后，这里会出现趋势、热力图和分析报告" else "换一个时间范围，或往前翻看看") }
+        report.progress?.let { pg -> item(key = "progress") { ProgressCard(pg, onOpenStudent, onScore, onBatch) } }
         return
     }
     group("主要发现", key = "insights") { InsightList(report.insights, Modifier.padding(16.dp)) }
@@ -187,11 +280,12 @@ private fun LazyListScope.homeworkSections(
                 KpiTile("全员交齐", "${k.perfect} 次", null, Modifier.weight(1f))
             }
             Text(
-                "${k.assignments} 次作业 · 应交 ${k.expected} 人次 · 缺交 ${k.missing} · 迟交 ${k.late} · 请假 ${k.leave}" + (if (k.unregistered > 0) " · 未登记 ${k.unregistered}" else "") + (if (p != null) " · 对比上一时段 ${p.assignments} 次" else ""),
+                "${k.assignments} 次作业 · 应交 ${k.expected} 人次 · 缺交 ${k.missing} · 迟交 ${k.late} · 请假 ${k.leave}" + (if (k.unregistered > 0) " · 未登记 ${k.unregistered}" else "") + (if (p != null) " · 对比${report.window.prevLabel} ${p.assignments} 次" else ""),
                 fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(start = 4.dp),
             )
         }
     }
+    report.progress?.let { pg -> item(key = "progress") { ProgressCard(pg, onOpenStudent, onScore, onBatch) } }
     val dateFmt = SimpleDateFormat("M/d", Locale.CHINA)
     group("交齐率趋势", key = "trend") {
         val pts = report.points
@@ -203,6 +297,19 @@ private fun LazyListScope.homeworkSections(
         val sl = report.slope * 100
         if (pts.size >= 4) Text(
             "趋势：平均每次${if (sl >= 0) "上升" else "下降"} ${"%.1f".format(kotlin.math.abs(sl))} 个百分点" + if (report.longestPerfectRun >= 2) " · 最长连续 ${report.longestPerfectRun} 次全员交齐" else "",
+            fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+        )
+    }
+    if (report.buckets.size >= 2) group("按${report.bucketUnit}汇总", key = "buckets") {
+        val b = report.buckets
+        TrendLine(
+            b.map { it.rate }, b.map { it.label },
+            b.map { "${it.label}：${it.count} 次作业 · 交齐 ${pctText(it.rate)} · 按时 ${pctText(it.onTimeRate)} · 缺交 ${it.missing} 人次" },
+            Modifier.padding(16.dp), height = 140.dp,
+        )
+        val best = b.maxBy { it.rate }; val worst = b.minBy { it.rate }
+        if (best.rate - worst.rate >= 0.03f) Text(
+            "最好：${best.label}（${pctText(best.rate)}）· 最差：${worst.label}（${pctText(worst.rate)}）",
             fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
         )
     }
@@ -239,7 +346,48 @@ private fun LazyListScope.homeworkSections(
     }
     item(key = "heat") { Heatmap(c, report, onOpen = onOpenAssignment) }
     item(key = "students") { StudentTable(report, onOpenStudent) }
-    group("交齐率分布（人数）", key = "rateBins") { Histogram(report.rateBins, Modifier.padding(16.dp)) }
+    item(key = "tiers") { TierCard(report.tiers, onOpenStudent) }
+    group("交齐率分布（人数）", key = "rateBins") {
+        Histogram(report.rateBins, Modifier.padding(16.dp))
+        Text(
+            "中位数 ${pctText(report.rateMedian)} · 标准差 ${(report.rateStd * 100).toInt()} 个百分点" + if (report.rateStd >= 0.15f) "（两极分化）" else if (report.rateStd < 0.06f) "（比较整齐）" else "",
+            fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+        )
+    }
+    if (report.risk.isNotEmpty()) group("缺交风险预警（下一次）", key = "risk") {
+        Column(Modifier.padding(vertical = 6.dp)) {
+            report.risk.forEach { r ->
+                Row(Modifier.fillMaxWidth().clickable { onOpenStudent(r.student.id) }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(r.student.name, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(r.why, fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, maxLines = 2)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Box(Modifier.width(64.dp).height(6.dp).clip(CircleShape).background(MiuixTheme.colorScheme.secondaryContainer)) {
+                        Box(Modifier.fillMaxWidth(r.prob.toFloat().coerceIn(0.04f, 1f)).height(6.dp).clip(CircleShape).background(if (r.prob >= 0.6) Color(0xFFE5384D) else Color(0xFFE8792C)))
+                    }
+                    Text(pct(r.prob), Modifier.width(44.dp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End)
+                }
+            }
+            Text("按最近 8 次加权估算（越近权重越大，迟交算 0.4 次缺交），只作提醒参考。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+        }
+    }
+    if (report.streakers.isNotEmpty()) group("连续交齐榜", key = "streak") {
+        FlowRow(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            report.streakers.forEach { s ->
+                Text("${s.student.name} · ${s.handStreak} 次", fontSize = 13.sp, color = Color(0xFF0F7A52), modifier = Modifier.clip(CircleShape).background(Color(0xFF169B68).copy(alpha = 0.12f)).clickable { onOpenStudent(s.student.id) }.padding(horizontal = 10.dp, vertical = 5.dp))
+            }
+        }
+    }
+    if (report.weakSubjects.isNotEmpty()) group("偏科提醒（某科明显交得少）", key = "weak") {
+        report.weakSubjects.forEach { w ->
+            SuperArrow(
+                title = "${w.student.name} · ${w.subject}",
+                summary = "${w.subject}交齐率 ${pctText(w.subjectRate)}（${w.count} 次），整体 ${pctText(w.overallRate)}，低 ${((w.overallRate - w.subjectRate) * 100).toInt()} 个百分点",
+                onClick = { onOpenStudent(w.student.id) },
+            )
+        }
+    }
     if (report.scoreTrend.size >= 2) group("全班平均积分走势", key = "scoreTrend") {
         ValueLine(
             report.scoreTrend.map { it.second }, report.scoreTrend.map { dateFmt.format(Date(it.first.createdAt)) },
@@ -252,6 +400,31 @@ private fun LazyListScope.homeworkSections(
             Movers("上升", report.risers, Color(0xFF169B68), Modifier.weight(1f), onOpenStudent)
             Spacer(Modifier.width(16.dp))
             Movers("下降", report.fallers, Color(0xFFE5384D), Modifier.weight(1f), onOpenStudent)
+        }
+    }
+    item(key = "sources") { SourcesCard(report) }
+    if (report.rounds.size > 1) group("各轮对比（以全班重置为分界）", key = "rounds") {
+        Column(Modifier.padding(vertical = 8.dp)) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Text("轮次", Modifier.weight(1.6f), fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Text("作业", Modifier.weight(0.6f), fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.End)
+                Text("交齐", Modifier.weight(0.7f), fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.End)
+                Text("优秀", Modifier.weight(0.7f), fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.End)
+                Text("考试", Modifier.weight(0.7f), fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, textAlign = TextAlign.End)
+            }
+            val best = report.rounds.filter { it.kpi.assignments > 0 }.maxOfOrNull { it.kpi.handInRate }
+            report.rounds.forEach { r ->
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1.6f)) {
+                        Text(r.label, fontSize = 14.sp, fontWeight = if (r.end == null) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
+                        r.start?.let { Text("${dateFmt.format(Date(it))} 起" + (r.reset?.target?.let { t -> " · ${t.fmt()} 分" } ?: ""), fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }
+                    }
+                    Text("${r.kpi.assignments}", Modifier.weight(0.6f), fontSize = 13.sp, textAlign = TextAlign.End)
+                    Text(if (r.kpi.assignments == 0) "—" else pctText(r.kpi.handInRate), Modifier.weight(0.7f), fontSize = 13.sp, textAlign = TextAlign.End, fontWeight = FontWeight.SemiBold, color = if (best != null && r.kpi.assignments > 0 && r.kpi.handInRate >= best) Color(0xFF169B68) else MiuixTheme.colorScheme.onSurface)
+                    Text(if (r.kpi.assignments == 0) "—" else pctText(r.kpi.excellentRate), Modifier.weight(0.7f), fontSize = 13.sp, textAlign = TextAlign.End)
+                    Text(r.examPct?.let { pct(it) } ?: "—", Modifier.weight(0.7f), fontSize = 13.sp, textAlign = TextAlign.End)
+                }
+            }
         }
     }
     if (report.groupStats.size > 1) group("小组对比", key = "groups") {
@@ -292,15 +465,6 @@ private fun LazyListScope.homeworkSections(
             )
         }
     }
-    if (report.improved.isNotEmpty()) group("进步之星（后半段比前半段交得更好）", key = "improved") {
-        report.improved.forEach { s ->
-            SuperArrow(
-                title = s.student.name, summary = "交齐率提升 ${(s.trend * 100).toInt()} 个百分点 · 现在 ${pctText(s.rate)}",
-                startAction = { Avatar(s.student.name, Modifier.padding(end = 12.dp), size = 36.dp) },
-                onClick = { onOpenStudent(s.student.id) },
-            )
-        }
-    }
     group("全勤之星 ${report.perfectAttendance.size} 人（无缺交、无迟交）", key = "stars") {
         if (report.perfectAttendance.isEmpty()) Text("暂时还没有，继续加油！", Modifier.padding(16.dp), color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         else FlowRow(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -317,8 +481,135 @@ private fun LazyListScope.homeworkSections(
     }
     group("分析报告", key = "report") {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("把本页全部分析（含考试）整理成文字报告或多表 Excel，一键分享。", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            Text("把本页全部分析（含考试、进步与退步）整理成文字、PDF 或多表 Excel，一键分享。", fontSize = 13.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             TextButton("生成分析报告", onClick = onReport, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColorsPrimary())
+        }
+    }
+}
+
+/** 进步之星 / 退步关注：以往（重置前）vs 重置后，可直接给这些同学加减分 */
+@Composable
+private fun ProgressCard(pg: Analytics.Progress, onOpen: (String) -> Unit, onScore: ((List<String>, String) -> Unit)?, onBatch: ((List<String>, String) -> Unit)?) {
+    val colors = MiuixTheme.colorScheme
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val list = if (tab == 0) pg.stars else pg.watch
+    val good = Color(0xFF169B68); val bad = Color(0xFFE5384D)
+    Column {
+        SmallTitle("进步之星 · 退步关注")
+        HCard(Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp).fillMaxWidth()) {
+            Column(Modifier.padding(vertical = 12.dp)) {
+                HTabs(listOf("进步之星 ${pg.stars.size}", "退步关注 ${pg.watch.size}"), tab, { tab = it }, Modifier.padding(horizontal = 12.dp), height = 36.dp)
+                Text(pg.basis, fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                if (list.isEmpty()) Text(
+                    if (tab == 0) "暂时没有明显进步的同学（综合指数提高 5 分以上才算）。" else "没有明显退步的同学，很好！",
+                    fontSize = 14.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                list.forEach { sp ->
+                    Row(Modifier.fillMaxWidth().clickable { onOpen(sp.student.id) }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Avatar(sp.student.name, size = 36.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(sp.student.name, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                                Spacer(Modifier.width(6.dp))
+                                val v = (sp.index * 100).toInt()
+                                Text(if (v >= 0) "+$v" else "$v", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = if (v >= 0) good else bad,
+                                    modifier = Modifier.clip(CircleShape).background((if (v >= 0) good else bad).copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 1.dp))
+                            }
+                            Text(sp.reasons.take(2).joinToString(" · ").ifBlank { "综合表现变化" }, fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        if (onScore != null) TextButton(
+                            if (tab == 0) "加分" else "加减分", onClick = { onScore(listOf(sp.student.id), if (tab == 0) "进步之星" else "退步提醒") },
+                            minHeight = 32.dp, minWidth = 56.dp, insideMargin = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+                if (onBatch != null && list.isNotEmpty()) TextButton(
+                    if (tab == 0) "给 ${list.size} 位进步之星加分" else "给 ${list.size} 人批量加减分",
+                    onClick = { onBatch(list.map { it.student.id }, if (tab == 0) "进步之星" else "退步提醒") },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth(),
+                    colors = if (tab == 0) ButtonDefaults.textButtonColorsPrimary() else ButtonDefaults.textButtonColors(),
+                )
+                Text("综合指数 = 交齐率变化×45% + 按时率×20% + 优秀率×15% + 考试得分率×20%（以百分点计）。", fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
+        }
+    }
+}
+
+/** 学生分层：全勤 / 稳定 / 波动 / 需关注 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TierCard(tiers: List<Analytics.Tier>, onOpen: (String) -> Unit) {
+    val colors = MiuixTheme.colorScheme
+    val total = tiers.sumOf { it.students.size }.coerceAtLeast(1)
+    var open by rememberSaveable { mutableIntStateOf(-1) }
+    val tierColors = listOf(Color(0xFF169B68), Color(0xFF3482FF), Color(0xFFE8792C), Color(0xFFE5384D))
+    Column {
+        SmallTitle("学生分层")
+        HCard(Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp).fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth().height(12.dp).clip(CircleShape)) {
+                    tiers.forEachIndexed { i, t -> if (t.students.isNotEmpty()) Box(Modifier.weight(t.students.size.toFloat()).height(12.dp).background(tierColors[i])) }
+                }
+                tiers.forEachIndexed { i, t ->
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { open = if (open == i) -1 else i }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(tierColors[i]))
+                            Spacer(Modifier.width(8.dp))
+                            Text(t.name, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Text("  ${t.desc}", fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.weight(1f), maxLines = 1)
+                            Text("${t.students.size} 人 · ${pctText(t.students.size.toFloat() / total)}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        if (t.students.isNotEmpty()) {
+                            val shown = if (open == i) t.students else t.students.take(8)
+                            FlowRow(Modifier.padding(top = 6.dp, start = 18.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                shown.forEach { s -> Text(s.student.name, fontSize = 12.sp, modifier = Modifier.clip(CircleShape).background(tierColors[i].copy(alpha = 0.12f)).clickable { onOpen(s.student.id) }.padding(horizontal = 9.dp, vertical = 3.dp)) }
+                                if (t.students.size > shown.size) Text("+${t.students.size - shown.size}", fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 4.dp, vertical = 3.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 积分来源（作业 / 手动加分 / 手动扣分 / 考试）与常见加减分原因 */
+@Composable
+private fun SourcesCard(r: Analytics.Report) {
+    val colors = MiuixTheme.colorScheme
+    val src = r.sources
+    val items = listOf(
+        Triple("作业自动", src.homework, Color(0xFF3482FF)), Triple("手动加分", src.manualPlus, Color(0xFF169B68)),
+        Triple("手动扣分", src.manualMinus, Color(0xFFE5384D)), Triple("考试计分", src.exam, Color(0xFF7A5CFF)),
+    )
+    val max = items.maxOf { kotlin.math.abs(it.second) }.coerceAtLeast(1.0)
+    if (items.all { kotlin.math.abs(it.second) < 1e-9 } && r.reasons.isEmpty()) return
+    Column {
+        SmallTitle("积分来源（本范围，全班合计）")
+        HCard(Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp).fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items.forEach { (label, v, col) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, Modifier.width(64.dp), fontSize = 13.sp, color = colors.onSurfaceSecondary)
+                        Box(Modifier.weight(1f).height(10.dp).clip(CircleShape).background(colors.secondaryContainer)) {
+                            Box(Modifier.fillMaxWidth((kotlin.math.abs(v) / max).toFloat().coerceIn(0.01f, 1f)).height(10.dp).clip(CircleShape).background(col))
+                        }
+                        Text(v.signed().let { if (v == 0.0) "0" else it }, Modifier.width(56.dp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End)
+                    }
+                }
+                if (r.reasons.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text("加减分原因（${src.manualCount} 条）", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                    r.reasons.take(6).forEach { x ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(x.reason, Modifier.weight(1f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${x.count} 次 · ${x.people} 人", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                            Text(x.total.signed(), Modifier.width(52.dp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End, color = if (x.total >= 0) Color(0xFF169B68) else Color(0xFFE5384D))
+                        }
+                    }
+                }
+            }
         }
     }
 }

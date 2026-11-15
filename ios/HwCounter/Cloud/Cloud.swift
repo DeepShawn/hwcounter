@@ -282,6 +282,11 @@ final class CloudClient {
             c.exams = exams.sorted { $0.date < $1.date }
             c.groupLeaders = r.groupLeaders.merging(l.groupLeaders) { _, n in n }
             c.seating = l.seating ?? r.seating
+            if var ar = l.autoReset ?? r.autoReset {
+                ar.skipped = Array(Set(ar.skipped + (l.autoReset?.skipped ?? []) + (r.autoReset?.skipped ?? []))).sorted()
+                c.autoReset = ar
+                c.recharges.removeAll { $0.id.hasPrefix("auto-") && ar.skipped.contains(String($0.id.dropFirst(5))) }
+            }
             classes[l.id] = c
         }
         var out = local

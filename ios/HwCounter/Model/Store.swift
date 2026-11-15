@@ -97,6 +97,7 @@ final class Store: ObservableObject {
     }
 
     private func start() async {
+        applyAutoResets()
         if cloud.session != nil { await runSync() } else { await refreshPreview() }
     }
 
@@ -239,7 +240,15 @@ final class Store: ObservableObject {
         let rules = data.rules
         updateClass(classId) { $0 = $0.recharging(rules, ids: ids, target: target, note: note, effectiveAt: effectiveAt, assignmentId: assignmentId) }
     }
-    func removeRecharge(_ id: String, classId: String) { updateClass(classId) { $0.recharges.removeAll { $0.id == id } } }
+    func removeRecharge(_ id: String, classId: String) { updateClass(classId) { $0 = $0.undoingRecharge(id) } }
+
+    /// 补上所有班级到期的每月定期重置
+    func applyAutoResets() {
+        guard !readOnly else { return }
+        let rules = data.rules
+        let next = data.classes.map { $0.applyingAutoReset(rules) }
+        if next != data.classes { update(undoable: false) { $0.classes = $0.classes.map { $0.applyingAutoReset(rules) } } }
+    }
 
     // 学生
     func upsertStudent(_ s: Student) {
@@ -380,6 +389,7 @@ final class Store: ObservableObject {
     func onActive() {
         if cloud.session != nil { scheduleSync(300) } else { Task { await refreshPreview() } }
         uploadDueDrafts()
+        applyAutoResets()
     }
 
     func runSync(retry: Int = 0) async {

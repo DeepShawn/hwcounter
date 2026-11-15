@@ -134,6 +134,10 @@ object ExamImport {
         fun absentOf(col: Int): List<String> = rows.filter { it.absent.getOrNull(col) == true }.map { it.studentId }
     }
 
+    /** 本地 OCR 的文字行（像素坐标）→ 表格：同一行的块按横向位置拼起来，再按空白分格 */
+    fun tableFromOcr(lines: List<com.deepshawn.hwcounter.recog.StatTable.Line>): List<List<String>> =
+        com.deepshawn.hwcounter.recog.StatTable.mergeRows(lines).map { com.deepshawn.hwcounter.recog.StatTable.half(it.text).trim().split(Regex("\\s+")).filter { c -> c.isNotBlank() } }.filter { it.isNotEmpty() }
+
     private val absentWords = setOf("缺考", "缺", "请假", "假", "病假", "免考", "缓考", "absent", "abs", "-", "/", "—")
 
     fun number(cell: String?): Double? {

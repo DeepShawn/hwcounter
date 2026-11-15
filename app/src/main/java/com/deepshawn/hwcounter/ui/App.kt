@@ -127,6 +127,7 @@ sealed interface Route {
     data object Exams : Route
     data class Exam(val id: String) : Route
     data class ExamImport(val examId: String?) : Route
+    data class BatchScore(val ids: List<String> = emptyList(), val reason: String = "") : Route
 }
 
 class Nav(private val stack: MutableList<Route>, private val canOpen: (Route) -> Boolean = { true }) {
@@ -196,7 +197,7 @@ fun App(vm: AppViewModel, data: AppData) {
     val nav = remember {
         Nav(stack) { r ->
             val editOnly = r is Route.Recognize || r is Route.Live || r is Route.Voice || r is Route.Spine || r is Route.Stack || r is Route.Paper || r is Route.Seating ||
-                r is Route.Draft || r is Route.Drafts || r is Route.StatTable
+                r is Route.Draft || r is Route.Drafts || r is Route.StatTable || r is Route.BatchScore
             when {
                 editOnly && vm.readOnly.value -> { vm.notices.tryEmit("👀 预览模式：登录后才能使用"); false }
                 // 预览模式不显示名单页（统计/热力图照常显示）
@@ -372,6 +373,7 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         Route.Exams -> com.deepshawn.hwcounter.ui.screens.ExamListScreen(vm, data)
         is Route.Exam -> com.deepshawn.hwcounter.ui.screens.ExamDetailScreen(vm, data, route.id)
         is Route.ExamImport -> com.deepshawn.hwcounter.ui.screens.ExamImportScreen(vm, data, route.examId)
+        is Route.BatchScore -> com.deepshawn.hwcounter.ui.screens.BatchScoreScreen(vm, data, route.ids, route.reason)
     }
 }
 
