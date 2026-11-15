@@ -324,5 +324,24 @@ do {
     total += 1
     if compareStudentNumbers("02", "2") == 0 { pass += 1; print("✓ 前导零不改变学号的数字顺序") }
 }
+// 每月定期重置：与安卓 AutoResetAndProgressTest、网页 recharge.test.mjs 同一组用例
+do {
+    print("== 每月定期重置")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    func at(_ y: Int, _ m: Int, _ d: Int) -> Int64 { AutoReset.moment(y, m, d) }
+    var ar = AutoReset(target: 100, day: 1); ar.since = at(2026, 9, 15)
+    check(ar.due(at(2026, 11, 20)).map { $0.0 } == ["202610", "202611"], "只补开启之后到期的月份")
+    let rules = Rules()
+    var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三")])
+    var a = Assignment(title: "作业1", subject: "数学"); a.createdAt = at(2026, 9, 20); a.statuses = ["s1": "MISSING"]
+    c.assignments = [a]; c.autoReset = ar
+    c = c.applyingAutoReset(rules, now: at(2026, 11, 2))
+    check(c.recharges.map(\.id) == ["auto-202610", "auto-202611"] && c.recharges[0].before["s1"] == 98, "补上的重置 id 固定，记录重置前分数")
+    check(c.applyingAutoReset(rules, now: at(2026, 11, 2)) == c, "再补一次不会重复")
+    c = c.undoingRecharge("auto-202611")
+    check(c.autoReset?.skipped == ["202611"] && c.applyingAutoReset(rules, now: at(2026, 11, 3)).recharges.map(\.id) == ["auto-202610"], "撤销的月份不再补回")
+    let back = try! JSONDecoder().decode(SchoolClass.self, from: JSONEncoder().encode(c))
+    check(back.autoReset == c.autoReset, "定期重置设置可编码/解码（与安卓字段一致）")
+}
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

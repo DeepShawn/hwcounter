@@ -68,7 +68,12 @@ class ShotsTest {
         var c = SchoolClass(
             id = "c1", name = "高一(3)班", students = st, assignments = assigns, exams = exams,
             groupLeaders = mapOf("第1组" to "s0", "第2组" to "s5", "第3组" to "s2"),
-            scores = listOf(ScoreEntry(studentId = "s0", delta = 2.0, reason = "主动回答", time = now - 20 * day), ScoreEntry(studentId = "s3", delta = -1.0, reason = "迟到", time = now - 3 * day)),
+            scores = listOf(
+                ScoreEntry(studentId = "s0", delta = 2.0, reason = "主动回答", time = now - 20 * day), ScoreEntry(studentId = "s3", delta = -1.0, reason = "迟到", time = now - 3 * day),
+                ScoreEntry(studentId = "s7", delta = 1.0, reason = "主动回答", time = now - 9 * day), ScoreEntry(studentId = "s8", delta = 1.0, reason = "主动回答", time = now - 5 * day),
+                ScoreEntry(studentId = "s11", delta = 2.0, reason = "课堂表现好", time = now - 4 * day), ScoreEntry(studentId = "s12", delta = -2.0, reason = "违反纪律", time = now - 2 * day),
+            ),
+            autoReset = AutoReset(target = 100.0, day = 1, since = now - 400 * day),
         )
         c = c.recharge(ScoreRules(), st.map { it.id }, 100.0, "期中重新计分", now - 15 * day, assignment = assigns[9])
         return AppData(classes = listOf(c), currentClassId = "c1", settings = Settings(onboarded = true))
@@ -92,6 +97,18 @@ class ShotsTest {
     private fun back() = rule.onAllNodes(hasContentDescription("返回")).onFirst().performClick()
     private fun safe(block: () -> Unit) = runCatching(block).onFailure { println("shot step failed: ${it.message?.take(200)}") }
 
+    /** PDF 报告画到位图上检查排版 */
+    private fun pdfPages(prefix: String) {
+        val c = sample().classes.first()
+        val r = Analytics.report(c, ScoreRules(), Analytics.Spec(Analytics.Range.ALL))
+        val pages = ArrayList<android.graphics.Bitmap>(); var cur: android.graphics.Bitmap? = null
+        com.deepshawn.hwcounter.export.PdfReport.render(c, r, Analytics.examReport(c), System.currentTimeMillis(), newPage = {
+            val b = android.graphics.Bitmap.createBitmap(595 * 2, 842 * 2, android.graphics.Bitmap.Config.ARGB_8888); cur = b
+            android.graphics.Canvas(b).apply { scale(2f, 2f) }
+        }, endPage = { cur?.let { pages += it } })
+        pages.forEachIndexed { i, b -> File(out, "${prefix}_pdf_${i + 1}.png").outputStream().use { b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) } }
+    }
+
     private fun run(prefix: String, dark: Int, ui: UiPrefs) {
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
         val vm = AppViewModel(app)
@@ -111,11 +128,25 @@ class ShotsTest {
             click("全班积分重置"); save("${prefix}_12_reset_dialog")
             click("取消")
         }
+        safe {
+            rule.onAllNodes(hasContentDescription("更多")).onFirst().performClick()
+            click("每月定期重置"); save("${prefix}_13_auto_reset")
+            click("取消")
+        }
+        safe {
+            rule.onAllNodes(hasContentDescription("更多")).onFirst().performClick()
+            click("批量加减分"); save("${prefix}_14_batch")
+            rule.onAllNodes(hasText("第1组", substring = true) and hasClickAction()).onFirst().performClick()
+            save("${prefix}_15_batch_pick"); scroll(); save("${prefix}_16_batch_list"); back()
+        }
 
         tab("统计"); save("${prefix}_20_stats")
-        for (i in 1..7) { scroll(); save("${prefix}_2${i}_stats") }
+        for (i in 1..14) { scroll(); save("${prefix}_2${"%02d".format(i)}_stats") }
         safe {
             top()
+            click("按时间"); save("${prefix}_28_stats_month")
+            click("‹"); save("${prefix}_29_stats_prev_month")
+            click("自定义"); save("${prefix}_29b_stats_custom")
             click("本轮"); save("${prefix}_30_stats_period")
             click("考试"); save("${prefix}_31_stats_exam"); scroll(); save("${prefix}_32_stats_exam"); scroll(); save("${prefix}_33_stats_exam"); scroll(); save("${prefix}_34_stats_exam")
         }
@@ -125,6 +156,7 @@ class ShotsTest {
         safe { click("第一次月考"); save("${prefix}_41_exam_detail"); scroll(); save("${prefix}_42_exam_detail") }
         safe { top(); click("按学号"); save("${prefix}_43_exam_by_no") }
         safe { back(); rule.onAllNodes(hasContentDescription("导入成绩")).onFirst().performClick(); save("${prefix}_44_exam_import") }
+        safe { home(); tab("首页"); top(); click("批量加分"); save("${prefix}_45_batch_home"); back() }
         home()
         tab("设置"); save("${prefix}_50_settings"); scroll(); save("${prefix}_51_settings"); scroll(); save("${prefix}_52_settings")
         safe {
@@ -134,7 +166,7 @@ class ShotsTest {
         }
     }
 
-    @Test fun light() = run("light", 1, UiPrefs())
+    @Test fun light() { run("light", 1, UiPrefs()); pdfPages("report") }
     @Test fun dark() = run("dark", 2, UiPrefs())
     @Test fun plain() = run("plain", 1, UiPrefs(glass = false))
 

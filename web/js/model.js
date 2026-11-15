@@ -139,7 +139,46 @@ export function rechargeScores(c, rules, studentIds, target, note = '', time = D
     effectiveAt: start ?? null, assignmentId: a ? a.id : null, assignmentTitle: a ? a.title : '' };
   return { ...c, recharges: [...(c.recharges || []), r] };
 }
-export const removeRecharge = (c, id) => ({ ...c, recharges: (c.recharges || []).filter((r) => r.id !== id) });
+/** 撤销重置；撤销每月定期重置（id 为 auto-年月）时记下月份，不再自动补回 */
+export const removeRecharge = (c, id) => {
+  const out = { ...c, recharges: (c.recharges || []).filter((r) => r.id !== id) };
+  if (String(id).startsWith('auto-')) {
+    const ar = c.autoReset || { enabled: false, target: 100, day: 1, note: '每月定期重置', since: Date.now(), skipped: [] };
+    out.autoReset = { ...ar, skipped: [...new Set([...(ar.skipped || []), String(id).slice(5)])] };
+  }
+  return out;
+};
+
+/** 每月定期重置（与安卓 AutoReset.kt 同算法）：开启后每月 day 号 0 点起全班重置为 target */
+export function autoResetDue(ar, now = Date.now()) {
+  if (!ar || !ar.enabled || !(now > (ar.since ?? 0))) return [];
+  const d = new Date(now); let y = d.getFullYear(); let m = d.getMonth(); const out = [];
+  for (let i = 0; i < 24; i++) {
+    const t = new Date(y, m, Math.min(Math.max(ar.day || 1, 1), 28)).getTime();
+    if (t <= (ar.since ?? 0)) break;
+    if (t <= now) out.push([`${y}${String(m + 1).padStart(2, '0')}`, t]);
+    m--; if (m < 0) { m = 11; y--; }
+  }
+  return out.reverse();
+}
+export function applyAutoReset(c, rules, now = Date.now()) {
+  const ar = c.autoReset;
+  if (!ar || !ar.enabled || !c.students.length || !Number.isFinite(ar.target)) return c;
+  let out = c;
+  for (const [k, t] of autoResetDue(ar, now)) {
+    const id = `auto-${k}`;
+    if ((ar.skipped || []).includes(k) || (out.recharges || []).some((r) => r.id === id)) continue;
+    const past = { ...out, assignments: out.assignments.filter((a) => a.createdAt <= t - 1), scores: out.scores.filter((e) => e.time <= t - 1),
+      exams: (out.exams || []).filter((e) => e.date <= t - 1), recharges: (out.recharges || []).filter((r) => rechargeStart(r) <= t - 1) };
+    const before = Object.fromEntries(studentStats(past, rules).map((st) => [st.student.id, st.score]));
+    out = { ...out, recharges: [...(out.recharges || []), { id, time: t, target: ar.target, studentIds: out.students.map((s) => s.id), before, note: ar.note || '每月定期重置', effectiveAt: t, assignmentId: null, assignmentTitle: '' }] };
+  }
+  return out;
+}
+export function applyAutoResets(d, now = Date.now()) {
+  const classes = d.classes.map((c) => applyAutoReset(c, d.settings.rules, now));
+  return classes.some((c, i) => c !== d.classes[i]) ? { ...d, classes } : d;
+}
 
 export function addStudentScores(c, studentIds, delta, reason) {
   if (!Number.isFinite(delta) || delta === 0) return c;

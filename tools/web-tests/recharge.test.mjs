@@ -88,3 +88,23 @@ test('考试计分档与安卓一致，并计入积分、受重置影响', () =>
   c = rechargeScores(c, rules, ['s1'], 100, '', 9000);
   assert.equal(score(c, 's1'), 100);
 });
+
+import { autoResetDue, applyAutoReset } from '../../web/js/model.js';
+import { merge } from '../../web/js/cloud.js';
+test('每月定期重置：只补开启后的月份，id 固定，撤销后不再补回（与安卓 AutoReset.kt 一致）', () => {
+  const at = (y, m, d) => new Date(y, m - 1, d).getTime();
+  const ar = { enabled: true, target: 100, day: 1, note: '每月定期重置', since: at(2026, 9, 15), skipped: [] };
+  assert.deepEqual(autoResetDue(ar, at(2026, 11, 20)).map((x) => x[0]), ['202610', '202611']);
+  let c = { ...fixture(), autoReset: ar };
+  c = applyAutoReset(c, rules, at(2026, 11, 2));
+  assert.deepEqual(c.recharges.map((r) => r.id), ['auto-202610', 'auto-202611']);
+  assert.equal(applyAutoReset(c, rules, at(2026, 11, 2)), c);
+  assert.equal(score(c, 's1'), 100);
+  c = removeRecharge(c, 'auto-202611');
+  assert.deepEqual(c.autoReset.skipped, ['202611']);
+  assert.deepEqual(applyAutoReset(c, rules, at(2026, 11, 3)).recharges.map((r) => r.id), ['auto-202610']);
+  // 合并：另一端还留着已撤销的月份 → 去掉
+  const remote = { version: 1, classes: [{ ...c, autoReset: { ...ar }, recharges: [...c.recharges, { ...c.recharges[0], id: 'auto-202611' }] }], settings: {} };
+  const local = { version: 1, classes: [c], settings: {} };
+  assert.deepEqual(merge(local, remote).classes[0].recharges.map((r) => r.id), ['auto-202610']);
+});

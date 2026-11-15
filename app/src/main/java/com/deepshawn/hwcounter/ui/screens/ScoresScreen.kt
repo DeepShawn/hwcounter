@@ -59,6 +59,8 @@ import com.deepshawn.hwcounter.data.StudentStat
 import com.deepshawn.hwcounter.data.compareStudentNumbers
 import com.deepshawn.hwcounter.data.fmt
 import com.deepshawn.hwcounter.data.latestRecharges
+import com.deepshawn.hwcounter.data.isAuto
+import com.deepshawn.hwcounter.data.next
 import com.deepshawn.hwcounter.data.recharge
 import com.deepshawn.hwcounter.data.startLabel
 import com.deepshawn.hwcounter.data.startOfDay
@@ -110,6 +112,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
     var rechargeFor by remember(c.id, readOnly) { mutableStateOf<List<String>?>(null) }
     var history by remember { mutableStateOf(false) }
     var editBase by remember(c.id, readOnly) { mutableStateOf(false) }
+    var editAuto by remember(c.id, readOnly) { mutableStateOf(false) }
     val stats = remember(c, rules) { c.studentStats(rules).sortedByDescending { it.score } }
     val personalStats = remember(stats, byNumber) { if (byNumber) stats.sortedWith { x, y -> compareStudentNumbers(x.student.no, y.student.no) } else stats }
     val ranks = remember(stats) { stats.mapIndexed { i, st -> st.student.id to i + 1 }.toMap() }
@@ -147,6 +150,13 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         item(key = "summary") {
             Column(Modifier.padding(horizontal = 12.dp)) {
                 ScoreHero(stats, rules.initial, rules.missing, rules.late, rules.excellent, c.recharges.size) { kit.nav.push(Route.StudentDetail(it)) }
+                c.autoReset?.takeIf { it.enabled }?.let { ar ->
+                    Text(
+                        "🗓️ 每月 ${ar.day} 号自动重置为 ${ar.target.fmt()} 分 · 下次 ${fmtDay(ar.next())}",
+                        fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).combinedClickable(onClick = { if (!readOnly) editAuto = true }),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
             }
         }
         item(key = "tabs") {
@@ -207,7 +217,9 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         show = menu, title = "积分操作", onDismiss = { menu = false },
         actions = buildList {
             if (!readOnly) {
+                add(SheetAction("批量加减分", "按小组、作业、考试、进步之星等快速选人，可逐人设分值", enabled = c.students.isNotEmpty()) { exitSelect(); kit.nav.push(Route.BatchScore()) })
                 add(SheetAction("全班积分重置", "只重置积分，保留全部历史记录", enabled = c.students.isNotEmpty()) { exitSelect(); rechargeFor = c.students.map { it.id } })
+                add(SheetAction("每月定期重置", c.autoReset?.takeIf { it.enabled }?.let { "已开启：每月 ${it.day} 号重置为 ${it.target.fmt()} 分" } ?: "未开启：每月自动重置全班积分") { editAuto = true })
                 add(SheetAction("全班 +1", "全班表现好", enabled = c.students.isNotEmpty()) {
                     vm.addScore(c.students.map { it.id }, 1.0, "全班表现好"); kit.celebrate(); kit.undoable("全班 +1 🎉")
                 })
@@ -257,8 +269,53 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         }
         kit.undoable("已为 ${targets.size} 人重置为 ${value.fmt()} 分$start，历史记录已保留")
     }
+    AutoResetDialog(editAuto && !readOnly, c.autoReset, rules.initial, onDismiss = { editAuto = false }) { ar ->
+        vm.setAutoReset(ar); editAuto = false
+        kit.toast(if (ar.enabled) "已开启：每月 ${ar.day} 号重置为 ${ar.target.fmt()} 分，下次 ${fmtDay(ar.next())}" else "已关闭每月定期重置")
+    }
     RechargeHistorySheet(history, c.recharges, c.students, readOnly, onDismiss = { history = false }) { r ->
         vm.removeRecharge(r.id); kit.undoable("已撤销 ${fmtStamp(r.time)} 的重置")
+    }
+}
+
+/** 每月定期重置设置 */
+@Composable
+private fun AutoResetDialog(show: Boolean, current: com.deepshawn.hwcounter.data.AutoReset?, initial: Double, onDismiss: () -> Unit, onSave: (com.deepshawn.hwcounter.data.AutoReset) -> Unit) {
+    val colors = MiuixTheme.colorScheme
+    var on by remember(show) { mutableStateOf(current?.enabled ?: true) }
+    var text by remember(show) { mutableStateOf((current?.target ?: initial).fmt()) }
+    var day by remember(show) { mutableIntStateOf(current?.day ?: 1) }
+    var note by remember(show) { mutableStateOf(current?.note ?: "每月定期重置") }
+    val value = text.trim().toDoubleOrNull()?.takeIf { it.isFinite() }
+    val preview = com.deepshawn.hwcounter.data.AutoReset(enabled = true, target = value ?: 0.0, day = day, since = if (current?.enabled == true) current.since else System.currentTimeMillis())
+    HyperDialog(
+        show = show, title = "每月定期重置", onDismiss = onDismiss,
+        summary = "每月指定日期 0 点起，全班积分自动重置为设定分数（打开 App 时补上）。和手动重置一样只重置积分、保留全部记录，可以单独撤销某个月。",
+        confirmText = "保存", confirmEnabled = value != null || !on,
+        onConfirm = {
+            val keepSince = current?.enabled == true && on
+            onSave(com.deepshawn.hwcounter.data.AutoReset(on, value ?: current?.target ?: initial, day, note.trim().ifBlank { "每月定期重置" }, if (keepSince) current!!.since else System.currentTimeMillis(), current?.skipped.orEmpty()))
+        },
+    ) {
+        com.deepshawn.hwcounter.ui.components.HTabs(listOf("开启", "关闭"), if (on) 0 else 1, { on = it == 0 })
+        if (on) {
+            Spacer(Modifier.height(12.dp))
+            Text("每月几号", fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton("−", onClick = { day = if (day <= 1) 28 else day - 1 }, minWidth = 48.dp)
+                Text("$day 号", Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                TextButton("+", onClick = { day = if (day >= 28) 1 else day + 1 }, minWidth = 48.dp)
+            }
+            Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(1, 10, 15, 20).forEach { d -> com.deepshawn.hwcounter.ui.components.Chip2("$d 号", day == d, { day = d }, Modifier.weight(1f)) }
+            }
+            Spacer(Modifier.height(10.dp))
+            TextField(text, { text = it }, label = "重置为（分）", singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            TextField(note, { note = it }, label = "备注", singleLine = true, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            Text("下次重置：${fmtDay(preview.next())} 0 点" + if (current?.skipped?.isNotEmpty() == true) " · 已撤销 ${current.skipped.size} 个月" else "", fontSize = 12.sp, color = colors.primary)
+        }
     }
 }
 
@@ -377,7 +434,9 @@ private fun RechargeHistorySheet(show: Boolean, recharges: List<ScoreRecharge>, 
                 Card {
                     Column(Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("重置为 ${r.target.fmt()} 分", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                            Text("重置为 ${r.target.fmt()} 分", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                            if (r.isAuto()) Text("每月定期", fontSize = 11.sp, color = colors.primary, modifier = Modifier.padding(start = 8.dp).clip(CircleShape).background(colors.primary.copy(alpha = 0.12f)).padding(horizontal = 7.dp, vertical = 2.dp))
+                            Spacer(Modifier.weight(1f))
                             Text("${r.studentIds.size} 人", color = colors.primary, fontWeight = FontWeight.SemiBold)
                         }
                         Text(r.startLabel(::fmtDay) + " · 操作于 " + fmtStamp(r.time) + if (r.note.isNotBlank()) " · ${r.note}" else "", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
@@ -394,7 +453,7 @@ private fun RechargeHistorySheet(show: Boolean, recharges: List<ScoreRecharge>, 
     }
     HyperDialog(
         show = confirm != null, title = "撤销重置？", onDismiss = { confirm = null },
-        summary = "删除这条重置记录后，这些同学的积分恢复按之前的记录计算。其他数据不受影响。",
+        summary = "删除这条重置记录后，这些同学的积分恢复按之前的记录计算。其他数据不受影响。" + if (confirm?.isAuto() == true) "这个月的定期重置不会再自动补回。" else "",
         confirmText = "撤销", danger = true,
         onConfirm = { confirm?.let(onUndo); confirm = null },
     )

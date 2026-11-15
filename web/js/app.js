@@ -1,7 +1,7 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
-import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, compareStudentNumbers, addStudentScores, rechargeScores, removeRecharge, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
+import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, compareStudentNumbers, addStudentScores, rechargeScores, removeRecharge, applyAutoResets, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
 import { api, session, meta, setMeta, syncOnce, pushAs, merge, hashData, withLocalKey } from './cloud.js';
 import { createVoiceParser } from './voice.js';
 import { xlsx, ST } from './xlsx.js';
@@ -156,6 +156,7 @@ function useStore() {
   useEffect(() => {
     const tick = () => {
       if (!session()) return;
+      update((d) => applyAutoResets(d), false);
       const due = draftsRef.current.filter((x) => x.scheduledAt && x.scheduledAt <= Date.now()).map((x) => x.id);
       if (due.length) uploadDrafts(due, '⏰ 定时');
     };
@@ -669,6 +670,7 @@ function Scores({ s }) {
   const [selecting, setSelecting] = useState(false); const [selected, setSelected] = useState(new Set());
   const [resetIds, setResetIds] = useState(null); const [baseOpen, setBaseOpen] = useState(false); const [scoreValue, setScoreValue] = useState('');
   const [rechargeNote, setRechargeNote] = useState(''); const [historyOpen, setHistoryOpen] = useState(false);
+  const [autoOpen, setAutoOpen] = useState(false); const [autoForm, setAutoForm] = useState(null);
   const [startMode, setStartMode] = useState('now'); const [startAssign, setStartAssign] = useState(''); const [startDay, setStartDay] = useState('');
   useEffect(() => { setSelecting(false); setSelected(new Set()); setTargetIds(null); setResetIds(null); setBaseOpen(false); }, [c?.id, s.readOnly]);
   if (!c) return html`<div class="page"><div class="empty">🏆 还没有班级</div></div>`;
@@ -711,6 +713,7 @@ function Scores({ s }) {
     <div class="toolbar"><button class="chip" onClick=${exportAll}>📊 导出全班 Excel</button>
       <button class="chip" onClick=${() => download(xlsx([{ name: '各次统计名单', rows: classStatRows(c, fmtDate) }]), `${c.name}_各次作业统计名单.xlsx`)}>📋 各次统计名单</button>
       ${recharges.length > 0 && html`<button class="chip" onClick=${() => setHistoryOpen(true)}>🧾 重置记录 ${recharges.length}</button>`}
+      ${!s.readOnly && html`<button class="chip" onClick=${() => { const ar = c.autoReset; setAutoForm({ enabled: ar ? !!ar.enabled : true, target: String(ar?.target ?? rules.initial), day: String(ar?.day ?? 1), note: ar?.note ?? '每月定期重置' }); setAutoOpen(true); }}>🗓️ 每月定期重置${c.autoReset?.enabled ? ` · ${c.autoReset.day} 号` : ''}</button>`}
       ${!s.readOnly && html`<button class=${'chip' + (selecting ? ' on' : '')} disabled=${!c.students.length} onClick=${() => { if (selecting) cancelSelection(); else setSelecting(true); }}>${selecting ? '退出多选' : '☑️ 多选'}</button>
       <button class="chip" onClick=${() => { setScoreValue(String(rules.initial)); setBaseOpen(true); }}>修改基准分</button>
       <button class="chip" disabled=${!c.students.length || selecting} onClick=${() => openReset(c.students.map((st) => st.id))}>🔄 全班积分重置</button>
@@ -763,6 +766,20 @@ function Scores({ s }) {
         update((d) => mapClass(d, c.id, (k) => rechargeScores(k, d.settings.rules, resetTargets.map((st) => st.id), Number(scoreValue), rechargeNote, Date.now(), startOpts())));
         setResetIds(null); cancelSelection(); say(`🔄 已为 ${resetTargets.length} 人重置为 ${fmtNum(Number(scoreValue))} 分，历史记录已保留`, true);
       }}>确认重置</button></div>
+    </${Modal}>`}
+    ${!s.readOnly && autoOpen && autoForm && html`<${Modal} title="🗓️ 每月定期重置" onClose=${() => setAutoOpen(false)}>
+      <p class="muted small">每月指定日期 0 点起，全班积分自动重置为设定分数（打开网页或 App 时补上）。和手动重置一样只重置积分、保留全部记录，可在“重置记录”中撤销某个月。</p>
+      <label class="row"><input type="checkbox" checked=${autoForm.enabled} onChange=${(e) => setAutoForm({ ...autoForm, enabled: e.target.checked })} /> 开启</label>
+      <label>每月几号（1–28）<input class="input" type="number" min="1" max="28" value=${autoForm.day} onInput=${(e) => setAutoForm({ ...autoForm, day: e.target.value })} /></label>
+      <label>重置为<input class="input" type="number" step="0.5" value=${autoForm.target} onInput=${(e) => setAutoForm({ ...autoForm, target: e.target.value })} /></label>
+      <label>备注<input class="input" value=${autoForm.note} onInput=${(e) => setAutoForm({ ...autoForm, note: e.target.value })} /></label>
+      <div class="actions"><button class="btn ghost" onClick=${() => setAutoOpen(false)}>取消</button><button class="btn" disabled=${!Number.isFinite(Number(autoForm.target)) || !(Number(autoForm.day) >= 1 && Number(autoForm.day) <= 28)} onClick=${() => {
+        const prev = c.autoReset;
+        const next = { enabled: autoForm.enabled, target: Number(autoForm.target), day: Math.round(Number(autoForm.day)), note: autoForm.note.trim() || '每月定期重置',
+          since: prev && prev.enabled && autoForm.enabled ? prev.since : Date.now(), skipped: prev?.skipped || [] };
+        update((d) => applyAutoResets(mapClass(d, c.id, (k) => ({ ...k, autoReset: next }))));
+        setAutoOpen(false); say(autoForm.enabled ? `已开启：每月 ${next.day} 号重置为 ${fmtNum(next.target)} 分` : '已关闭每月定期重置', true);
+      }}>保存</button></div>
     </${Modal}>`}
     ${historyOpen && html`<${Modal} title="🧾 积分重置记录" onClose=${() => setHistoryOpen(false)}>
       ${recharges.length === 0 && html`<div class="muted small">暂无重置记录</div>`}

@@ -55,7 +55,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // 定时上传草稿：每 15 秒检查一次（App 在后台但进程还在时也会执行；进程被杀则下次打开立即补传）
         viewModelScope.launch {
             delay(1500)
-            while (true) { uploadDueDrafts(); delay(15_000) }
+            applyAutoResets()
+            while (true) { uploadDueDrafts(); applyAutoResets(); delay(15_000) }
         }
     }
 
@@ -138,6 +139,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         undoStack.clear()
         _data.value = d
         _readOnly.value = false
+        applyAutoResets()
     }
 
     private suspend fun enterPreviewMode() {
@@ -150,6 +152,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun onResume() {
         if (sync.loggedIn) sync.onResume() else viewModelScope.launch { refreshPreview() }
         uploadDueDrafts()
+        applyAutoResets()
     }
 
     private fun load(): AppData {
@@ -313,10 +316,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
         })
     }
+    /** 把一批同学记为缺考（会去掉他们的分数） */
+    fun markAbsent(examId: String, studentIds: Collection<String>) = updateClass { c ->
+        val ids = studentIds.toSet()
+        c.copy(exams = c.exams.map { e -> if (e.id != examId) e else e.copy(scores = e.scores - ids, absent = (e.absent + ids).distinct()) })
+    }
     fun setGroupLeader(group: String, studentId: String?) = updateClass { it.setGroupLeader(group, studentId) }
 
     /** 撤销某次重置（删除记录，分数按全部历史重新计算） */
-    fun removeRecharge(id: String) = updateClass { c -> c.removeRecharge(id) }
+    fun removeRecharge(id: String) = updateClass { c -> c.undoRecharge(id) }
+
+    /** 设置每月定期重置（null = 关闭并清除设置） */
+    fun setAutoReset(ar: AutoReset?) {
+        updateClass { c -> c.copy(autoReset = ar?.let { n -> n.copy(skipped = (c.autoReset?.skipped.orEmpty() + n.skipped).distinct()) } ?: c.autoReset?.copy(enabled = false)) }
+        applyAutoResets()
+    }
+
+    /** 补上所有班级到期的定期重置（打开 App、回到前台时调用） */
+    fun applyAutoResets(now: Long = System.currentTimeMillis()) {
+        if (_readOnly.value) return
+        val d = _data.value
+        val rules = d.settings.rules
+        val next = d.classes.map { it.applyAutoReset(rules, now) }
+        if (next.indices.any { next[it] !== d.classes[it] }) update(undoable = false) { it.copy(classes = it.classes.map { c -> c.applyAutoReset(rules, now) }) }
+    }
+
+    /** 批量加减分：每人分值可以不同 */
+    fun addScores(deltas: Map<String, Double>, reason: String) {
+        val items = deltas.filterValues { it.isFinite() && it != 0.0 }
+        if (items.isEmpty()) return
+        val t = System.currentTimeMillis()
+        updateClass { c ->
+            c.copy(scores = c.scores + c.students.filter { it.id in items }.map { ScoreEntry(studentId = it.id, delta = items.getValue(it.id), reason = reason, time = t) })
+        }
+    }
 
     // ---------- 学生 ----------
     fun upsertStudent(s: Student) = updateClass { c ->

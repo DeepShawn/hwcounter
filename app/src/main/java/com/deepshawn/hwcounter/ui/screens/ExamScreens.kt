@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.MoreVert
@@ -79,6 +80,7 @@ import com.deepshawn.hwcounter.ui.components.listCell
 import com.deepshawn.hwcounter.ui.components.pctText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -335,6 +337,13 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
                 )
             }
         }
+        if (e.absent.isNotEmpty()) item(key = "absent") {
+            val names = c.students.filter { it.id in e.absent }.map { it.name }
+            Text(
+                "缺考 ${names.size} 人：" + names.joinToString("、") + if (rules.enabled && e.autoScore && rules.absent != 0.0) "（每人 ${rules.absent.signed()} 分）" else "",
+                fontSize = 13.sp, color = colors.onSurfaceSecondary, modifier = Modifier.padding(horizontal = 28.dp, vertical = 10.dp),
+            )
+        }
         if (st.count > 0) item(key = "dist") {
             SmallTitle("分数段（满分的 10% 一档）")
             HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
@@ -392,7 +401,11 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
 
     if (menu) ActionSheet(true, e.title, listOf(
         SheetAction("编辑考试信息", "名称、科目、满分、日期") { editInfo = true },
-        SheetAction("导入成绩", "粘贴 / CSV / Excel 写入这场考试") { kit.nav.push(Route.ExamImport(e.id)) },
+        SheetAction("导入成绩", "拍照识别 / 粘贴 / CSV / Excel 写入这场考试") { kit.nav.push(Route.ExamImport(e.id)) },
+        SheetAction("未录入的记为缺考", if (st.missing > 0) "${st.missing} 人还没有成绩" else "所有人都已录入或缺考", enabled = st.missing > 0) {
+            val ids = c.students.filter { it.id !in e.scores && it.id !in e.absent }.map { it.id }
+            vm.markAbsent(e.id, ids); kit.undoable("已把 ${ids.size} 人记为缺考")
+        },
         SheetAction(if (e.autoScore) "这场不加减积分" else "这场按分数档加减积分") { vm.upsertExam(e.copy(autoScore = !e.autoScore)) },
         SheetAction("删除考试", danger = true) { deleting = true },
     ), onDismiss = { menu = false })
@@ -412,7 +425,8 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
             TextField(text, { text = it }, label = "分数", singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TextButton("记为缺考", onClick = { vm.setExamScore(e.id, s.id, null, absent = true); editScore = null }, modifier = Modifier.weight(1f))
+                if (s.id in e.absent) TextButton("取消缺考", onClick = { vm.setExamScore(e.id, s.id, null); editScore = null }, modifier = Modifier.weight(1f))
+                else TextButton("记为缺考", onClick = { vm.setExamScore(e.id, s.id, null, absent = true); editScore = null }, modifier = Modifier.weight(1f))
                 TextButton("清除", onClick = { vm.setExamScore(e.id, s.id, null); editScore = null }, modifier = Modifier.weight(1f))
             }
         }
@@ -434,7 +448,34 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
     var col by remember { mutableIntStateOf(0) }
     var title by remember { mutableStateOf("") }
     var full by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var how by remember { mutableStateOf("") }
+    var absentRest by rememberSaveable { mutableStateOf(false) }
+    val ai = data.settings.ai
+    val useAi = data.settings.recogMode != com.deepshawn.hwcounter.data.RecogMode.LOCAL && ai.apiKey.isNotBlank()
     val result = remember(table, c.students) { table?.let { ExamImport.recognize(it, c.students) } }
+    val photo = com.deepshawn.hwcounter.ui.rememberPhotoLauncher { uris ->
+        val uri = uris.firstOrNull() ?: return@rememberPhotoLauncher
+        busy = true
+        scope.launch {
+            runCatching {
+                val bmp = withContext(Dispatchers.IO) { com.deepshawn.hwcounter.recog.ImageUtils.load(ctx, uri, 2400) } ?: error("图片无法打开")
+                suspend fun ocr(): List<StatTable.Line> {
+                    val t = com.deepshawn.hwcounter.recog.LocalRecognizer.textRecognizer.process(com.google.mlkit.vision.common.InputImage.fromBitmap(bmp, 0)).await()
+                    return t.textBlocks.flatMap { b -> b.lines }.mapNotNull { l -> l.boundingBox?.let { bx -> StatTable.Line(l.text, bx.left.toFloat(), bx.top.toFloat(), bx.height().toFloat()) } }
+                }
+                val viaAi = if (useAi) runCatching {
+                    if (ai.vision) com.deepshawn.hwcounter.recog.AiRecognizer.recognizeTable(ai, bmp, c.students) to "AI 看图识别"
+                    else com.deepshawn.hwcounter.recog.AiRecognizer.recognizeTableText(ai, StatTable.mergeRows(ocr()).map { it.text }, c.students) to "本地文字识别 + AI 整理"
+                }.onFailure { kit.toast("AI 识别失败，改用本地识别：${it.message?.take(60)}") }.getOrNull() else null
+                viaAi ?: (withContext(Dispatchers.Default) { ExamImport.tableFromOcr(ocr()) } to "本地文字识别")
+            }.onSuccess { (rows, h) ->
+                if (rows.isEmpty()) kit.toast("没有认出文字，请拍清楚、拍正一些")
+                else { table = rows; col = 0; title = ""; full = ""; how = h; text = rows.joinToString("\n") { it.joinToString("\t") } }
+            }.onFailure { kit.toast("识别失败：${it.message}") }
+            busy = false
+        }
+    }
     val column = result?.columns?.getOrNull(col)
     androidx.compose.runtime.LaunchedEffect(result, col) {
         if (column != null) {
@@ -460,7 +501,16 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
         item(key = "input") {
             HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("粘贴 Excel 里复制的成绩（包含姓名或学号列和分数列），或选择 .xlsx / CSV 文件。可以一次包含多科，每列一科。", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                    Text("拍下成绩表 / 统计表，或粘贴 Excel 里复制的成绩（包含姓名或学号列和分数列），也可以选择 .xlsx / CSV 文件。可以一次包含多科，每列一科；写“缺考”的记为缺考。", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TextButton(if (busy) "识别中…" else "拍照识别", onClick = { photo.takePhoto() }, enabled = !busy, modifier = Modifier.weight(1f), colors = ButtonDefaults.textButtonColorsPrimary())
+                        TextButton("相册图片", onClick = { photo.pickGallery() }, enabled = !busy, modifier = Modifier.weight(1f))
+                    }
+                    Text(
+                        if (useAi) "将用 AI（${ai.model}${if (ai.vision) "，看图" else "，读本地识别出的文字"}）识别表格照片，失败时自动改用本地识别。" else "使用本地文字识别（不联网）；在设置里配置 AI 后识别手写和复杂表格更准。",
+                        fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp),
+                    )
                     Spacer(Modifier.height(10.dp))
                     TextField(text, { text = it }, label = "例如：学号  姓名  数学\n01  张三  95", minLines = 4, maxLines = 8, modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
@@ -475,7 +525,7 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
             if (result.columns.isEmpty()) item { Text("没有找到分数列：请确认表格里有姓名或学号，以及一列数字分数。", Modifier.padding(28.dp), color = colors.onSurfaceVariantSummary) }
             else {
                 item(key = "cols") {
-                    SmallTitle("识别到 ${result.columns.size} 列成绩 · 匹配 ${result.rows.size} 人")
+                    SmallTitle("识别到 ${result.columns.size} 列成绩 · 匹配 ${result.rows.size} 人" + if (how.isNotBlank()) " · $how" else "")
                     if (result.columns.size > 1) Box(Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp)) { HTabs(result.columns.map { it.header }, col, { col = it; title = ""; full = "" }) }
                 }
                 item(key = "meta") {
@@ -488,6 +538,13 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
                             val scores = result.scoresOf(col); val absent = result.absentOf(col)
                             val avg = if (scores.isEmpty()) 0.0 else scores.values.average()
                             Text("${scores.size} 人有成绩 · ${absent.size} 人缺考 · 平均 ${avg.fmt()}" + if (result.missingStudents.isNotEmpty()) " · ${result.missingStudents.size} 人不在表里" else "", fontSize = 13.sp, color = colors.onSurfaceSecondary)
+                            if (result.missingStudents.isNotEmpty()) Row(Modifier.padding(top = 8.dp).clip(RoundedCornerShape(10.dp)).clickable { absentRest = !absentRest }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(20.dp).clip(CircleShape).background(if (absentRest) colors.primary else colors.secondaryContainer), contentAlignment = Alignment.Center) {
+                                    if (absentRest) Icon(Icons.Filled.Check, null, Modifier.size(13.dp), tint = Color.White)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Text("表里没有的 ${result.missingStudents.size} 人记为缺考", fontSize = 13.sp)
+                            }
                             if (result.unmatched.isNotEmpty()) Text("对不上名单的行：" + result.unmatched.take(5).joinToString("；") + if (result.unmatched.size > 5) " …" else "", fontSize = 12.sp, color = Color(0xFFE5384D), modifier = Modifier.padding(top = 4.dp))
                             Spacer(Modifier.height(12.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -495,7 +552,8 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
                                     if (target != null) "写入这场考试" else "保存为新考试",
                                     onClick = {
                                         val base = target ?: Exam(title = title.trim().ifBlank { column!!.header }, subject = data.settings.subjects.firstOrNull { title.contains(it) || column!!.header.contains(it) } ?: "")
-                                        vm.upsertExam(base.copy(fullScore = fullV!!, scores = base.scores + scores, absent = (base.absent + absent).distinct().filter { it !in scores }))
+                                        val extra = if (absentRest) result.missingStudents.filter { it !in base.scores } else emptyList()
+                                        vm.upsertExam(base.copy(fullScore = fullV!!, scores = base.scores + scores, absent = (base.absent + absent + extra).distinct().filter { it !in scores }))
                                         kit.toast("已导入 ${scores.size} 人的成绩")
                                         kit.nav.pop(); if (target == null) kit.nav.push(Route.Exam(base.id))
                                     },
@@ -504,7 +562,7 @@ fun ExamImportScreen(vm: AppViewModel, data: AppData, examId: String?) {
                                 if (target == null && result.columns.size > 1) TextButton("每列各存一场", onClick = {
                                     result.columns.forEachIndexed { k, cc ->
                                         val sc = result.scoresOf(k)
-                                        if (sc.isNotEmpty()) vm.upsertExam(Exam(title = cc.header, subject = data.settings.subjects.firstOrNull { cc.header.contains(it) } ?: "", fullScore = ExamImport.guessFull(cc.max), scores = sc, absent = result.absentOf(k)))
+                                        if (sc.isNotEmpty()) vm.upsertExam(Exam(title = cc.header, subject = data.settings.subjects.firstOrNull { cc.header.contains(it) } ?: "", fullScore = ExamImport.guessFull(cc.max), scores = sc, absent = (result.absentOf(k) + if (absentRest) result.missingStudents else emptyList()).distinct()))
                                     }
                                     kit.toast("已保存 ${result.columns.size} 场考试"); kit.nav.pop()
                                 }, modifier = Modifier.weight(1f))

@@ -87,6 +87,8 @@ data class SchoolClass(
     val exams: List<Exam> = emptyList(),
     /** 小组 → 组长学生 id */
     val groupLeaders: Map<String, String> = emptyMap(),
+    /** 每月定期重置（见 AutoReset.kt），null = 未设置 */
+    val autoReset: AutoReset? = null,
 )
 
 /** 座位表：seats 为 学生id → 下标(行*cols+列)；frontAtTop 讲台是否在上方。三端同一格式 */

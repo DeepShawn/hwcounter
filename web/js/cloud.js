@@ -166,7 +166,10 @@ export function merge(local, remote) {
     const recharges = [...new Map([...(r.recharges || []), ...(l.recharges || [])].map((x) => [x.id, x])).values()].sort((a, b) => a.time - b.time);
     const exams = new Map((r.exams || []).map((e) => [e.id, e]));
     for (const le of l.exams || []) { const re = exams.get(le.id); exams.set(le.id, re ? { ...le, scores: { ...re.scores, ...le.scores }, absent: [...new Set([...(re.absent || []), ...(le.absent || [])])].filter((x) => !(x in (le.scores || {}))) } : le); }
-    classes.set(l.id, { ...l, students: [...students.values()], assignments: [...assigns.values()], scores, recharges, exams: [...exams.values()].sort((a, b) => a.date - b.date), groupLeaders: { ...(r.groupLeaders || {}), ...(l.groupLeaders || {}) }, seating: l.seating || r.seating || null });
+    const ar0 = l.autoReset || r.autoReset || null;
+    const autoReset = ar0 ? { ...ar0, skipped: [...new Set([...(ar0.skipped || []), ...((l.autoReset || {}).skipped || []), ...((r.autoReset || {}).skipped || [])])] } : null;
+    const kept = autoReset ? recharges.filter((x) => !(String(x.id).startsWith('auto-') && autoReset.skipped.includes(String(x.id).slice(5)))) : recharges;
+    classes.set(l.id, { ...l, students: [...students.values()], assignments: [...assigns.values()], scores, recharges: kept, exams: [...exams.values()].sort((a, b) => a.date - b.date), groupLeaders: { ...(r.groupLeaders || {}), ...(l.groupLeaders || {}) }, seating: l.seating || r.seating || null, ...(autoReset ? { autoReset } : {}) });
   }
   return { ...local, classes: [...classes.values()], currentClassId: local.currentClassId ?? remote.currentClassId };
 }

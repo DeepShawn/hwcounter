@@ -22,14 +22,14 @@ object AnalysisExport {
         x.sheet("概览") {
             freezeRows = 0
             widths = listOf(22.0, 16.0, 16.0, 60.0)
-            row(XlsxWriter.Cell("${c.name} 作业与成绩分析报告（${r.range.label}）", XlsxWriter.Style.TITLE))
+            row(XlsxWriter.Cell("${c.name} 作业与成绩分析报告（${Analytics.rangeTitle(r)}）", XlsxWriter.Style.TITLE))
             row("范围", r.window.label)
             row("生成时间", fmtDay(System.currentTimeMillis()))
             row()
             rowCells(header("指标", "本时段", "上一时段", "说明"))
             fun line(n: String, v: Any, p: Any?, d: String) = rowCells(listOf(XlsxWriter.Cell(n), XlsxWriter.Cell(v), XlsxWriter.Cell(p ?: ""), XlsxWriter.Cell(d)))
             val p = r.previous
-            line("作业次数", k.assignments, p?.assignments, "")
+            line("作业次数", k.assignments, p?.assignments, if (p != null) "对比：${r.window.prevLabel}" else "")
             line("应交人次", k.expected, p?.expected, "去掉请假")
             line("交齐率 %", pct(k.handInRate), p?.let { pct(it.handInRate) }, "已交 + 优秀 + 迟交 / 应交")
             line("按时率 %", pct(k.onTimeRate), p?.let { pct(it.onTimeRate) }, "已交 + 优秀 / 应交")
@@ -41,6 +41,8 @@ object AnalysisExport {
             line("全班平均积分", r.avgScore.fmt(), null, if (r.range != Analytics.Range.ALL) "本时段变化 ${r.avgScoreDelta.signed()}" else "")
             line("交齐率趋势（每次）", "%.2f".format(r.slope * 100) + " 个百分点", null, "线性回归斜率，正数为上升")
             r.examCorrelation?.let { line("作业与考试相关系数", "%.2f".format(it), null, "0.3 以上为正相关") }
+            line("学生交齐率中位数 %", pct(r.rateMedian), null, "标准差 ${pct(r.rateStd)} 个百分点，越大越两极分化")
+            r.tiers.forEach { t -> line("分层：${t.name}", t.students.size, null, t.desc) }
             row()
             rowCells(header("主要发现"))
             r.insights.forEachIndexed { i, s -> row("${i + 1}. ${s.text}") }
@@ -68,6 +70,61 @@ object AnalysisExport {
                     XlsxWriter.Cell(s.c(HwStatus.SUBMITTED)), XlsxWriter.Cell(s.c(HwStatus.EXCELLENT)), XlsxWriter.Cell(s.c(HwStatus.LATE)), XlsxWriter.Cell(s.c(HwStatus.MISSING)),
                     XlsxWriter.Cell(s.c(HwStatus.LEAVE)), XlsxWriter.Cell(s.c(HwStatus.NONE)), XlsxWriter.Cell(pct(s.rate), if (s.rate >= 0.999f) XlsxWriter.Style.GREEN else XlsxWriter.Style.NORMAL),
                 ))
+            }
+        }
+        r.progress?.let { pg ->
+            x.sheet("进步与退步") {
+                widths = listOf(12.0, 10.0, 10.0, 12.0, 12.0, 12.0, 12.0, 12.0, 12.0, 8.0, 50.0)
+                row(XlsxWriter.Cell("比较方式：${pg.basis}", XlsxWriter.Style.TITLE))
+                rowCells(header("学号", "姓名", "类别", "以往交齐率%", "重置后交齐率%", "以往按时率%", "重置后按时率%", "以往考试%", "重置后考试%", "指数", "主要变化"))
+                val tag = pg.stars.map { it.student.id }.toSet() to pg.watch.map { it.student.id }.toSet()
+                pg.all.sortedByDescending { it.index }.forEach { sp ->
+                    val kind = when (sp.student.id) { in tag.first -> "进步之星"; in tag.second -> "退步关注"; else -> "" }
+                    val st = if (kind == "进步之星") XlsxWriter.Style.GREEN else if (kind == "退步关注") XlsxWriter.Style.RED else XlsxWriter.Style.NORMAL
+                    rowCells(listOf(
+                        XlsxWriter.Cell(sp.student.no), XlsxWriter.Cell(sp.student.name), XlsxWriter.Cell(kind, st),
+                        XlsxWriter.Cell(pct(sp.before.rate)), XlsxWriter.Cell(pct(sp.after.rate)), XlsxWriter.Cell(pct(sp.before.onTimeRate)), XlsxWriter.Cell(pct(sp.after.onTimeRate)),
+                        XlsxWriter.Cell(sp.before.examPct?.let { pct(it) } ?: ""), XlsxWriter.Cell(sp.after.examPct?.let { pct(it) } ?: ""),
+                        XlsxWriter.Cell((sp.index * 100).roundToInt(), st), XlsxWriter.Cell(sp.reasons.joinToString("，")),
+                    ))
+                }
+            }
+        }
+        if (r.rounds.isNotEmpty() || r.buckets.isNotEmpty()) x.sheet("各轮与分段") {
+            widths = listOf(18.0, 14.0, 8.0, 10.0, 10.0, 10.0, 10.0, 12.0)
+            if (r.rounds.isNotEmpty()) {
+                rowCells(header("轮次", "起始", "作业", "交齐率%", "按时率%", "优秀率%", "缺交率%", "考试得分率%"))
+                r.rounds.forEach { o -> row(o.label, o.start?.let { fmtDay(it) } ?: "", o.kpi.assignments, pct(o.kpi.handInRate), pct(o.kpi.onTimeRate), pct(o.kpi.excellentRate), pct(o.kpi.missingRate), o.examPct?.let { pct(it) } ?: "") }
+                row()
+            }
+            if (r.buckets.isNotEmpty()) {
+                rowCells(header("按${r.bucketUnit}", "作业", "交齐率%", "按时率%", "缺交人次"))
+                r.buckets.forEach { b -> row(b.label, b.count, pct(b.rate), pct(b.onTimeRate), b.missing) }
+            }
+        }
+        x.sheet("积分来源与预警") {
+            widths = listOf(16.0, 12.0, 12.0, 12.0, 40.0)
+            rowCells(header("积分来源", "合计"))
+            row("作业自动计分", r.sources.homework); row("手动加分", r.sources.manualPlus); row("手动扣分", r.sources.manualMinus); row("考试计分", r.sources.exam)
+            row()
+            if (r.reasons.isNotEmpty()) {
+                rowCells(header("加减分原因", "次数", "涉及人数", "合计"))
+                r.reasons.forEach { o -> row(o.reason, o.count, o.people, o.total) }
+                row()
+            }
+            if (r.risk.isNotEmpty()) {
+                rowCells(header("缺交风险", "学号", "风险%", "", "依据"))
+                r.risk.forEach { o -> row(o.student.name, o.student.no, pct(o.prob), "", o.why) }
+                row()
+            }
+            if (r.weakSubjects.isNotEmpty()) {
+                rowCells(header("偏科", "科目", "该科交齐率%", "整体交齐率%"))
+                r.weakSubjects.forEach { o -> row(o.student.name, o.subject, pct(o.subjectRate), pct(o.overallRate)) }
+                row()
+            }
+            if (r.streakers.isNotEmpty()) {
+                rowCells(header("连续交齐", "次数"))
+                r.streakers.forEach { o -> row(o.student.name, o.handStreak) }
             }
         }
         x.sheet("科目与星期") {

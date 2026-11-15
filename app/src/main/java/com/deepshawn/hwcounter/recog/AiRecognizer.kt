@@ -88,6 +88,53 @@ ${ocrLines.take(300).joinToString("\n")}
             parse(extractText(cfg, post(cfg, body.toString())))
         }
 
+    private fun tablePrompt(roster: List<Student>, ocr: List<String>?): String {
+        val list = roster.take(200).joinToString("; ") { "${it.no} ${it.name}" }
+        val src = if (ocr == null) "图片是一张学生成绩表（或统计表），可能是打印、手写或屏幕截图，可能拍歪、有阴影。"
+        else "下面是用 OCR 从一张学生成绩表照片中识别出的文字（每行一段，可能有错字、数字误识，如 O/0、l/1、S/5、B/8）：\n" + ocr.take(400).joinToString("\n")
+        return """
+你是一名细心的助教。$src
+任务：把表格逐行转录出来。保留学号列、姓名列和每一科（或每一次考试）的分数列，以及总分列（如果有）。
+- 缺考、请假、免考的单元格写“缺考”；看不清或空白的单元格写空字符串，不要编造分数；
+- 姓名、学号尽量对应到下面的班级名单（OCR 错字请按名单纠正）；
+- 表头用表格里原来的列名（如“语文”“数学”“期中”），没有表头就写“分数1”“分数2”。
+班级名单（学号 姓名）：$list
+只输出 JSON，不要任何解释：{"headers": ["学号", "姓名", "数学", ...], "rows": [["01", "张三", "95"], ...], "note": "一句话说明"}
+""".trimIndent()
+    }
+
+    /** 解析大模型返回的表格 JSON → 第一行为表头的二维表 */
+    fun parseTable(content: String): List<List<String>> {
+        val start = content.indexOf('{'); val end = content.lastIndexOf('}')
+        require(start >= 0 && end > start) { "模型没有返回表格：" + content.take(120) }
+        val o = json.parseToJsonElement(content.substring(start, end + 1)).jsonObject
+        fun cells(a: kotlinx.serialization.json.JsonElement?) = (a as? JsonArray)?.map { (it as? JsonPrimitive)?.contentOrNull?.trim().orEmpty() } ?: emptyList()
+        val headers = cells(o["headers"])
+        val rows = (o["rows"] as? JsonArray)?.map { cells(it) }?.filter { r -> r.any { it.isNotBlank() } } ?: emptyList()
+        require(rows.isNotEmpty()) { "没有识别到表格内容" + ((o["note"] as? JsonPrimitive)?.contentOrNull?.let { "：$it" } ?: "") }
+        return if (headers.isNotEmpty()) listOf(headers) + rows else rows
+    }
+
+    /** 成绩表照片 → 表格（看图模型直接读图） */
+    suspend fun recognizeTable(cfg: AiConfig, bmp: Bitmap, roster: List<Student>): List<List<String>> = withContext(Dispatchers.IO) {
+        requireKey(cfg)
+        require(cfg.vision) { "当前模型为纯文本模式，不能直接看图" }
+        val b64 = Base64.encodeToString(ImageUtils.toJpeg(bmp, 2200, 88), Base64.NO_WRAP)
+        val text = tablePrompt(roster, null)
+        parseTable(if (cfg.provider == "anthropic") callAnthropic(cfg, b64, text) else callOpenAi(cfg, b64, text))
+    }
+
+    /** 成绩表照片的本地 OCR 文字 → 交给文本模型整理成表格（照片不离开手机） */
+    suspend fun recognizeTableText(cfg: AiConfig, ocrLines: List<String>, roster: List<Student>): List<List<String>> = withContext(Dispatchers.IO) {
+        requireKey(cfg)
+        val body = buildJsonObject {
+            put("model", cfg.model)
+            if (cfg.provider == "anthropic") put("max_tokens", 4096) else put("temperature", 0.1)
+            putJsonArray("messages") { addJsonObject { put("role", "user"); put("content", tablePrompt(roster, ocrLines)) } }
+        }
+        parseTable(extractText(cfg, post(cfg, body.toString())))
+    }
+
     /** 拉取服务商可用模型列表（OpenAI 兼容 GET /models；Anthropic GET /v1/models） */
     suspend fun listModels(cfg: AiConfig): List<String> = withContext(Dispatchers.IO) {
         val base = cfg.baseUrl.trim().trimEnd('/').removeSuffix("/chat/completions").removeSuffix("/messages")
@@ -198,7 +245,7 @@ ${ocrLines.take(300).joinToString("\n")}
     private fun callAnthropic(cfg: AiConfig, b64: String, text: String): String {
         val body = buildJsonObject {
             put("model", cfg.model)
-            put("max_tokens", 2048)
+            put("max_tokens", 4096)
             putJsonArray("messages") {
                 addJsonObject {
                     put("role", "user")

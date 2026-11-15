@@ -65,7 +65,7 @@ class AnalyticsTest {
         assertEquals(12, r.scoreTrend.size)
         assertTrue(r.insights.any { it.text.contains("学生2") && it.text.contains("连续") })
         val text = Analytics.text(cls(), r, now)
-        assertTrue(text.contains("交齐率")); assertTrue(text.contains("学生2 缺交 3 次（连续 3 次）")); assertTrue(text.contains("进步之星：学生3"))
+        assertTrue(text.contains("交齐率")); assertTrue(text.contains("学生2 缺交 3 次（连续 3 次）")); assertTrue(Regex("进步之星（[^）]*）：学生3").containsMatchIn(text))
     }
 
     @Test fun scoreDeltaWithinPeriodStartsFromResetTarget() {
