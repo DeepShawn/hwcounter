@@ -13,8 +13,8 @@ android {
         applicationId = "com.deepshawn.hwcounter"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
-        versionName = "2.14.1"
+        versionCode = 40
+        versionName = "2.14.2"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }

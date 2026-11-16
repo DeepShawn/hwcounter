@@ -52,7 +52,11 @@ fun GroupRankRules.pointsFor(rank: Int, worst: Int, n: Int): Double = applyMode(
 })
 
 /** 全班每一段的小组排名（旧 → 新） */
-fun SchoolClass.groupRankPeriods(rules: ScoreRules): List<RankPeriod> {
+private val rankCache = IdentityCache<List<RankPeriod>>()
+
+fun SchoolClass.groupRankPeriods(rules: ScoreRules): List<RankPeriod> = rankCache.get(this, rules) { computeGroupRankPeriods(rules) }
+
+private fun SchoolClass.computeGroupRankPeriods(rules: ScoreRules): List<RankPeriod> {
     val gr = rules.groupRank
     if (!gr.enabled) return emptyList()
     val groups = students.filter { it.group.isNotBlank() }.groupBy { it.group }.filterValues { it.size >= 2 }

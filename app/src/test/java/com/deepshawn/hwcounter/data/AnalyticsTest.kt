@@ -62,7 +62,7 @@ class AnalyticsTest {
         assertEquals(3, r.longestPerfectRun)
         assertEquals(4, r.rateBins.sumOf { it.second })
         assertEquals(2, r.groupStats.size)
-        assertEquals(12, r.scoreTrend.size)
+        assertEquals(10, r.scoreTrend.size)   // 积分走势最多取 10 个点
         assertTrue(r.insights.any { it.text.contains("学生2") && it.text.contains("连续") })
         val text = Analytics.text(cls(), r, now)
         assertTrue(text.contains("交齐率")); assertTrue(text.contains("学生2 缺交 3 次（连续 3 次）")); assertTrue(Regex("进步之星（[^）]*）：学生3").containsMatchIn(text))

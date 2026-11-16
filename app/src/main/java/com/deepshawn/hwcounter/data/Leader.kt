@@ -82,7 +82,11 @@ fun periodLabelOf(period: String) = when (period) { "assignment" -> "每次作�
 private fun fmt2(x: Double): String { val r = Math.round(x * 10) / 10.0; return if (r == Math.floor(r)) r.toLong().toString() else r.toString() }
 
 /** 全班所有组长的每段奖惩：组长 id → 各段（旧 → 新） */
-fun SchoolClass.leaderPeriods(rules: ScoreRules): Map<String, List<LeaderPeriod>> {
+private val leaderCache = IdentityCache<Map<String, List<LeaderPeriod>>>()
+
+fun SchoolClass.leaderPeriods(rules: ScoreRules): Map<String, List<LeaderPeriod>> = leaderCache.get(this, rules) { computeLeaderPeriods(rules) }
+
+private fun SchoolClass.computeLeaderPeriods(rules: ScoreRules): Map<String, List<LeaderPeriod>> {
     val lr = rules.leader
     if (!lr.enabled) return emptyMap()
     val groups = students.filter { it.group.isNotBlank() }.groupBy { it.group }.filterValues { it.size >= 2 }
