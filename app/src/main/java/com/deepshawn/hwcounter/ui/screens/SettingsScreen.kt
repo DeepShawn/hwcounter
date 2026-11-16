@@ -212,6 +212,12 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                             items = listOf("每次作业", "每天", "每周", "每月"), selectedIndex = periods.indexOf(lr.period).coerceAtLeast(2), title = "计算周期",
                             onSelectedIndexChange = { i -> ld { it.copy(period = periods[i]) } },
                         )
+                        val modes = listOf("both", "plus", "minus")
+                        SuperDropdown(
+                            items = listOf("加分和扣分", "仅加分", "仅扣分"), selectedIndex = modes.indexOf(lr.mode).coerceAtLeast(0), title = "加减方式",
+                            summary = when (lr.mode) { "plus" -> "只给组长加分，扣分的那一段记 0"; "minus" -> "只给组长扣分，加分的那一段记 0"; else -> "表现好加分、扣分多扣分" },
+                            onSelectedIndexChange = { i -> ld { it.copy(mode = modes[i]) } },
+                        )
                         Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
                             RuleRow("全组零扣分", lr.clean, 1.0) { v -> ld { it.copy(clean = v) } }
                             RuleRow("≤ 各组平均一半", lr.low, 1.0) { v -> ld { it.copy(low = v) } }
@@ -245,6 +251,12 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                         SuperDropdown(
                             items = listOf("每次作业", "每天", "每周", "每月"), selectedIndex = periods.indexOf(gr.period).coerceAtLeast(2), title = "排名周期",
                             onSelectedIndexChange = { i -> gk { it.copy(period = periods[i]) } },
+                        )
+                        val modes = listOf("both", "plus", "minus")
+                        SuperDropdown(
+                            items = listOf("加分和扣分", "仅加分", "仅扣分"), selectedIndex = modes.indexOf(gr.mode).coerceAtLeast(0), title = "加减方式",
+                            summary = when (gr.mode) { "plus" -> "只给名次靠前的组加分，最后一名不扣"; "minus" -> "只给最后一名扣分，靠前的组不加"; else -> "靠前的组加分、最后一名扣分" },
+                            onSelectedIndexChange = { i -> gk { it.copy(mode = modes[i]) } },
                         )
                         Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
                             RuleRow("第 1 名每人", gr.first, 1.0) { v -> gk { it.copy(first = v) } }
@@ -612,7 +624,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsIndex(vm: App
         SuperArrow(
             title = "作业计分",
             summary = "初始 ${r.initial.fmt()} 分 · " + (if (r.escalation.enabled) "未交递增扣分" else "未交 ${r.missing.signed()}") +
-                " · 复审" + (if (r.review.enabled) "不合格 ×${r.review.multiplier.fmt()}" else "已关闭") + (if (r.leader.enabled) " · 组长${r.leader.periodLabel}奖惩" else "") + (if (r.groupRank.enabled) " · 小组${r.groupRank.periodLabel}排名" else "") + if (r.streakBonus.enabled) " · 连续交奖励" else "",
+                " · 复审" + (if (r.review.enabled) "不合格 ×${r.review.multiplier.fmt()}" else "已关闭") + (if (r.leader.enabled) " · 组长${r.leader.periodLabel}奖惩${if (r.leader.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.leader.mode) + "）" else ""}" else "") + (if (r.groupRank.enabled) " · 小组${r.groupRank.periodLabel}排名${if (r.groupRank.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.groupRank.mode) + "）" else ""}" else "") + if (r.streakBonus.enabled) " · 连续交奖励" else "",
             onClick = { open("scoring") },
         )
         SuperArrow(title = "考试计分", summary = if (r.exam.enabled) "按得分率分 ${r.exam.bands.size} 档自动加减积分" else "已关闭", onClick = { open("exam") })

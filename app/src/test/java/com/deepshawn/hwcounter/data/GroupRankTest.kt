@@ -53,4 +53,17 @@ class GroupRankTest {
         val week = cls().groupRankPeriods(each.copy(groupRank = GroupRankRules(period = "month")))
         assertEquals(1, week.size)
     }
+
+    @Test fun plusOrMinusOnly() {
+        val plus = each.copy(groupRank = GroupRankRules(period = "assignment", mode = "plus"))
+        val minus = each.copy(groupRank = GroupRankRules(period = "assignment", mode = "minus"))
+        assertEquals(listOf(2.0, 1.0, 0.0), cls().groupRankPeriods(plus)[0].standings.map { it.points })
+        assertEquals(listOf(0.0, 0.0, -1.0), cls().groupRankPeriods(minus)[0].standings.map { it.points })
+        // 组长：仅加分 / 仅扣分
+        val c = cls().copy(groupLeaders = mapOf("三组" to "c1"))
+        fun lr(mode: String) = ScoreRules(groupRank = GroupRankRules(enabled = false), leader = LeaderRules(period = "assignment", mode = mode))
+        assertTrue(c.leaderPeriods(lr("plus")).getValue("c1").all { it.points >= 0 })
+        assertTrue(c.leaderPeriods(lr("minus")).getValue("c1").all { it.points <= 0 })
+        assertTrue(c.leaderPeriods(lr("both")).getValue("c1").any { it.points < 0 })
+    }
 }

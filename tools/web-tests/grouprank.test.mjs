@@ -36,3 +36,16 @@ test('并列与按月', () => {
   assert.deepEqual(p.map((s) => s.rank), [1, 1]); assert.deepEqual(p.map((s) => s.points), [2, 2]);
   assert.equal(groupRankPeriods(cls(), { ...each, groupRank: { ...defaultGroupRank(), period: 'month' } }).length, 1);
 });
+
+test('仅加分 / 仅扣分（小组排名与组长）', async () => {
+  const { leaderPeriods, defaultLeader } = await import('../../web/js/model.js');
+  const plus = { ...each, groupRank: { ...defaultGroupRank(), period: 'assignment', mode: 'plus' } };
+  const minus = { ...each, groupRank: { ...defaultGroupRank(), period: 'assignment', mode: 'minus' } };
+  assert.deepEqual(groupRankPeriods(cls(), plus)[0].standings.map((s) => s.points), [2, 1, 0]);
+  assert.deepEqual(groupRankPeriods(cls(), minus)[0].standings.map((s) => s.points), [0, 0, -1]);
+  const c = cls(); c.groupLeaders = { 三组: 'c1' };
+  const lr = (mode) => ({ ...defaultRules(), groupRank: { enabled: false }, leader: { ...defaultLeader(), period: 'assignment', mode } });
+  assert.ok(leaderPeriods(c, lr('plus')).c1.every((p) => p.points >= 0));
+  assert.ok(leaderPeriods(c, lr('minus')).c1.every((p) => p.points <= 0));
+  assert.ok(leaderPeriods(c, lr('both')).c1.some((p) => p.points < 0));
+});

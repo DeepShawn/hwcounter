@@ -16,9 +16,11 @@ export const defaultStreakBonus = () => ({ enabled: true, after: 5, bonus: 1, la
 /** 作业复审：不合格记一次未交（参与连续 / 累计），这一次扣分 × multiplier；没复审的默认合格 */
 export const defaultReview = () => ({ enabled: true, multiplier: 2 });
 /** 组长奖惩（与安卓 Leader.kt 同算法）：按周期（assignment / day / week / month）看小组人均作业扣分 */
-export const defaultLeader = () => ({ enabled: true, period: 'week', clean: 3, low: 2, below: 1, above: -1, high: -2, veryHigh: -3, top: 1, bottom: -1, progress: 1, regress: -1, streakStep: 1, streakMax: 3, cap: 5 });
+export const defaultLeader = () => ({ enabled: true, period: 'week', clean: 3, low: 2, below: 1, above: -1, high: -2, veryHigh: -3, top: 1, bottom: -1, progress: 1, regress: -1, streakStep: 1, streakMax: 3, cap: 5, mode: 'both' });
+/** 加减方式：both / plus（仅加分）/ minus（仅扣分） */
+export const applyMode = (mode, x) => (mode === 'plus' ? Math.max(0, x) : mode === 'minus' ? Math.min(0, x) : x);
 /** 小组对抗排名（与安卓 GroupRank.kt 同算法）：按周期给小组综合排名，按名次给整组每人加减分 */
-export const defaultGroupRank = () => ({ enabled: true, period: 'week', first: 2, second: 1, third: 0, last: -1, wRate: 0.5, wDeduct: 0.25, wExcellent: 0.15, wExam: 0.1 });
+export const defaultGroupRank = () => ({ enabled: true, period: 'week', first: 2, second: 1, third: 0, last: -1, wRate: 0.5, wDeduct: 0.25, wExcellent: 0.15, wExam: 0.1, mode: 'both' });
 export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true, review: defaultReview(), leader: defaultLeader(), groupRank: defaultGroupRank() });
 /** 这位同学这次作业是否复审不合格（只有状态仍是未交时才算） */
 export const failedReview = (a, sid) => (a.reviewFailed || []).includes(sid) && a.statuses[sid] === 'MISSING';
@@ -236,6 +238,8 @@ export function leaderPeriods(c, rules) {
       run[g] = k > 0 ? k + 1 : 1; lastSub[g] = sub; prevD[g] = d;
       const total = parts.reduce((n, x) => n + x[1], 0);
       if (lr.cap > 0 && Math.abs(total) > lr.cap) parts.push([`每段最多 ±${f1(lr.cap)}`, (total > 0 ? lr.cap : -lr.cap) - total]);
+      const capped = parts.reduce((n, x) => n + x[1], 0);
+      if (applyMode(lr.mode, capped) !== capped) parts.push([lr.mode === 'plus' ? '仅加分，不扣分' : '仅扣分，不加分', -capped]);
       (out[leader.id] = out[leader.id] || []).push({ group: g, key, label, time: last, perCapita: d, average: avg, parts, points: parts.reduce((n, x) => n + x[1], 0) });
     }
   }
@@ -244,7 +248,7 @@ export function leaderPeriods(c, rules) {
 
 const HANDED_K = new Set(['SUBMITTED', 'EXCELLENT', 'LATE']);
 /** 名次 → 每人加减分 */
-export const rankPoints = (gr, rank, worst, n) => (n >= 3 && rank === worst && rank > 1 ? gr.last : rank === 1 ? gr.first : rank === 2 ? gr.second : rank === 3 ? gr.third : 0);
+export const rankPoints = (gr, rank, worst, n) => applyMode(gr.mode, n >= 3 && rank === worst && rank > 1 ? gr.last : rank === 1 ? gr.first : rank === 2 ? gr.second : rank === 3 ? gr.third : 0);
 /** 全班每一段的小组排名（旧 → 新）：[{ key, label, time, standings: [{ group, rank, score, points, rate, deduct, excellent, exam }] }] */
 export function groupRankPeriods(c, rules) {
   const gr = { ...defaultGroupRank(), ...(rules.groupRank || {}) };

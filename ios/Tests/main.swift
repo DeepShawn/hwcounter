@@ -465,6 +465,12 @@ do {
     check(d("a2") == 4 && d("c1") == -2 && d("x") == 0, "整组每人计入积分")
     var month = each; month.groupRank.period = "month"
     check(c.groupRankPeriods(month).count == 1, "按月")
+    var plus = each; plus.groupRank.mode = "plus"
+    var minus = each; minus.groupRank.mode = "minus"
+    check(c.groupRankPeriods(plus)[0].standings.map(\.points) == [2, 1, 0] && c.groupRankPeriods(minus)[0].standings.map(\.points) == [0, 0, -1], "仅加分 / 仅扣分")
+    var lp = Rules(); lp.groupRank.enabled = false; lp.leader.period = "assignment"; lp.leader.mode = "plus"
+    var cl = c; cl.groupLeaders = ["三组": "c1"]
+    check(cl.leaderPeriods(lp)["c1"]!.allSatisfy { $0.points >= 0 }, "组长仅加分")
 }
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)
