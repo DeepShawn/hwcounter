@@ -313,6 +313,7 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
         title = e.title,
         onBack = { kit.nav.pop() },
         extraBottom = if (selecting) 120.dp else 0.dp,
+        swipe = Triple(2, sort) { sort = it },
         actions = {
             if (!readOnly) TextButton(
                 if (selecting) "完成" else "多选", onClick = { if (selecting) exitSelect() else selecting = true },

@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultRules, studentStats, rechargeScores, removeRecharge, normalizeData } from '../../web/js/model.js';
 
-const rules = defaultRules();
+const rules = { ...defaultRules(), escalation: { enabled: false } }; // 旧用例沿用“未交固定扣分”
 const fixture = () => ({
   id: 'c1', name: '一班', recharges: [],
   students: [{ id: 's1', no: '01', name: '张三' }, { id: 's2', no: '02', name: '李四' }],
@@ -107,4 +107,22 @@ test('每月定期重置：只补开启后的月份，id 固定，撤销后不�
   const remote = { version: 1, classes: [{ ...c, autoReset: { ...ar }, recharges: [...c.recharges, { ...c.recharges[0], id: 'auto-202611' }] }], settings: {} };
   const local = { version: 1, classes: [c], settings: {} };
   assert.deepEqual(merge(local, remote).classes[0].recharges.map((r) => r.id), ['auto-202610']);
+});
+
+import { autoPoints } from '../../web/js/model.js';
+test('未交连续递增扣分（与安卓 EscalationTest 一致）', () => {
+  const r = defaultRules();
+  const mk = (...m) => ({ id: 'c', name: '一班', recharges: [], scores: [], students: [{ id: 's1', no: '01', name: '张三' }], assignments: m.map((x, i) => ({ id: `a${i}`, title: `作业${i}`, createdAt: (i + 1) * 1000, statuses: { s1: x } })) });
+  const pts = (c, rr = r) => c.assignments.map((a) => autoPoints(c, rr, 's1')[a.id]);
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING', 'MISSING')), [-2, -4, -8, -16]);
+  assert.deepEqual(pts(mk('MISSING', 'LEAVE', 'MISSING')), [-2, 0, -4]);
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'SUBMITTED', 'MISSING')), [-2, -4, 0, -2]);
+  const many = mk('MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING', 'MISSING', 'MISSING', 'MISSING');
+  assert.deepEqual(pts(many).filter((_, i) => many.assignments[i].statuses.s1 === 'MISSING'), [-2, -2, -2, -2, -2, -2, -3, -9, -27, -30]);
+  const reset = rechargeScores(many, r, ['s1'], 100, '', 99000, { assignmentId: 'a14' });
+  const p = autoPoints(reset, r, 's1');
+  assert.equal(p.a13, -9); assert.equal(p.a14, -2); assert.equal(p.a15, -4);
+  assert.equal(studentStats(reset, r)[0].score, 94);
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING'), { ...r, escalation: { ...r.escalation, cap: 5 } }), [-2, -4, -5]);
+  assert.deepEqual(pts(mk('MISSING', 'MISSING'), { ...r, escalation: { enabled: false } }), [-2, -2]);
 });

@@ -71,6 +71,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.deepshawn.hwcounter.BuildConfig
+import com.deepshawn.hwcounter.data.autoPointsAll
+import com.deepshawn.hwcounter.data.missingText
+import com.deepshawn.hwcounter.data.signed
 import com.deepshawn.hwcounter.data.AiConfig
 import com.deepshawn.hwcounter.data.AppData
 import com.deepshawn.hwcounter.data.AppViewModel
@@ -202,9 +205,30 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
                 RuleRow("已交", r.submitted) { v -> rules { it.copy(submitted = v) } }
                 RuleRow("优秀", r.excellent) { v -> rules { it.copy(excellent = v) } }
                 RuleRow("迟交", r.late) { v -> rules { it.copy(late = v) } }
-                RuleRow("未交", r.missing) { v -> rules { it.copy(missing = v) } }
+                if (!r.escalation.enabled) RuleRow("未交", r.missing) { v -> rules { it.copy(missing = v) } }
                 RuleRow("请假", r.leave) { v -> rules { it.copy(leave = v) } }
                 Text("修改后所有历史作业的自动计分会立即按新规则重算；已积分重置的同学从重置分数起算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            }
+        }
+        group("未交连续递增扣分", key = "escalation") {
+            val e = s.rules.escalation
+            fun esc(f: (com.deepshawn.hwcounter.data.MissingEscalation) -> com.deepshawn.hwcounter.data.MissingEscalation) = rules { it.copy(escalation = f(it.escalation)) }
+            SuperSwitch(
+                checked = e.enabled, onCheckedChange = { v -> esc { it.copy(enabled = v) } }, title = "连续未交加倍扣分",
+                summary = if (e.enabled) "第 1 次 −${e.base.fmt()}，连续第 2 次 −${(e.base * e.base).fmt()}，第 3 次 −${(e.base * e.base * e.base).fmt()}…；关闭后每次未交固定 ${s.rules.missing.signed()}" else "关闭：每次未交固定 ${s.rules.missing.signed()}",
+            )
+            if (e.enabled) Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                RuleRow("底数（第 1 次扣）", e.base) { v -> if (v >= 1) esc { it.copy(base = v) } }
+                RuleRow("累计超过几次后", e.heavyAfter.toDouble(), 1.0) { v -> if (v >= 1) esc { it.copy(heavyAfter = v.toInt()) } }
+                RuleRow("加重后的底数", e.heavyBase) { v -> if (v >= 1) esc { it.copy(heavyBase = v) } }
+                RuleRow("单次最多扣（0 不限）", e.cap, 1.0) { v -> if (v >= 0) esc { it.copy(cap = v) } }
+                Text(
+                    "· 请假、未登记不打断连续，也不计次；只要交过一次（已交 / 优秀 / 迟交）就打断，重新从第 1 次算\n" +
+                        "· 本轮累计未交超过 ${e.heavyAfter} 次后，底数变为 ${e.heavyBase.fmt()}（${e.heavyBase.fmt()}、${(e.heavyBase * e.heavyBase).fmt()}、${(e.heavyBase * e.heavyBase * e.heavyBase).fmt()}…）\n" +
+                        "· 每次积分重置开始新一轮：连续次数和累计次数清零，底数回到 ${e.base.fmt()}\n" +
+                        "· 修改后历史积分自动重算",
+                    fontSize = 11.sp, lineHeight = 17.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp),
+                )
             }
         }
 

@@ -123,6 +123,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
 
     MiuixPage(
         title = "积分",
+        swipe = if (selecting) null else Triple(3, mode) { mode = it },
         largeTitle = "积分榜",
         extraBottom = if (selecting) 150.dp else 0.dp,
         actions = {
@@ -149,7 +150,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
     ) {
         item(key = "summary") {
             Column(Modifier.padding(horizontal = 12.dp)) {
-                ScoreHero(stats, rules.initial, rules.missing, rules.late, rules.excellent, c.recharges.size) { kit.nav.push(Route.StudentDetail(it)) }
+                ScoreHero(stats, rules.initial, rules, c.recharges.size) { kit.nav.push(Route.StudentDetail(it)) }
                 c.autoReset?.takeIf { it.enabled }?.let { ar ->
                     Text(
                         "🗓️ 每月 ${ar.day} 号自动重置为 ${ar.target.fmt()} 分 · 下次 ${fmtDay(ar.next())}",
@@ -461,7 +462,7 @@ private fun RechargeHistorySheet(show: Boolean, recharges: List<ScoreRecharge>, 
 
 /** 顶部概览：平均 / 最高 / 最低 / 重置次数 + 前三名 */
 @Composable
-private fun ScoreHero(stats: List<StudentStat>, base: Double, missing: Double, late: Double, excellent: Double, recharges: Int, onClick: (String) -> Unit) {
+private fun ScoreHero(stats: List<StudentStat>, base: Double, rules: com.deepshawn.hwcounter.data.ScoreRules, recharges: Int, onClick: (String) -> Unit) {
     val colors = MiuixTheme.colorScheme
     val avg = if (stats.isEmpty()) 0.0 else stats.sumOf { it.score } / stats.size
     com.deepshawn.hwcounter.ui.components.HCard {
@@ -472,7 +473,7 @@ private fun ScoreHero(stats: List<StudentStat>, base: Double, missing: Double, l
             HeroNumber("重置", "$recharges 次", Modifier.weight(1f))
         }
         Text(
-            "基准 ${base.fmt()} · 未交 ${missing.signed()} · 迟交 ${late.signed()} · 优秀 ${excellent.signed()}",
+            "基准 ${base.fmt()} · " + (if (rules.escalation.enabled) "未交连续 −${rules.escalation.base.fmt()}、−${(rules.escalation.base * rules.escalation.base).fmt()}、−${(rules.escalation.base * rules.escalation.base * rules.escalation.base).fmt()}…" else "未交 ${rules.missing.signed()}") + " · 迟交 ${rules.late.signed()} · 优秀 ${rules.excellent.signed()}",
             color = colors.onSurfaceVariantSummary, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )

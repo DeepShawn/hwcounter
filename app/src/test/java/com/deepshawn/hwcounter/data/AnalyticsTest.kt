@@ -31,13 +31,13 @@ class AnalyticsTest {
         // 没有重置：本轮 = 全部
         assertEquals(12, Analytics.window(c, Analytics.Range.PERIOD).assignments.size)
         // 全班从作业 9 起重置：本轮 4 次，上一时段 8 次
-        val reset = c.recharge(ScoreRules(), c.students.map { it.id }, 100.0, time = now, assignment = c.assignments.first { it.id == "a9" })
+        val reset = c.recharge(FLAT, c.students.map { it.id }, 100.0, time = now, assignment = c.assignments.first { it.id == "a9" })
         val w = Analytics.window(reset, Analytics.Range.PERIOD)
         assertEquals(listOf("a9", "a10", "a11", "a12"), w.assignments.map { it.id })
         assertEquals(8, w.previous.size)
         assertNotNull(w.reset)
         // 只重置了一人，不算全班重置
-        val one = c.recharge(ScoreRules(), listOf("s1"), 100.0, time = now, assignment = c.assignments.first { it.id == "a9" })
+        val one = c.recharge(FLAT, listOf("s1"), 100.0, time = now, assignment = c.assignments.first { it.id == "a9" })
         assertNull(Analytics.window(one, Analytics.Range.PERIOD).reset)
     }
 
@@ -51,7 +51,7 @@ class AnalyticsTest {
     }
 
     @Test fun insightsFindStreaksImprovementAndGroups() {
-        val r = Analytics.report(cls(), ScoreRules(), Analytics.Range.ALL, now)
+        val r = Analytics.report(cls(), FLAT, Analytics.Range.ALL, now)
         val s2 = r.students.first { it.student.id == "s2" }
         assertEquals(3, s2.missingStreak)
         val s3 = r.students.first { it.student.id == "s3" }
@@ -70,8 +70,8 @@ class AnalyticsTest {
 
     @Test fun scoreDeltaWithinPeriodStartsFromResetTarget() {
         val c0 = cls()
-        val c = c0.recharge(ScoreRules(), c0.students.map { it.id }, 50.0, time = now, assignment = c0.assignments.first { it.id == "a9" })
-        val r = Analytics.report(c, ScoreRules(), Analytics.Range.PERIOD, now)
+        val c = c0.recharge(FLAT, c0.students.map { it.id }, 50.0, time = now, assignment = c0.assignments.first { it.id == "a9" })
+        val r = Analytics.report(c, FLAT, Analytics.Range.PERIOD, now)
         // s2 在 a10..a12 未交：50 − 6 = 44，变化 −6
         val s2 = r.students.first { it.student.id == "s2" }
         assertEquals(44.0, s2.score, 1e-9); assertEquals(-6.0, s2.scoreDelta, 1e-9)
@@ -79,7 +79,7 @@ class AnalyticsTest {
     }
 
     @Test fun emptyClassDoesNotCrash() {
-        val r = Analytics.report(SchoolClass(name = "空"), ScoreRules(), Analytics.Range.RECENT10, now)
+        val r = Analytics.report(SchoolClass(name = "空"), FLAT, Analytics.Range.RECENT10, now)
         assertEquals(0, r.kpi.assignments); assertTrue(r.scoreBins.isEmpty()); assertNull(r.previous)
         assertTrue(Analytics.text(SchoolClass(name = "空"), r, now).isNotBlank())
         assertTrue(Analytics.examReport(SchoolClass(name = "空")).exams.isEmpty())

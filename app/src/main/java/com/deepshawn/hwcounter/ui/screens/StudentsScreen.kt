@@ -172,6 +172,7 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
     }
     com.deepshawn.hwcounter.ui.components.MiuixPage(
         title = "名单",
+        swipe = Triple(2, rosterTab) { rosterTab = it },
         actions = {
             top.yukonga.miuix.kmp.basic.IconButton(onClick = { adding = true }) {
                 top.yukonga.miuix.kmp.basic.Icon(Icons.Filled.PersonAdd, "添加学生", tint = colors.onSurface)

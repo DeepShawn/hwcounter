@@ -56,6 +56,8 @@ fun MiuixPage(
     listState: LazyListState = rememberLazyListState(),
     extraBottom: Dp = 0.dp,
     floating: @Composable BoxScope.(Backdrop?) -> Unit = {},
+    /** 页面左右滑动切换选项卡：(项数, 当前项, 切换) */
+    swipe: Triple<Int, Int, (Int) -> Unit>? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val ui = LocalUiPrefs.current
@@ -68,7 +70,7 @@ fun MiuixPage(
     val barBackdrop = if (ui.glassOn) combined else null
     val behavior = MiuixScrollBehavior()
     val bottom = LocalBottomInset.current + extraBottom
-    Box(modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize().then(if (swipe != null) Modifier.swipeToSwitch(swipe.first, swipe.second, swipe.third) else Modifier)) {
         Scaffold(
             containerColor = surface,
             contentWindowInsets = WindowInsets(0),

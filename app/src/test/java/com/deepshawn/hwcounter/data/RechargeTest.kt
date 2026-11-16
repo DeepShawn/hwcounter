@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RechargeTest {
-    private val rules = ScoreRules()
+    private val rules = FLAT
 
     /** s1：3 次未交（−6）+ 手动 +3 −1 → 96；s2：100 */
     private fun fixture() = SchoolClass(

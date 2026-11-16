@@ -332,7 +332,7 @@ fun SpineScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(markRestMissing, { markRestMissing = it })
-                        Text("其余未登记的同学标记为「未交」（${settings.rules.missing.signed()} 分）")
+                        Text("其余未登记的同学标记为「未交」（${if (settings.rules.escalation.enabled) "连续未交递增扣分" else "${settings.rules.missing.signed()} 分"}）")
                     }
                 }
             }

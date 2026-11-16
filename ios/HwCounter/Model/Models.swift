@@ -408,9 +408,20 @@ struct Seating: Codable, Equatable {
     }
 }
 
+/// 未交连续递增扣分（与安卓 Penalty.kt、网页 model.js 同算法）
+struct MissingEscalation: Equatable {
+    var enabled = true, base = 2.0, heavyBase = 3.0, heavyAfter = 6, cap = 30.0
+    func penalty(streak: Int, total: Int) -> Double {
+        let b = total > heavyAfter ? heavyBase : base
+        let p = pow(b, Double(max(streak, 1)))
+        return cap > 0 ? min(p, cap) : p
+    }
+}
+
 struct Rules: Equatable {
     var initial = 100.0, submitted = 0.0, excellent = 1.0, late = -1.0, missing = -2.0, leave = 0.0
     var exam = ExamRules()
+    var escalation = MissingEscalation()
     func of(_ s: HwStatus) -> Double {
         switch s {
         case .NONE: return 0
@@ -451,6 +462,13 @@ struct AppData: Codable, Equatable {
             x.late = r?["late"]?.double ?? x.late
             x.missing = r?["missing"]?.double ?? x.missing
             x.leave = r?["leave"]?.double ?? x.leave
+            if let e = r?["escalation"] {
+                x.escalation.enabled = e["enabled"]?.bool ?? x.escalation.enabled
+                x.escalation.base = e["base"]?.double ?? x.escalation.base
+                x.escalation.heavyBase = e["heavyBase"]?.double ?? x.escalation.heavyBase
+                x.escalation.heavyAfter = e["heavyAfter"]?.int ?? x.escalation.heavyAfter
+                x.escalation.cap = e["cap"]?.double ?? x.escalation.cap
+            }
             if let e = r?["exam"] {
                 x.exam.enabled = e["enabled"]?.bool ?? x.exam.enabled
                 x.exam.absent = e["absent"]?.double ?? x.exam.absent
@@ -468,6 +486,10 @@ struct AppData: Codable, Equatable {
             r["initial"] = .number(newValue.initial); r["submitted"] = .number(newValue.submitted)
             r["excellent"] = .number(newValue.excellent); r["late"] = .number(newValue.late)
             r["missing"] = .number(newValue.missing); r["leave"] = .number(newValue.leave)
+            var e = r["escalation"] ?? .object([:])
+            e["enabled"] = .bool(newValue.escalation.enabled); e["base"] = .number(newValue.escalation.base)
+            e["heavyBase"] = .number(newValue.escalation.heavyBase); e["heavyAfter"] = .number(Double(newValue.escalation.heavyAfter)); e["cap"] = .number(newValue.escalation.cap)
+            r["escalation"] = e
             settings["rules"] = r
         }
     }
@@ -552,6 +574,26 @@ extension SchoolClass {
         return result
     }
 
+    /// 某位同学每次作业的自动计分（作业 id → 分），未交按连续递增规则
+    func autoPoints(_ rules: Rules, _ sid: String) -> [String: Double] {
+        let esc = rules.escalation
+        var out: [String: Double] = [:]
+        let resets = recharges.filter { $0.studentIds.contains(sid) }.sorted { ($0.start, $0.time, $0.id) < ($1.start, $1.time, $1.id) }
+        var round: String? = nil, streak = 0, total = 0
+        for a in assignments.sorted(by: { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }) {
+            let s = a.status(sid)
+            if !esc.enabled { out[a.id] = rules.of(s); continue }
+            let r = resets.last { $0.counts(a.createdAt) }?.id
+            if r != round { round = r; streak = 0; total = 0 }
+            switch s {
+            case .MISSING: streak += 1; total += 1; out[a.id] = -esc.penalty(streak: streak, total: total)
+            case .SUBMITTED, .EXCELLENT, .LATE: streak = 0; out[a.id] = rules.of(s)
+            default: out[a.id] = rules.of(s)
+            }
+        }
+        return out
+    }
+
     func stats(_ rules: Rules) -> [Stat] {
         let last = latestRecharges()
         var manual: [String: Double] = [:]
@@ -559,9 +601,10 @@ extension SchoolClass {
         return students.map { st in
             let r = last[st.id]
             var auto = 0.0, sub = 0, late = 0, miss = 0
+            let pts = autoPoints(rules, st.id)
             for a in assignments {
                 let s = a.status(st.id)
-                if r.map({ $0.counts(a.createdAt) }) ?? true { auto += rules.of(s) }
+                if r.map({ $0.counts(a.createdAt) }) ?? true { auto += pts[a.id] ?? rules.of(s) }
                 if s == .SUBMITTED || s == .EXCELLENT { sub += 1 }
                 if s == .LATE { late += 1 }
                 if s == .MISSING { miss += 1 }

@@ -11,7 +11,8 @@ export const STATUS = {
 };
 export const STATUS_KEYS = Object.keys(STATUS);
 
-export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0 });
+export const defaultEscalation = () => ({ enabled: true, base: 2, heavyBase: 3, heavyAfter: 6, cap: 30 });
+export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation() });
 export const defaultSettings = () => ({
   theme: 'mint', dark: 0, layout: 'grid', shape: 1, compact: false, rules: defaultRules(),
   ai: { provider: 'openai', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', apiKey: '', model: 'qwen-vl-max', vision: true },
@@ -28,6 +29,7 @@ export function normalizeData(d) {
   const out = { ...base, ...(d || {}) };
   out.settings = { ...base.settings, ...(out.settings || {}) };
   out.settings.rules = { ...defaultRules(), ...(out.settings.rules || {}) };
+  out.settings.rules.escalation = { ...defaultEscalation(), ...(out.settings.rules.escalation || {}) };
   out.settings.ai = { ...base.settings.ai, ...(out.settings.ai || {}) };
   out.classes = (out.classes || []).map((c) => ({
     id: newId(), emoji: '🎒', students: [], assignments: [], scores: [], ...c,
@@ -106,6 +108,33 @@ export function examDelta(rules, e, sid) {
   return b ? b.delta : 0;
 }
 
+/**
+ * 未交连续递增扣分（与安卓 Penalty.kt 同算法）：连续未交第 n 次扣 base^n（2、4、8…）；
+ * 请假、未登记不打断也不计次，交过一次即重算；本轮累计超 heavyAfter 次后底数为 heavyBase（3、9、27…）；
+ * 每次积分重置开始新一轮。返回 作业id → 分。
+ */
+export function autoPoints(c, rules, sid) {
+  const esc = { ...defaultEscalation(), ...(rules.escalation || {}) };
+  const out = {};
+  const resets = (c.recharges || []).filter((r) => (r.studentIds || []).includes(sid))
+    .sort((a, b) => rechargeStart(a) - rechargeStart(b) || a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const list = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  let round; let streak = 0; let total = 0;
+  for (const a of list) {
+    const s = a.statuses[sid] || 'NONE';
+    if (!esc.enabled) { out[a.id] = ruleOf(rules, s); continue; }
+    let r = null; for (const x of resets) if (rechargeCounts(x, a.createdAt)) r = x.id;
+    if (r !== round) { round = r; streak = 0; total = 0; }
+    if (s === 'MISSING') {
+      streak++; total++;
+      const b = total > esc.heavyAfter ? esc.heavyBase : esc.base;
+      let p = b ** streak; if (esc.cap > 0) p = Math.min(p, esc.cap);
+      out[a.id] = -p;
+    } else { if (s === 'SUBMITTED' || s === 'EXCELLENT' || s === 'LATE') streak = 0; out[a.id] = ruleOf(rules, s); }
+  }
+  return out;
+}
+
 export function studentStats(c, rules) {
   let byRules = statsCache.get(c);
   if (!byRules) { byRules = new WeakMap(); statsCache.set(c, byRules); }
@@ -117,7 +146,8 @@ export function studentStats(c, rules) {
     const r = last[st.id];
     const counts = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
     let auto = 0;
-    for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; if (assignmentCounts(a, r)) auto += ruleOf(rules, s); }
+    const pts = autoPoints(c, rules, st.id);
+    for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; if (assignmentCounts(a, r)) auto += pts[a.id] ?? ruleOf(rules, s); }
     let examPts = 0;
     for (const e of c.exams || []) if (!r || rechargeCounts(r, e.date)) examPts += examDelta(rules, e, st.id);
     return { student: st, score: (r ? r.target : rules.initial) + auto + (manual[st.id] || 0) + examPts, counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };

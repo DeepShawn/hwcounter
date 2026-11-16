@@ -299,35 +299,37 @@ fun App(vm: AppViewModel, data: AppData) {
     }
 }
 
-/** 液态玻璃底部导航：悬浮胶囊，选中项带淡色胶囊高亮 */
+/** 液态玻璃底部导航：悬浮胶囊，选中项的淡色胶囊会滑动；按住底栏左右拖动即可切换页面 */
 @Composable
 private fun GlassTabBar(tabs: List<Tab>, current: Route, onSelect: (Tab) -> Unit) {
     val colors = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(34.dp)
-    androidx.compose.foundation.layout.Row(
+    val selected = tabs.indexOfFirst { it.route == current }.coerceAtLeast(0)
+    com.deepshawn.hwcounter.ui.components.SlidingSegments(
+        tabs.size, selected, { i -> tabs.getOrNull(i)?.let(onSelect) },
         Modifier.padding(horizontal = 18.dp).widthIn(max = 520.dp).fillMaxWidth().height(68.dp)
             .glass(shape = shape, refraction = 22.dp)
             .padding(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        tabs.forEach { t ->
-            val sel = current == t.route
-            val bg by androidx.compose.animation.animateColorAsState(if (sel) colors.primary.copy(alpha = 0.14f) else androidx.compose.ui.graphics.Color.Transparent, label = "tab")
-            val fg = if (sel) colors.primary else colors.onSurfaceVariantSummary
-            androidx.compose.foundation.layout.Column(
-                Modifier.weight(1f).fillMaxSize()
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
-                    .background(bg)
-                    .clickable(
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                        indication = null,
-                    ) { onSelect(t) }
-                    .semantics { this.selected = sel; this.role = androidx.compose.ui.semantics.Role.Tab },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-            ) {
-                Icon(if (sel) t.iconSel else t.icon, t.label, tint = fg, modifier = Modifier.size(24.dp))
-                Text(t.label, color = fg, fontSize = 11.sp, fontWeight = if (sel) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal)
+        thumb = { m -> androidx.compose.foundation.layout.Box(m.clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)).background(colors.primary.copy(alpha = 0.14f))) },
+    ) { st ->
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            tabs.forEachIndexed { i, t ->
+                val sel = i == st.hot
+                val fg = if (sel) colors.primary else colors.onSurfaceVariantSummary
+                androidx.compose.foundation.layout.Column(
+                    Modifier.weight(1f).fillMaxSize()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                        ) { onSelect(t) }
+                        .semantics { this.selected = i == selected; this.role = androidx.compose.ui.semantics.Role.Tab },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                ) {
+                    Icon(if (sel) t.iconSel else t.icon, t.label, tint = fg, modifier = Modifier.size(24.dp))
+                    Text(t.label, color = fg, fontSize = 11.sp, fontWeight = if (sel) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal)
+                }
             }
         }
     }

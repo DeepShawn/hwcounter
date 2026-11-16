@@ -104,6 +104,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.deepshawn.hwcounter.data.autoPointsAll
+import com.deepshawn.hwcounter.data.missingText
 import com.deepshawn.hwcounter.data.AppData
 import com.deepshawn.hwcounter.data.AppViewModel
 import com.deepshawn.hwcounter.data.Assignment
@@ -205,6 +207,9 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
         return
     }
     val settings = data.settings
+    // 本次作业每人的自动计分（未交按连续递增规则）
+    val pts = remember(c, settings.rules) { c.autoPointsAll(settings.rules) }
+    fun ptsOf(s: com.deepshawn.hwcounter.data.Student) = pts[s.id]?.get(a.id) ?: settings.rules.of(a.statuses[s.id] ?: HwStatus.NONE)
     val readOnly by vm.readOnly.collectAsStateWithLifecycle()
     val sm = c.summary(a)
     var filter by remember { mutableStateOf(Filter.ALL) }
@@ -568,7 +573,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     }
                     items(list, key = { it.id }) { s ->
                         Box(Modifier.padding(horizontal = 4.dp)) {
-                            StudentCard(s, a, settings.rules.of(a.statuses[s.id] ?: HwStatus.NONE), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
+                            StudentCard(s, a, ptsOf(s), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
                         }
                     }
                 }
@@ -577,9 +582,9 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     val st = a.statuses[s.id] ?: HwStatus.NONE
                     Box(Modifier.padding(horizontal = if (settings.layout == "list") 16.dp else 4.dp)) {
                         when (settings.layout) {
-                            "list" -> StudentListRow(s, a, settings.rules.of(st), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
+                            "list" -> StudentListRow(s, a, ptsOf(s), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
                             "seat" -> SeatCell(s, st, batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
-                            else -> StudentCard(s, a, settings.rules.of(st), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
+                            else -> StudentCard(s, a, ptsOf(s), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
                         }
                     }
                 }
@@ -645,7 +650,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
         }
     }
     if (confirmFill) {
-        ConfirmDialog("剩余标记为未交", "将 ${sm.c(HwStatus.NONE)} 名“未登记”的同学标记为「未交」，并按规则扣分（${settings.rules.missing.signed()} 分/人）。", "确定", { confirmFill = false }) {
+        ConfirmDialog("剩余标记为未交", "将 ${sm.c(HwStatus.NONE)} 名“未登记”的同学标记为「未交」，并按规则扣分（${if (settings.rules.escalation.enabled) "连续未交递增扣分" else "${settings.rules.missing.signed()} 分/人"}）。", "确定", { confirmFill = false }) {
             vm.fillRemaining(a.id, HwStatus.MISSING)
             kit.undoable("已标记 ${sm.c(HwStatus.NONE)} 人未交")
         }
@@ -832,7 +837,7 @@ fun StudentSheet(vm: AppViewModel, data: AppData, c: SchoolClass, a: Assignment,
                 }
             }
             Text(
-                "计分：${HwStatus.entries.filter { it != HwStatus.NONE }.joinToString("  ") { it.label + data.settings.rules.of(it).signed() }}",
+                "计分：${HwStatus.entries.filter { it != HwStatus.NONE && !(it == HwStatus.MISSING && data.settings.rules.escalation.enabled) }.joinToString("  ") { it.label + data.settings.rules.of(it).signed() }}" + if (data.settings.rules.escalation.enabled) "  ${data.settings.rules.missingText()}" else "",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
             )
             Spacer(Modifier.height(16.dp))
