@@ -137,15 +137,19 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
             }
         },
         floating = {
-            if (selecting && !readOnly) SelectionBar(
+            androidx.compose.animation.AnimatedVisibility(
+                selecting && !readOnly, Modifier.align(Alignment.BottomCenter),
+                enter = androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.slideOutVertically { it } + androidx.compose.animation.fadeOut(),
+            ) { SelectionBar(
                 count = selectedIds.size,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = LocalBottomInset.current),
+                modifier = Modifier.padding(bottom = LocalBottomInset.current),
                 onAll = { selected = c.students.map { it.id }.toSet() },
                 onClear = { selected = emptySet() },
                 onCancel = { exitSelect() },
                 onScore = { scoreFor = selectedIds },
                 onRecharge = { rechargeFor = selectedIds },
-            )
+            ) }
         },
     ) {
         item(key = "summary") {
@@ -181,7 +185,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         when (mode) {
             0 -> itemsIndexed(personalStats, key = { _, s -> s.student.id }) { i, st ->
                 RankRow(
-                    Modifier.listCell(i, personalStats.size), ranks.getValue(st.student.id), st, selecting, st.student.id in selected,
+                    (if (com.deepshawn.hwcounter.ui.components.motionOn()) Modifier.animateItem() else Modifier).listCell(i, personalStats.size), ranks.getValue(st.student.id), st, selecting, st.student.id in selected,
                     valueText = st.score.fmt(),
                     sub = "${st.student.no} · 交${st.submitted} · 迟${st.late} · 缺${st.missing}" + if (recharged.containsKey(st.student.id)) " · 已重置" else "",
                     onClick = {
@@ -477,7 +481,7 @@ private fun ScoreHero(stats: List<StudentStat>, base: Double, rules: com.deepsha
             HeroNumber("重置", "$recharges 次", Modifier.weight(1f))
         }
         Text(
-            "基准 ${base.fmt()} · " + (if (rules.escalation.enabled) "未交连续 −${rules.escalation.base.fmt()}、−${(rules.escalation.base * rules.escalation.base).fmt()}、−${(rules.escalation.base * rules.escalation.base * rules.escalation.base).fmt()}…" else "未交 ${rules.missing.signed()}") + " · 迟交 ${rules.late.signed()} · 优秀 ${rules.excellent.signed()}" + if (rules.streakBonus.enabled) " · 连续交满 ${rules.streakBonus.after} 次后每次 +${rules.streakBonus.bonus.fmt()}" else "",
+            "基准 ${base.fmt()} · 优秀 ${rules.excellent.signed()} · 迟交 ${rules.late.signed()} · " + (if (rules.escalation.enabled) "未交连续加倍" else "未交 ${rules.missing.signed()}"),
             color = colors.onSurfaceVariantSummary, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
@@ -491,7 +495,7 @@ private fun ScoreHero(stats: List<StudentStat>, base: Double, rules: com.deepsha
 @Composable
 private fun HeroNumber(label: String, value: String, modifier: Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, color = MiuixTheme.colorScheme.onSurface, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(com.deepshawn.hwcounter.ui.components.animatedText(value), color = MiuixTheme.colorScheme.onSurface, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         Text(label, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, fontSize = 12.sp)
     }
 }
@@ -514,7 +518,7 @@ private fun Podium(top: List<StudentStat>, onClick: (String) -> Unit) {
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(st.student.name, fontWeight = FontWeight.Medium, fontSize = 14.sp, maxLines = 1)
-                Text(st.score.fmt(), fontWeight = FontWeight.SemiBold, fontSize = if (idx == 0) 18.sp else 16.sp, color = colors.primary)
+                Text(com.deepshawn.hwcounter.ui.components.animatedText(st.score.fmt()), fontWeight = FontWeight.SemiBold, fontSize = if (idx == 0) 18.sp else 16.sp, color = colors.primary)
             }
         }
     }
@@ -573,7 +577,7 @@ private fun RankRow(
             Text(st.student.name, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             Text(sub, fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(valueText, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = if (warn) statusColor(HwStatus.MISSING) else colors.primary)
+        Text(com.deepshawn.hwcounter.ui.components.animatedText(valueText), fontWeight = FontWeight.Bold, fontSize = 20.sp, color = if (warn) statusColor(HwStatus.MISSING) else colors.primary)
     }
 }
 

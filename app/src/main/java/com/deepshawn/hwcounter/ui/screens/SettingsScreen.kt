@@ -178,7 +178,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
             SuperSwitch(
                 checked = ui.animations, onCheckedChange = { v -> prefs { it.copy(animations = v) } },
                 title = "界面动效", enabled = !ui.lowPerf,
-                summary = if (ui.lowPerf) "低性能模式下始终关闭" else if (ui.animations) "页面切换、弹窗、图表生长等过渡动画" else "默认关闭：所有操作即点即达，最跟手",
+                summary = if (ui.lowPerf) "低性能模式下始终关闭" else if (ui.animations) "页面弹簧滑入、卡片依次浮现、数字滚动、按压回弹、列表重排、选项滑块等动画" else "默认关闭：所有操作即点即达。开启后有页面滑入、卡片浮现、数字滚动、按压回弹等动画",
             )
             SuperSwitch(
                 checked = ui.glass, onCheckedChange = { v -> prefs { it.copy(glass = v) } },

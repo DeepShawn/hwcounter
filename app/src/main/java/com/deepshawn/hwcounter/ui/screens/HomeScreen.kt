@@ -82,6 +82,7 @@ import com.deepshawn.hwcounter.ui.components.AppCard
 import com.deepshawn.hwcounter.ui.components.EmptyState
 import com.deepshawn.hwcounter.ui.components.GradientHeader
 import com.deepshawn.hwcounter.ui.components.ProgressRing
+import com.deepshawn.hwcounter.ui.components.pressScale
 import com.deepshawn.hwcounter.ui.components.SectionTitle
 import com.deepshawn.hwcounter.ui.components.StackedBar
 import com.deepshawn.hwcounter.ui.components.StatTile
@@ -231,7 +232,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
                         Row(Modifier.fillMaxWidth()) {
                             row.forEach { (label, icon, pair) ->
                                 Column(
-                                    Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { kit.haptic(); pair.second() }.padding(vertical = 10.dp),
+                                    Modifier.weight(1f).pressScale(0.92f).clip(RoundedCornerShape(14.dp)).clickable { kit.haptic(); pair.second() }.padding(vertical = 10.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     Box(Modifier.size(46.dp).clip(RoundedCornerShape(15.dp)).background(pair.first.copy(alpha = if (com.deepshawn.hwcounter.ui.theme.LocalExtra.current.isDark) 0.22f else 0.12f)), contentAlignment = Alignment.Center) {
@@ -498,8 +499,8 @@ private fun CountDot(color: Color, label: String, n: Int) {
 
 @Composable
 private fun Overview(label: String, value: String, modifier: Modifier, onClick: () -> Unit) {
-    Column(modifier.clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
-        top.yukonga.miuix.kmp.basic.Text(value, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+    Column(modifier.pressScale().clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+        top.yukonga.miuix.kmp.basic.Text(com.deepshawn.hwcounter.ui.components.animatedText(value), fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         top.yukonga.miuix.kmp.basic.Text(label, fontSize = 12.sp, color = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme.onSurfaceVariantSummary)
     }
 }

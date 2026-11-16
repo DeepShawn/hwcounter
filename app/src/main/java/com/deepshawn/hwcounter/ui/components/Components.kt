@@ -116,7 +116,13 @@ fun ProgressRing(
     colors: List<Color> = listOf(Color.White, Color.White),
     content: @Composable BoxScope.() -> Unit = {},
 ) {
-    val anim by animateFloatAsState(progress.coerceIn(0f, 1f), tween(900, easing = FastOutSlowInEasing), label = "ring")
+    // 动效开启时从 0 画到目标位置
+    val motion = com.deepshawn.hwcounter.ui.components.motionOn()
+    val start = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(if (motion) 0f else progress.coerceIn(0f, 1f)) }
+    androidx.compose.runtime.LaunchedEffect(progress, motion) {
+        if (motion) start.animateTo(progress.coerceIn(0f, 1f), tween(900, easing = FastOutSlowInEasing)) else start.snapTo(progress.coerceIn(0f, 1f))
+    }
+    val anim = start.value
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val sw = stroke.toPx()

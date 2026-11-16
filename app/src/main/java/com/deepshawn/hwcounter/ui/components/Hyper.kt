@@ -44,7 +44,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun Modifier.listCell(index: Int, count: Int, radius: Dp = 16.dp, color: Color = rowTint()): Modifier {
     val top = if (index == 0) radius else 0.dp
     val bottom = if (index == count - 1) radius else 0.dp
-    return this.padding(horizontal = 12.dp).fillMaxWidth()
+    return this.appear().padding(horizontal = 12.dp).fillMaxWidth()
         .clip(RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom))
         .background(color)
 }

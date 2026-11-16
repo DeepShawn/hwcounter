@@ -174,10 +174,13 @@ fun HCard(
 ) {
     val shape = RoundedCornerShape(radius)
     androidx.compose.foundation.layout.Column(
-        modifier.glassPanel(shape)
+        modifier.appear()
+            .then(if (onClick != null || onLongClick != null) Modifier.pressScale(0.98f) else Modifier)
+            .glassPanel(shape)
             .then(
                 if (onClick != null || onLongClick != null) Modifier.combinedClickableCompat(onClick ?: {}, onLongClick) else Modifier,
-            ),
+            )
+            .smoothSize(),
         content = content,
     )
 }

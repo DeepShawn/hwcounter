@@ -447,7 +447,7 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
                         top.yukonga.miuix.kmp.basic.Text("班级第 $rank 名 · 共 ${stats.size} 人", fontSize = 12.sp, color = mcolors.onSurfaceVariantSummary)
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        top.yukonga.miuix.kmp.basic.Text(me.score.fmt(), fontSize = 30.sp, fontWeight = FontWeight.SemiBold, color = mcolors.primary)
+                        top.yukonga.miuix.kmp.basic.Text(com.deepshawn.hwcounter.ui.components.animatedText(me.score.fmt()), fontSize = 30.sp, fontWeight = FontWeight.SemiBold, color = mcolors.primary)
                         top.yukonga.miuix.kmp.basic.Text("当前积分", fontSize = 12.sp, color = mcolors.onSurfaceVariantSummary)
                     }
                 }
