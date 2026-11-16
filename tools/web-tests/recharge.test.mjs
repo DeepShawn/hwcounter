@@ -145,4 +145,9 @@ test('连续交奖励与取整（与安卓 StreakBonusAndRoundingTest 一致）'
   const c = { ...mk(S), scores: [{ id: 'e1', studentId: 's1', delta: 0.5, reason: '表现', time: 5 }, { id: 'e2', studentId: 's1', delta: -1.5, reason: '迟到', time: 6 }] };
   assert.equal(studentStats(c, { ...r, late: -0.5 })[0].score, 99);
   assert.equal(studentStats(c, { ...r, late: -0.5, roundPoints: false })[0].score, 99);
+  const late = mk('LATE');
+  assert.equal(autoPoints(late, { ...r, late: -0.5 }, 's1').a0, -0.5);
+  assert.equal(studentStats(late, { ...r, late: -0.5 })[0].score, 100);
+  assert.equal(studentStats(late, { ...r, late: -0.5, roundPoints: false })[0].score, 99.5);
+  assert.equal(studentStats(late, { ...r, late: -0.5, initial: -2 })[0].score, -3);
 });

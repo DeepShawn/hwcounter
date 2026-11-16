@@ -118,7 +118,7 @@ data class ScoreRules(
     val escalation: MissingEscalation = MissingEscalation(),
     /** 连续交作业奖励 */
     val streakBonus: StreakBonus = StreakBonus(),
-    /** 每次加减分取整：正分向上、负分向下 */
+    /** 最终显示的总积分取整：正分向上、负分向下（单笔加减分保留原值） */
     val roundPoints: Boolean = true,
     /** 结算规则 */
     val settlement: SettlementRules = SettlementRules(),
@@ -226,7 +226,7 @@ fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
         }
         var examPts = 0.0
         for (e in exams) if (r == null || r.counts(e.date)) examPts += rules.pt(rules.exam.deltaFor(e, st.id))
-        StudentStat(st, (r?.target ?: rules.initial) + auto + (manual[st.id] ?: 0.0) + examPts, counts)
+        StudentStat(st, rules.shown((r?.target ?: rules.initial) + auto + (manual[st.id] ?: 0.0) + examPts), counts)
     }
 }
 

@@ -16,7 +16,9 @@ export const defaultStreakBonus = () => ({ enabled: true, after: 5, bonus: 1, la
 export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true });
 /** 正分向上取整、负分向下取整（与安卓 roundAway 一致） */
 export const roundAway = (x) => (x > 0 ? Math.ceil(x - 1e-9) : x < 0 ? Math.floor(x + 1e-9) : 0);
-export const pt = (rules, x) => (rules.roundPoints === false ? x : roundAway(x));
+/** 单笔加减分保留原值；取整只作用在最终显示的总积分上 */
+export const pt = (rules, x) => x;
+export const shown = (rules, total) => (rules.roundPoints === false ? total : roundAway(total));
 export const defaultSettings = () => ({
   theme: 'mint', dark: 0, layout: 'grid', shape: 1, compact: false, rules: defaultRules(),
   ai: { provider: 'openai', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', apiKey: '', model: 'qwen-vl-max', vision: true },
@@ -162,7 +164,7 @@ export function studentStats(c, rules) {
     for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; if (assignmentCounts(a, r)) auto += pts[a.id] ?? ruleOf(rules, s); }
     let examPts = 0;
     for (const e of c.exams || []) if (!r || rechargeCounts(r, e.date)) examPts += pt(rules, examDelta(rules, e, st.id));
-    return { student: st, score: (r ? r.target : rules.initial) + auto + (manual[st.id] || 0) + examPts, counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };
+    return { student: st, score: shown(rules, (r ? r.target : rules.initial) + auto + (manual[st.id] || 0) + examPts), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };
   });
   byRules.set(rules, result);
   return result;

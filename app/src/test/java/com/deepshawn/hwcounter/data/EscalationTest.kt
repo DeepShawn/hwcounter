@@ -106,7 +106,11 @@ class StreakBonusAndRoundingTest {
         val r = rules.copy(late = -0.5)
         assertEquals(100.0 + 1 - 2, c.studentStats(r).first().score, 1e-9)
         assertEquals(100.0 + 0.5 - 1.5, c.studentStats(r.copy(roundPoints = false)).first().score, 1e-9)
-        assertEquals(listOf(-1.0), pts(cls(T), r))
+        // 单笔保留原值，只对最终积分取整：100 − 0.5 = 99.5 → 100；负分向下：−2.5 → −3
+        assertEquals(listOf(-0.5), pts(cls(T), r))
+        assertEquals(100.0, cls(T).studentStats(r).first().score, 1e-9)
+        assertEquals(99.5, cls(T).studentStats(r.copy(roundPoints = false)).first().score, 1e-9)
+        assertEquals(-3.0, cls(T).studentStats(r.copy(initial = -2.0)).first().score, 1e-9)
     }
 
     @Test fun ledgerLabelsBonus() {

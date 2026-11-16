@@ -223,8 +223,8 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
             }
             if (b.enabled) SuperSwitch(checked = b.lateCounts, onCheckedChange = { v -> sb { it.copy(lateCounts = v) } }, title = "迟交也算连续交", summary = if (b.lateCounts) "迟交不打断连续，也能拿奖励" else "迟交会打断连续（请假、未登记不打断）")
             SuperSwitch(
-                checked = s.rules.roundPoints, onCheckedChange = { v -> rules { it.copy(roundPoints = v) } }, title = "加减分取整",
-                summary = "每次加分向上取整、扣分向下取整（如 +0.5 记 +1，−0.5 记 −1）；关闭则保留小数",
+                checked = s.rules.roundPoints, onCheckedChange = { v -> rules { it.copy(roundPoints = v) } }, title = "积分取整",
+                summary = "最终显示的积分取整：正分向上取整（如 98.5 显示 99），负分向下取整（如 −2.5 显示 −3）；每一笔加减分保留原值",
             )
             Text("每次积分重置后重新开始计连续次数。修改后历史积分自动重算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
         }

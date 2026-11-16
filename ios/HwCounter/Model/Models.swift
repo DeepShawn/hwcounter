@@ -436,7 +436,9 @@ struct Rules: Equatable {
     var escalation = MissingEscalation()
     var streakBonus = StreakBonus()
     var roundPoints = true
-    func pt(_ x: Double) -> Double { roundPoints ? roundAway(x) : x }
+    /// 单笔加减分保留原值；取整只作用在最终显示的总积分上
+    func pt(_ x: Double) -> Double { x }
+    func shown(_ total: Double) -> Double { roundPoints ? roundAway(total) : total }
     func of(_ s: HwStatus) -> Double {
         switch s {
         case .NONE: return 0
@@ -644,7 +646,7 @@ extension SchoolClass {
             }
             var examPts = 0.0
             for e in exams where r.map({ $0.counts(e.date) }) ?? true { examPts += rules.pt(rules.exam.delta(e, st.id)) }
-            return Stat(student: st, score: (r?.target ?? rules.initial) + auto + (manual[st.id] ?? 0) + examPts, submitted: sub, late: late, missing: miss)
+            return Stat(student: st, score: rules.shown((r?.target ?? rules.initial) + auto + (manual[st.id] ?? 0) + examPts), submitted: sub, late: late, missing: miss)
         }
     }
 }
