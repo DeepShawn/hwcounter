@@ -96,6 +96,7 @@ class ShotsTest {
     private fun click(text: String) = rule.onAllNodes(hasText(text) and hasClickAction()).onFirst().performClick()
     private fun tab(label: String) = rule.onAllNodes(hasText(label) and hasClickAction()).onFirst().performClick()
     private fun back() = rule.onAllNodes(hasContentDescription("返回")).onFirst().performClick()
+    private fun waitStock() = runCatching { rule.waitUntil(30_000) { rule.onAllNodes(hasText("正在计算行情…") or hasText("计算中…")).fetchSemanticsNodes().isEmpty() } }
     private fun safe(block: () -> Unit) = runCatching(block).onFailure { println("shot step failed: ${it.message?.take(200)}") }
 
     /** PDF 报告画到位图上检查排版 */
@@ -116,7 +117,8 @@ class ShotsTest {
         @Suppress("UNCHECKED_CAST")
         (AppViewModel::class.java.getDeclaredField("_readOnly").apply { isAccessible = true }.get(vm) as MutableStateFlow<Boolean>).value = false
         val data = sample().let { it.copy(settings = it.settings.copy(dark = dark)) }
-        rule.setContent { HwTheme(data.settings.theme, dark, 1, false, ui) { App(vm, data) } }
+        com.deepshawn.hwcounter.ui.theme.UiPrefsStore.update(app) { ui }
+        rule.setContent { HwTheme(data.settings.theme, dark, 1, false, com.deepshawn.hwcounter.ui.theme.UiPrefsStore.prefs) { App(vm, data) } }
         save("${prefix}_01_home"); scroll(); save("${prefix}_02_home_scrolled")
 
         tab("名单"); save("${prefix}_03_roster")
@@ -155,6 +157,14 @@ class ShotsTest {
             click("考试"); save("${prefix}_31_stats_exam")
             for (i in 2..9) { scroll(); save("${prefix}_3${i}_stats_exam") }
             top(); click("关注"); save("${prefix}_35a_attention"); scroll(); save("${prefix}_35b_attention")
+            safe {
+                top(); click("股票"); waitStock(); save("${prefix}_37a_stock"); scroll(); save("${prefix}_37b_stock"); scroll(); save("${prefix}_37c_stock"); scroll(); save("${prefix}_37d_stock")
+                top(); click("K线"); save("${prefix}_37e_stock_k")
+                click("3月"); waitStock(); save("${prefix}_37f_stock_3m")
+                click("1周"); waitStock(); save("${prefix}_37g_stock_1w")
+                rule.onAllNodes(hasText("No.202406")).onFirst().performClick(); waitStock(); save("${prefix}_38a_stock_detail"); scroll(); save("${prefix}_38b_stock_detail"); scroll(); save("${prefix}_38c_stock_detail"); back()
+                top(); click("榜单")
+            }
             top(); click("周杰"); save("${prefix}_36a_personal"); for (k in 1..5) { scroll(); save("${prefix}_36${('a' + k)}_personal") }; back()
         }
 

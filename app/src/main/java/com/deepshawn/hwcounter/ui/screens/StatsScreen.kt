@@ -136,7 +136,11 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
     var scoreFor by remember { mutableStateOf<Pair<List<String>, String>?>(null) }
     // 关注度：数据一变就重算（实时追踪）
     val attention = remember(c, rules) { com.deepshawn.hwcounter.data.Attention.all(c, rules) }
-    val attentionWeekly = remember(c, rules, mode == 2) { if (mode == 2) com.deepshawn.hwcounter.data.Attention.weekly(c, rules) else emptyMap() }
+    val stockMode = com.deepshawn.hwcounter.ui.theme.LocalUiPrefs.current.stockMode
+    val attentionWeekly = remember(c, rules, mode == 2 && !stockMode) { if (mode == 2 && !stockMode) com.deepshawn.hwcounter.data.Attention.weekly(c, rules) else emptyMap() }
+    // 股票模式：关注度按美股行情显示
+    val stockUi = rememberStockUi()
+    val stockBoard = if (mode == 2 && stockMode) rememberBoard(c, rules, stockUi.span) else null
     val subjectsWithExams = remember(c.exams) { c.exams.map { it.subject }.filter { it.isNotBlank() }.distinct() }
     var examSubject by rememberSaveable { mutableIntStateOf(0) }
     val examReport = remember(c, examSubject, subjectsWithExams) { Analytics.examReport(c, subjectsWithExams.getOrNull(examSubject - 1)) }
@@ -168,7 +172,17 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 onBatch = if (readOnly) null else { ids, reason -> kit.nav.push(Route.BatchScore(ids, reason)) },
             )
         }
-        else if (mode == 2) attentionSections(c, rules, attention, attentionWeekly) { kit.nav.push(Route.Personal(it)) }
+        else if (mode == 2) {
+            item(key = "att-view") {
+                HTabs(
+                    listOf("榜单", "股票"), if (stockMode) 1 else 0,
+                    { v -> com.deepshawn.hwcounter.ui.theme.UiPrefsStore.update(ctx) { it.copy(stockMode = v == 1) } },
+                    Modifier.padding(horizontal = 12.dp, vertical = 6.dp), height = 36.dp,
+                )
+            }
+            if (stockMode) stockSections(c, stockBoard, stockUi, attention) { kit.nav.push(Route.Stock(it)) }
+            else attentionSections(c, rules, attention, attentionWeekly) { kit.nav.push(Route.Personal(it)) }
+        }
         else examSections(
             c, examReport, subjectsWithExams, examSubject, { examSubject = it }, report.examCorrelation, onOpenExam = { kit.nav.push(Route.Exam(it)) }, onManage = { kit.nav.push(Route.Exams) }, onOpenStudent = { kit.nav.push(Route.StudentDetail(it)) },
             onScore = if (readOnly) null else { ids, reason -> scoreFor = ids to reason },
