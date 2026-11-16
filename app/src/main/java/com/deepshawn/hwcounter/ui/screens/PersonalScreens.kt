@@ -400,7 +400,7 @@ private fun Bar(v: Double, color: Color) {
 }
 
 @Composable
-private fun Mini(label: String, value: String, modifier: Modifier) {
+internal fun Mini(label: String, value: String, modifier: Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(animatedText(value), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         Text(label, fontSize = 10.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)

@@ -119,6 +119,10 @@ fun SchoolClass.ledger(rules: ScoreRules, studentId: String): List<LedgerRow> {
         }
         if (d != 0.0) rows += LedgerRow("a" + a.id, LedgerRow.Kind.AUTO, a.createdAt, d, "${a.subject}「${a.title}」${st.label}$extra", a.countsAfter(last), assignmentId = a.id)
     }
+    for (lp in leaderPeriods(rules)[studentId].orEmpty()) {
+        if (lp.points == 0.0) continue
+        rows += LedgerRow("l" + lp.key, LedgerRow.Kind.AUTO, lp.time, rules.pt(lp.points), "组长（${lp.group}）${lp.label}：" + lp.parts.joinToString("；") { "${it.first} ${it.second.signed()}" }, last?.counts(lp.time) ?: true)
+    }
     for (e in exams) {
         val d = rules.pt(rules.exam.deltaFor(e, studentId))
         if (d != 0.0) {

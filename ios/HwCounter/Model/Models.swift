@@ -296,6 +296,8 @@ struct SchoolClass: Codable, Identifiable, Equatable {
     var exams: [Exam] = []
     /// 小组 → 组长学生 id
     var groupLeaders: [String: String] = [:]
+    /// 课代表（学生 id），可以同时是组长
+    var reps: [String] = []
     /// 每月定期重置（与安卓 AutoReset.kt 同格式同算法）
     var autoReset: AutoReset? = nil
     /// 结算记录（安卓生成；iPad 原样保留并同步）
@@ -316,6 +318,7 @@ struct SchoolClass: Codable, Identifiable, Equatable {
         recharges = (try? c.decodeIfPresent([ScoreRecharge].self, forKey: .recharges)) ?? []
         exams = (try? c.decodeIfPresent([Exam].self, forKey: .exams)) ?? []
         groupLeaders = (try? c.decodeIfPresent([String: String].self, forKey: .groupLeaders)) ?? [:]
+        reps = (try? c.decodeIfPresent([String].self, forKey: .reps)) ?? []
         autoReset = try? c.decodeIfPresent(AutoReset.self, forKey: .autoReset)
         settlements = (try? c.decodeIfPresent([JSONValue].self, forKey: .settlements)) ?? []
     }
@@ -432,6 +435,14 @@ struct MissingEscalation: Equatable {
 /// 连续交作业奖励：本轮连续按时交满 after 次后，之后每连续交一次额外加 bonus
 struct StreakBonus: Equatable { var enabled = true, after = 5, bonus = 1.0, lateCounts = false }
 
+/// 组长奖惩（与安卓 Leader.kt、网页 model.js 同算法）：按周期看小组人均作业扣分
+struct LeaderRules: Equatable {
+    var enabled = true, period = "week"
+    var clean = 3.0, low = 2.0, below = 1.0, above = -1.0, high = -2.0, veryHigh = -3.0
+    var top = 1.0, bottom = -1.0, progress = 1.0, regress = -1.0, streakStep = 1.0, streakMax = 3, cap = 5.0
+}
+struct LeaderPeriod { var group: String; var key: String; var label: String; var time: Int64; var perCapita: Double; var parts: [(String, Double)]; var points: Double { parts.reduce(0) { $0 + $1.1 } } }
+
 /// 作业复审：不合格记一次未交，这一次扣分 × multiplier（默认翻倍）
 struct ReviewRules: Equatable { var enabled = true, multiplier = 2.0 }
 
@@ -445,6 +456,7 @@ struct Rules: Equatable {
     var streakBonus = StreakBonus()
     var roundPoints = true
     var review = ReviewRules()
+    var leader = LeaderRules()
     /// 单笔加减分保留原值；取整只作用在最终显示的总积分上
     func pt(_ x: Double) -> Double { x }
     func shown(_ total: Double) -> Double { roundPoints ? roundAway(total) : total }
@@ -495,6 +507,23 @@ struct AppData: Codable, Equatable {
                 x.streakBonus.lateCounts = b["lateCounts"]?.bool ?? x.streakBonus.lateCounts
             }
             x.roundPoints = r?["roundPoints"]?.bool ?? x.roundPoints
+            if let v = r?["leader"] {
+                x.leader.enabled = v["enabled"]?.bool ?? x.leader.enabled
+                x.leader.period = v["period"]?.string ?? x.leader.period
+                x.leader.clean = v["clean"]?.double ?? x.leader.clean
+                x.leader.low = v["low"]?.double ?? x.leader.low
+                x.leader.below = v["below"]?.double ?? x.leader.below
+                x.leader.above = v["above"]?.double ?? x.leader.above
+                x.leader.high = v["high"]?.double ?? x.leader.high
+                x.leader.veryHigh = v["veryHigh"]?.double ?? x.leader.veryHigh
+                x.leader.top = v["top"]?.double ?? x.leader.top
+                x.leader.bottom = v["bottom"]?.double ?? x.leader.bottom
+                x.leader.progress = v["progress"]?.double ?? x.leader.progress
+                x.leader.regress = v["regress"]?.double ?? x.leader.regress
+                x.leader.streakStep = v["streakStep"]?.double ?? x.leader.streakStep
+                x.leader.streakMax = v["streakMax"]?.int ?? x.leader.streakMax
+                x.leader.cap = v["cap"]?.double ?? x.leader.cap
+            }
             if let v = r?["review"] {
                 x.review.enabled = v["enabled"]?.bool ?? x.review.enabled
                 x.review.multiplier = v["multiplier"]?.double ?? x.review.multiplier
@@ -647,10 +676,99 @@ extension SchoolClass {
         return out
     }
 
+    /// 当前有效的组长：组长须仍在该组
+    func leaderOf(_ group: String) -> Student? {
+        guard let id = groupLeaders[group] else { return nil }
+        return students.first { $0.id == id && ($0.group.isEmpty ? "未分组" : $0.group) == group }
+    }
+
+    /// 某次作业所在的段
+    static func periodKey(_ lr: LeaderRules, _ a: Assignment) -> (String, String) {
+        if lr.period == "assignment" { return (a.id, "「\(a.title)」") }
+        let cal = Calendar.current
+        var d = cal.startOfDay(for: a.date)
+        let y = cal.component(.year, from: d), m = cal.component(.month, from: d), day = cal.component(.day, from: d)
+        if lr.period == "day" { return ("\(y)-\(m)-\(day)", "\(m)月\(day)日") }
+        if lr.period == "month" { return ("\(y)-\(m)", "\(y)年\(m)月") }
+        let wd = cal.component(.weekday, from: d) // 周日 = 1
+        d = cal.date(byAdding: .day, value: -((wd + 5) % 7), to: d)!
+        let y2 = cal.component(.year, from: d), m2 = cal.component(.month, from: d), d2 = cal.component(.day, from: d)
+        let e = cal.date(byAdding: .day, value: 6, to: d)!
+        return ("\(y2)-\(m2)-\(d2)", "\(m2)/\(d2)–\(cal.component(.month, from: e))/\(cal.component(.day, from: e)) 这周")
+    }
+
+    /// 全班所有组长的每段奖惩：组长 id → 各段（旧 → 新）
+    func leaderPeriods(_ rules: Rules) -> [String: [LeaderPeriod]] {
+        let lr = rules.leader
+        guard lr.enabled else { return [:] }
+        var groups: [String: [Student]] = [:]
+        for s in students where !s.group.isEmpty { groups[s.group, default: []].append(s) }
+        groups = groups.filter { $0.value.count >= 2 }
+        var leaders: [String: Student] = [:]
+        for g in groups.keys { if let l = leaderOf(g) { leaders[g] = l } }
+        guard !leaders.isEmpty else { return [:] }
+        var auto: [String: [String: Double]] = [:]
+        for ms in groups.values { for m in ms { auto[m.id] = autoPoints(rules, m.id) } }
+        let sorted = assignments.sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
+        var order: [String] = []; var buckets: [String: (String, [Assignment])] = [:]
+        for a in sorted { let (k, l) = SchoolClass.periodKey(lr, a); if buckets[k] == nil { order.append(k); buckets[k] = (l, []) }; buckets[k]!.1.append(a) }
+        var resetsOf: [String: [ScoreRecharge]] = [:]
+        for l in leaders.values { resetsOf[l.id] = recharges.filter { $0.studentIds.contains(l.id) }.sorted { ($0.start, $0.time, $0.id) < ($1.start, $1.time, $1.id) } }
+        var round: [String: String?] = [:], prevD: [String: Double] = [:], lastSub: [String: Double] = [:], run: [String: Int] = [:]
+        var out: [String: [LeaderPeriod]] = [:]
+        func f1(_ x: Double) -> String { fmtNum(x) }
+        for key in order {
+            let (label, list) = buckets[key]!
+            var per: [String: Double] = [:]
+            for (g, ms) in groups {
+                let active = ms.contains { m in list.contains { a in let k = a.status(m.id); return k != .NONE && k != .LEAVE } }
+                if !active { continue }
+                var total = 0.0
+                for m in ms { for a in list { let p = auto[m.id]?[a.id] ?? 0; if p < 0 { total -= p } } }
+                per[g] = total / Double(ms.count)
+            }
+            if per.isEmpty { continue }
+            let vals = Array(per.values)
+            let avg = vals.reduce(0, +) / Double(vals.count)
+            let best = vals.min()!, worst = vals.max()!
+            let first = list.first!.createdAt, last = list.last!.createdAt
+            for g in per.keys.sorted() {
+                guard let leader = leaders[g], let d = per[g] else { continue }
+                let r = resetsOf[leader.id]!.last { $0.counts(first) }?.id
+                if round[g] == nil || round[g]! != r { round[g] = .some(r); prevD[g] = nil; lastSub[g] = nil; run[g] = nil }
+                var parts: [(String, Double)] = []
+                if d <= 1e-9 { parts.append(("全组零扣分", lr.clean)) }
+                else if d <= avg * 0.5 { parts.append(("人均扣分 \(f1(d))，不到各组平均 \(f1(avg)) 的一半", lr.low)) }
+                else if d <= avg { parts.append(("人均扣分 \(f1(d))，不高于各组平均 \(f1(avg))", lr.below)) }
+                else if d <= avg * 1.5 { parts.append(("人均扣分 \(f1(d))，高于各组平均 \(f1(avg))", lr.above)) }
+                else if d <= avg * 2 { parts.append(("人均扣分 \(f1(d))，超过各组平均 1.5 倍", lr.high)) }
+                else { parts.append(("人均扣分 \(f1(d))，超过各组平均 2 倍", lr.veryHigh)) }
+                if vals.count >= 3 && best < worst {
+                    if d == best && vals.filter({ $0 == best }).count == 1 { parts.append(("人均扣分各组最少", lr.top)) }
+                    if d == worst && vals.filter({ $0 == worst }).count == 1 { parts.append(("人均扣分各组最多", lr.bottom)) }
+                }
+                if let p = prevD[g] {
+                    if p > 0 && d <= p * 0.7 { parts.append(("比上一段少（\(f1(p)) → \(f1(d))）", lr.progress)) }
+                    else if d >= p * 1.5 && d - p >= 2 { parts.append(("比上一段多（\(f1(p)) → \(f1(d))）", lr.regress)) }
+                }
+                let sub = parts.reduce(0) { $0 + $1.1 }
+                var k = 0
+                if sub != 0, let ps = lastSub[g], ps != 0, (ps > 0) == (sub > 0) { k = run[g] ?? 1 }
+                if lr.streakMax > 0 && k > 0 { parts.append((sub > 0 ? "连续 \(k + 1) 段表现好" : "连续 \(k + 1) 段扣分偏多", (sub > 0 ? 1 : -1) * Double(min(k, lr.streakMax)) * lr.streakStep)) }
+                run[g] = k > 0 ? k + 1 : 1; lastSub[g] = sub; prevD[g] = d
+                let total = parts.reduce(0) { $0 + $1.1 }
+                if lr.cap > 0 && abs(total) > lr.cap { parts.append(("每段最多 ±\(f1(lr.cap))", (total > 0 ? lr.cap : -lr.cap) - total)) }
+                out[leader.id, default: []].append(LeaderPeriod(group: g, key: key, label: label, time: last, perCapita: d, parts: parts))
+            }
+        }
+        return out
+    }
+
     func stats(_ rules: Rules) -> [Stat] {
         let last = latestRecharges()
         var manual: [String: Double] = [:]
         for e in scores where last[e.studentId].map({ $0.counts(e.time) }) ?? true { manual[e.studentId, default: 0] += rules.pt(e.delta) }
+        let lead = leaderPeriods(rules)
         return students.map { st in
             let r = last[st.id]
             var auto = 0.0, sub = 0, late = 0, miss = 0
@@ -664,7 +782,8 @@ extension SchoolClass {
             }
             var examPts = 0.0
             for e in exams where r.map({ $0.counts(e.date) }) ?? true { examPts += rules.pt(rules.exam.delta(e, st.id)) }
-            return Stat(student: st, score: rules.shown((r?.target ?? rules.initial) + auto + (manual[st.id] ?? 0) + examPts), submitted: sub, late: late, missing: miss)
+            let leaderPts = (lead[st.id] ?? []).filter { p in r.map { $0.counts(p.time) } ?? true }.reduce(0.0) { $0 + rules.pt($1.points) }
+            return Stat(student: st, score: rules.shown((r?.target ?? rules.initial) + auto + (manual[st.id] ?? 0) + examPts + leaderPts), submitted: sub, late: late, missing: miss)
         }
     }
 }

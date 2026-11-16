@@ -20,7 +20,7 @@ const st = (i, k) => ((i * 7 + k * 3) % 11 === 0 ? 'MISSING' : (i + k) % 9 === 0
 const assignments = Array.from({ length: 12 }, (_, k) => ({ id: `a${k}`, title: `练习${k + 1}`, subject: ['语文', '数学', '英语'][k % 3], createdAt: now - (12 - k) * 2 * DAY,
   statuses: Object.fromEntries(students.map((s, i) => [s.id, k === 11 && i === 3 ? 'MISSING' : st(i, k)])), comments: k === 11 ? { s1: '字迹潦草' } : {}, reviewFailed: k === 11 ? ['s3'] : [] }));
 const seed = { version: 1, currentClassId: 'c1', settings: { rules: {} },
-  classes: [{ id: 'c1', name: '高一(3)班', emoji: '🚀', students, assignments,
+  classes: [{ id: 'c1', name: '高一(3)班', emoji: '🚀', students, assignments, groupLeaders: { 第1组: 's0', 第2组: 's1' }, reps: ['s1'],
     scores: [{ id: 'm1', studentId: 's0', delta: 2, reason: '课堂表现好', time: now - DAY }, { id: 'm2', studentId: 's5', delta: -1, reason: '迟到', time: now - 3 * DAY }],
     exams: [{ id: 'e1', title: '第一次月考', subject: '数学', date: now - 5 * DAY, fullScore: 100, scores: Object.fromEntries(students.slice(1).map((s, i) => [s.id, 60 + ((i * 37) % 40)])), absent: ['s0'] }] }] };
 let requests = 0; let writes = 0;
@@ -84,6 +84,9 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.click('.tabbar button:has-text("统计")'); await page.waitForSelector('text=数据分析');
   check(await page.isVisible('text=复审不合格'), '统计里有复审不合格人次');
   await shot('7-stats');
+  await page.click('.seg button:has-text("小组")'); await page.waitForSelector('text=小组对抗榜');
+  check(await page.isVisible('text=组长奖惩（计入当前积分）'), '小组对抗榜与组长奖惩');
+  await shot('7b-groups');
   await page.click('.seg button:has-text("考试")'); await page.click('text=第一次月考'); await page.waitForSelector('text=成绩排名');
   check(await page.isVisible('text=缺考 · 1 人'), '考试详情：排名与缺考');
   await shot('8-exam');

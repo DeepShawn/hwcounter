@@ -199,6 +199,40 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                         Text("在作业页长按同学，或多选后点「复审不合格」。改回其他状态即取消。修改后历史积分自动重算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp))
                     }
                 }
+                group("组长奖惩", key = "leader") {
+                    val lr = s.rules.leader
+                    fun ld(f: (com.deepshawn.hwcounter.data.LeaderRules) -> com.deepshawn.hwcounter.data.LeaderRules) = rules { it.copy(leader = f(it.leader)) }
+                    SuperSwitch(
+                        checked = lr.enabled, onCheckedChange = { v -> ld { it.copy(enabled = v) } }, title = "组长按小组扣分奖惩",
+                        summary = "${lr.periodLabel}看一次组长所在小组的人均作业扣分，和各组平均比较，再看名次、比上一段、连续几段",
+                    )
+                    if (lr.enabled) {
+                        val periods = listOf("assignment", "day", "week", "month")
+                        SuperDropdown(
+                            items = listOf("每次作业", "每天", "每周", "每月"), selectedIndex = periods.indexOf(lr.period).coerceAtLeast(2), title = "计算周期",
+                            onSelectedIndexChange = { i -> ld { it.copy(period = periods[i]) } },
+                        )
+                        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                            RuleRow("全组零扣分", lr.clean, 1.0) { v -> ld { it.copy(clean = v) } }
+                            RuleRow("≤ 各组平均一半", lr.low, 1.0) { v -> ld { it.copy(low = v) } }
+                            RuleRow("≤ 各组平均", lr.below, 1.0) { v -> ld { it.copy(below = v) } }
+                            RuleRow("≤ 平均 1.5 倍", lr.above, 1.0) { v -> ld { it.copy(above = v) } }
+                            RuleRow("≤ 平均 2 倍", lr.high, 1.0) { v -> ld { it.copy(high = v) } }
+                            RuleRow("超过平均 2 倍", lr.veryHigh, 1.0) { v -> ld { it.copy(veryHigh = v) } }
+                            RuleRow("人均扣分最少的组", lr.top, 1.0) { v -> ld { it.copy(top = v) } }
+                            RuleRow("人均扣分最多的组", lr.bottom, 1.0) { v -> ld { it.copy(bottom = v) } }
+                            RuleRow("比上一段明显减少", lr.progress, 1.0) { v -> ld { it.copy(progress = v) } }
+                            RuleRow("比上一段明显增多", lr.regress, 1.0) { v -> ld { it.copy(regress = v) } }
+                            RuleRow("连续每多一段 ±", lr.streakStep, 1.0) { v -> if (v >= 0) ld { it.copy(streakStep = v) } }
+                            RuleRow("连续最多算几段", lr.streakMax.toDouble(), 1.0) { v -> if (v >= 0) ld { it.copy(streakMax = v.toInt()) } }
+                            RuleRow("每段最多 ±（0 不限）", lr.cap, 1.0) { v -> if (v >= 0) ld { it.copy(cap = v) } }
+                            Text(
+                                "· 人均作业扣分 = 这一段组员作业自动扣分（未交递增、复审不合格翻倍、迟交）之和 ÷ 组员人数\n· 只对设置了组长、2 人以上的小组生效；这一段组员都请假或未登记时不计\n· 名次奖惩在 3 组以上且不并列时才有；“明显减少”指降 30% 以上，“明显增多”指升 50% 且多 2 分以上\n· 组长积分重置后重新开始计算；修改后历史积分自动重算",
+                                fontSize = 11.sp, lineHeight = 17.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp),
+                            )
+                        }
+                    }
+                }
                 group("连续交作业奖励", key = "streakBonus") {
                     val b = s.rules.streakBonus
                     fun sb(f: (com.deepshawn.hwcounter.data.StreakBonus) -> com.deepshawn.hwcounter.data.StreakBonus) = rules { it.copy(streakBonus = f(it.streakBonus)) }
@@ -275,6 +309,12 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                         RuleRow("考试权重 %", st.wExam * 100, 5.0) { v -> if (v >= 0) sr { it.copy(wExam = v / 100) } }
                         RuleRow("进步权重 %", st.wProgress * 100, 5.0) { v -> if (v >= 0) sr { it.copy(wProgress = v / 100) } }
                         Text("各项先做小样本校正（+${st.prior.fmt()} 次全班平均），再换算成全班标准分（限制在 ±2.5）后加权；没有考试成绩时考试权重按比例分给其他项。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                    }
+                }
+                group("课代表", key = "repSettle") {
+                    Column(Modifier.padding(16.dp)) {
+                        RuleRow("课代表每次结算加", s.rules.settlement.repDelta, 1.0) { v -> rules { it.copy(settlement = it.settlement.copy(repDelta = v)) } }
+                        Text("在名单里打开同学的档案设置课代表；课代表可以同时是组长，两边的分都算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp))
                     }
                 }
             }
@@ -543,11 +583,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsIndex(vm: App
         SuperArrow(
             title = "作业计分",
             summary = "初始 ${r.initial.fmt()} 分 · " + (if (r.escalation.enabled) "未交递增扣分" else "未交 ${r.missing.signed()}") +
-                " · 复审" + (if (r.review.enabled) "不合格 ×${r.review.multiplier.fmt()}" else "已关闭") + if (r.streakBonus.enabled) " · 连续交奖励" else "",
+                " · 复审" + (if (r.review.enabled) "不合格 ×${r.review.multiplier.fmt()}" else "已关闭") + (if (r.leader.enabled) " · 组长${r.leader.periodLabel}奖惩" else "") + if (r.streakBonus.enabled) " · 连续交奖励" else "",
             onClick = { open("scoring") },
         )
         SuperArrow(title = "考试计分", summary = if (r.exam.enabled) "按得分率分 ${r.exam.bands.size} 档自动加减积分" else "已关闭", onClick = { open("exam") })
-        SuperArrow(title = "结算规则", summary = "按本轮交齐度结算" + (if (r.settlement.spreadEnabled) " · 扩大区分度" else "") + if (r.settlement.withMonthlyReset) " · 定期重置前自动结算" else "", onClick = { open("settle") })
+        SuperArrow(title = "结算规则", summary = "按本轮交齐度结算" + (if (r.settlement.spreadEnabled) " · 扩大区分度" else "") + " · 课代表 ${r.settlement.repDelta.signed()}" + if (r.settlement.withMonthlyReset) " · 定期重置前自动结算" else "", onClick = { open("settle") })
         SuperArrow(title = "科目与加减分理由", summary = "${s.subjects.size} 个科目 · ${s.quickReasons.size} 个常用理由", onClick = { open("subjects") })
     }
     group("识别", key = "idx-recog") {

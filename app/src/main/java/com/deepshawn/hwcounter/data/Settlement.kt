@@ -9,6 +9,7 @@ import kotlinx.serialization.Serializable
  * - 本轮缺交 ≥ [manyMissing] 次再加 [manyMissingDelta]；最长连续缺交 ≥ [streakMissing] 次再加 [streakMissingDelta]
  * - 进步奖：交齐度比上一轮提高 ≥ [progressPts]（比例）加 [progressDelta]
  * - 小组奖：本轮平均交齐度第一的小组每人 [groupDelta]（并列都算，未分组不参加）
+ * - 课代表（班级里设置的课代表）每次结算 [repDelta]
  * - 本轮应交少于 [minExpected] 次不结算
  * - [withMonthlyReset]：每月定期重置时先自动结算上一轮（只对 [autoSince] 之后的定期重置）
  */
@@ -42,6 +43,8 @@ data class SettlementRules(
     val wMissing: Double = 0.15,
     val wExam: Double = 0.20,
     val wProgress: Double = 0.10,
+    /** 课代表每次结算加分 */
+    val repDelta: Double = 2.0,
 )
 
 /** 一次结算的记录；每人的加减分另存为带 [ScoreEntry.settlementId] 的普通加减分 */
@@ -134,6 +137,7 @@ object Settle {
             prevRate[st.id]?.let { p -> if (m.rate - p >= sr.progressPts - 1e-9) parts += "进步奖（${pct(p)} → ${pct(m.rate)}）" to sr.progressDelta }
             if (st.group in topGroups) parts += "小组奖（${st.group}平均交齐度第一）" to sr.groupDelta
             spread[st.id]?.let { sp -> parts += "区分度：综合指数 ${"%+.2f".format(sp.index)}（第 ${sp.rank} 名）" to sp.points }
+            if (st.id in c.reps) parts += "课代表" to sr.repDelta
             val shown = parts.filter { it.second != 0.0 || parts.size == 1 }
             val sp = spread[st.id]
             m.copy(

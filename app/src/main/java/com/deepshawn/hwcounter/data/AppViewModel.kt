@@ -333,6 +333,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         c.copy(exams = c.exams.map { e -> if (e.id != examId) e else if (scores) e.copy(scores = e.scores - ids) else e.copy(absent = e.absent - ids) })
     }
     fun setGroupLeader(group: String, studentId: String?) = updateClass { it.setGroupLeader(group, studentId) }
+    /** 设为 / 取消课代表（可以同时是组长） */
+    fun setRep(studentId: String, on: Boolean) = updateClass { c -> c.copy(reps = if (on) (c.reps + studentId).distinct() else c.reps - studentId) }
 
     /** 撤销某次重置（删除记录，分数按全部历史重新计算） */
     fun removeRecharge(id: String) = updateClass { c -> c.undoRecharge(id) }

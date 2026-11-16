@@ -91,6 +91,7 @@ import com.deepshawn.hwcounter.data.fmt
 import com.deepshawn.hwcounter.data.signed
 import com.deepshawn.hwcounter.data.studentStats
 import com.deepshawn.hwcounter.data.ledger
+import com.deepshawn.hwcounter.data.leaderOf
 import com.deepshawn.hwcounter.export.Exporter
 import com.deepshawn.hwcounter.ui.LocalKit
 import com.deepshawn.hwcounter.ui.Route
@@ -280,6 +281,8 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
             show = true, title = st.name, onDismiss = { rowMenu = null },
             actions = listOf(
                 com.deepshawn.hwcounter.ui.components.SheetAction("编辑") { editing = st },
+                if (st.id in c.reps) com.deepshawn.hwcounter.ui.components.SheetAction("取消课代表") { vm.setRep(st.id, false); kit.toast("已取消课代表") }
+                else com.deepshawn.hwcounter.ui.components.SheetAction("设为课代表", "每次结算 ${data.settings.rules.settlement.repDelta.signed()}，可以同时是组长") { vm.setRep(st.id, true); kit.toast("${st.name} 是课代表") },
                 com.deepshawn.hwcounter.ui.components.SheetAction("删除", danger = true) { deleting = st },
             ),
         )
@@ -444,6 +447,8 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
                     Column(Modifier.weight(1f)) {
                         top.yukonga.miuix.kmp.basic.Text(listOf(s.no, s.group, s.gender).filter { it.isNotBlank() }.joinToString(" · "), fontSize = 14.sp, color = mcolors.onSurfaceSecondary)
                         if (s.longLeave) top.yukonga.miuix.kmp.basic.Text("长期请假中", fontSize = 12.sp, color = statusColor(HwStatus.LEAVE))
+                        val roles = listOfNotNull(if (s.id in c.reps) "课代表" else null, if (s.group.isNotBlank() && c.leaderOf(s.group)?.id == s.id) "${s.group}组长" else null)
+                        if (roles.isNotEmpty()) top.yukonga.miuix.kmp.basic.Text(roles.joinToString(" · "), fontSize = 12.sp, color = mcolors.primary, fontWeight = FontWeight.SemiBold)
                         top.yukonga.miuix.kmp.basic.Text("班级第 $rank 名 · 共 ${stats.size} 人", fontSize = 12.sp, color = mcolors.onSurfaceVariantSummary)
                         val att = androidx.compose.runtime.remember(c, rules) { com.deepshawn.hwcounter.data.Attention.all(c, rules).firstOrNull { it.student.id == s.id } }
                         att?.let { at ->

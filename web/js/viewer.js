@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from '../vendor
 import htm from '../vendor/htm.module.js';
 import {
   STATUS, normalizeData, summary, studentStats, compareStudentNumbers, autoPoints, ruleOf, fmtNum, signed, fmtDate,
-  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview,
+  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, leaderPeriods, leaderOf,
 } from './model.js';
 import { api } from './cloud.js';
 
@@ -126,8 +126,36 @@ function ledger(c, rules, sid) {
     const d = examDelta(rules, e, sid);
     if (d) rows.push({ key: 'e' + e.id, t: e.date, d, title: `考试「${e.title}」${(e.absent || []).includes(sid) ? '缺考' : fmtNum(e.scores?.[sid] ?? 0) + ' 分'}`, kind: '考试', counts: !last || rechargeCounts(last, e.date) });
   }
+  for (const p of leaderPeriods(c, rules)[sid] || []) if (p.points) rows.push({ key: 'l' + p.key, t: p.time, d: p.points, title: `组长（${p.group}）${p.label}：${p.parts.map(([t, v]) => `${t} ${signed(v)}`).join('；')}`, kind: '组长', counts: !last || rechargeCounts(last, p.time) });
   for (const r of c.recharges || []) if ((r.studentIds || []).includes(sid)) rows.push({ key: 'r' + r.id, t: r.effectiveAt ?? r.time, d: null, title: `积分重置为 ${fmtNum(r.target)}${r.note ? ' · ' + r.note : ''}`, kind: '重置', counts: true });
   return rows.sort((x, y) => y.t - x.t);
+}
+/** 小组对抗：每次作业比交齐率（与安卓 GroupAnalysis 一致的口径） */
+function groupBattle(c, rules) {
+  const groups = {};
+  for (const s of c.students) if (s.group) (groups[s.group] = groups[s.group] || []).push(s);
+  for (const g of Object.keys(groups)) if (groups[g].length < 2) delete groups[g];
+  const names = Object.keys(groups);
+  const rateOf = (ms, a) => { const st = ms.map((m) => a.statuses[m.id] || 'NONE').filter((k) => k !== 'NONE' && k !== 'LEAVE'); return st.length ? st.filter((k) => HANDED.has(k)).length / st.length : null; };
+  const sorted = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt);
+  const t = Object.fromEntries(names.map((g) => [g, { name: g, members: groups[g], wins: 0, ties: 0, exp: 0, got: 0, complete: 0, played: 0, cur: 0, longest: 0 }]));
+  for (const a of sorted) {
+    const rs = names.map((g) => [g, rateOf(groups[g], a)]).filter(([, r]) => r != null);
+    for (const g of names) {
+      const st = groups[g].map((m) => a.statuses[m.id] || 'NONE').filter((k) => k !== 'NONE' && k !== 'LEAVE');
+      if (!st.length) continue;
+      const x = t[g]; x.played++; x.exp += st.length; const got = st.filter((k) => HANDED.has(k)).length; x.got += got;
+      if (got === st.length) { x.complete++; x.cur++; x.longest = Math.max(x.longest, x.cur); } else x.cur = 0;
+    }
+    if (rs.length < 2) continue;
+    const best = Math.max(...rs.map(([, r]) => r)); const top = rs.filter(([, r]) => Math.abs(r - best) < 1e-9);
+    if (top.length === 1) t[top[0][0]].wins++; else top.forEach(([g]) => t[g].ties++);
+  }
+  const st = studentStats(c, rules); const by = new Map(st.map((x) => [x.student.id, x.score]));
+  const lead = leaderPeriods(c, rules); const last = latestRecharges(c);
+  return names.map((g) => { const x = t[g]; const l = leaderOf(c, g); const lps = l ? (lead[l.id] || []).filter((p) => !last[l.id] || rechargeCounts(last[l.id], p.time)) : [];
+    return { ...x, leader: l, rate: x.exp ? x.got / x.exp : null, avg: x.members.reduce((n, m) => n + (by.get(m.id) ?? 0), 0) / x.members.length, leaderPoints: lps.reduce((n, p) => n + p.points, 0), leaderPeriods: lps }; })
+    .sort((a, b) => (b.wins + b.ties / 2) - (a.wins + a.ties / 2) || (b.rate ?? 0) - (a.rate ?? 0) || b.avg - a.avg);
 }
 function examStats(c, e) {
   const vals = c.students.map((s) => e.scores?.[s.id]).filter((x) => x != null && Number.isFinite(x));
@@ -271,6 +299,7 @@ function StudentView({ c, rules, id, back, open }) {
       <div class="hero-main">
         <div class="hero-title">${s.name}</div>
         <div class="cell-sub">${[s.no, s.group, s.gender, s.longLeave && '长期请假'].filter(Boolean).join(' · ')}</div>
+        ${(() => { const roles = [(c.reps || []).includes(s.id) && '课代表', s.group && leaderOf(c, s.group)?.id === s.id && `${s.group}组长`].filter(Boolean); return roles.length ? html`<div class="cell-sub" style=${{ color: 'var(--accent)', fontWeight: 600 }}>${roles.join(' · ')}</div>` : ''; })()}
         ${s.note && html`<div class="cell-sub">📝 ${s.note}</div>`}
       </div>
       <div class="big-score"><b>${fmtNum(me?.score ?? 0)}</b><span>积分 · 第 ${st.rank.get(id)} / ${c.students.length} 名</span></div>
@@ -370,7 +399,16 @@ function Stats({ c, rules, open }) {
   const recent = list.slice(-30);
   return html`<${Page} title="统计" large="数据分析">
     <div class="meta">${c.name} · ${c.students.length} 人 · ${c.assignments.length} 次作业 · ${exams.length} 场考试</div>
-    <div class="pad"><${Seg} items=${[['hw', '作业'], ['exam', '考试'], ['heat', '热力图']]} value=${mode} onChange=${setMode} /></div>
+    <div class="pad"><${Seg} items=${[['hw', '作业'], ['exam', '考试'], ['group', '小组'], ['heat', '热力图']]} value=${mode} onChange=${setMode} /></div>
+    ${mode === 'group' && (() => { const teams = groupBattle(c, rules); return teams.length ? html`
+      <${Group} title="小组对抗榜 · 每次作业比交齐率">${teams.map((x, i) => html`<${Cell} key=${x.name}
+        left=${html`<span class=${'rank' + (i < 3 ? ' top' : '')}>${['🥇', '🥈', '🥉'][i] || i + 1}</span>`}
+        title=${x.name + (x.leader ? ` · 组长 ${x.leader.name}` : '')}
+        sub=${`胜 ${x.wins}${x.ties ? ` · 并列 ${x.ties}` : ''} · 全组交齐 ${x.complete}/${x.played}${x.cur >= 2 ? ` · 连续 ${x.cur}` : ''} · 均分 ${fmtNum(x.avg)}`}
+        right=${html`<b style=${{ color: rateColor(x.rate) }}>${pct(x.rate)}</b>`} onClick=${() => open({ view: 'group', id: x.name })} />`)}</${Group}>
+      ${teams.some((x) => x.leader) && html`<${Group} title="组长奖惩（计入当前积分）">${teams.filter((x) => x.leader).sort((a, b) => b.leaderPoints - a.leaderPoints).map((x) => html`<${Cell} key=${'l' + x.name}
+        title=${`${x.leader.name} · ${x.name}`} sub=${`${x.leaderPeriods.length} 段`} right=${html`<b style=${{ color: x.leaderPoints > 0 ? '#16a34a' : x.leaderPoints < 0 ? '#e5384d' : 'var(--sub)' }}>${signed(x.leaderPoints)}</b>`} onClick=${() => open({ view: 'student', id: x.leader.id })} />`)}</${Group}>`}`
+      : html`<${Empty} emoji="👥" text="还没有小组（每组至少 2 人）" />`; })()}
     ${mode === 'hw' && (list.length ? html`
       <div class="tiles">
         <${Tile} label="平均交齐率" value=${pct(avg)} color=${rateColor(avg)} />

@@ -67,7 +67,7 @@ class ShotsTest {
         )
         var c = SchoolClass(
             id = "c1", name = "高一(3)班", students = st, assignments = assigns, exams = exams,
-            groupLeaders = mapOf("第1组" to "s0", "第2组" to "s5", "第3组" to "s2"),
+            groupLeaders = mapOf("第1组" to "s0", "第2组" to "s5", "第3组" to "s2"), reps = listOf("s0"),
             scores = listOf(
                 ScoreEntry(studentId = "s0", delta = 2.0, reason = "主动回答", time = now - 20 * day), ScoreEntry(studentId = "s3", delta = -1.0, reason = "迟到", time = now - 3 * day),
                 ScoreEntry(studentId = "s7", delta = 1.0, reason = "主动回答", time = now - 9 * day), ScoreEntry(studentId = "s8", delta = 1.0, reason = "主动回答", time = now - 5 * day),
@@ -128,7 +128,7 @@ class ShotsTest {
 
         tab("名单"); save("${prefix}_03_roster")
         safe { click("小组"); save("${prefix}_04_groups"); scroll(); save("${prefix}_05_groups_scrolled") }
-        safe { click("第1组"); save("${prefix}_06_group_detail"); back() }
+        safe { click("第1组"); save("${prefix}_06_group_detail"); scroll(2); save("${prefix}_06b_group_detail"); scroll(2); save("${prefix}_06c_group_detail"); back() }
 
         tab("积分"); save("${prefix}_10_scores")
         safe {
@@ -161,6 +161,7 @@ class ShotsTest {
             click("本轮"); save("${prefix}_30_stats_period")
             click("考试"); save("${prefix}_31_stats_exam")
             for (i in 2..9) { scroll(); save("${prefix}_3${i}_stats_exam") }
+            top(); click("小组"); save("${prefix}_34a_groups"); scroll(); save("${prefix}_34b_groups"); scroll(); save("${prefix}_34c_groups"); scroll(); save("${prefix}_34d_groups")
             top(); click("关注"); save("${prefix}_35a_attention"); scroll(); save("${prefix}_35b_attention")
             safe {
                 top(); click("股票"); waitStock(); save("${prefix}_37a_stock"); scroll(); save("${prefix}_37b_stock"); scroll(); save("${prefix}_37c_stock"); scroll(); save("${prefix}_37d_stock")

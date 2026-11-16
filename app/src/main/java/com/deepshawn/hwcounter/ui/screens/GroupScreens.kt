@@ -49,6 +49,9 @@ import com.deepshawn.hwcounter.data.Student
 import com.deepshawn.hwcounter.data.fmt
 import com.deepshawn.hwcounter.data.leaderOf
 import com.deepshawn.hwcounter.data.signed
+import com.deepshawn.hwcounter.data.leaderPeriods
+import androidx.compose.foundation.clickable
+import kotlin.math.roundToInt
 import com.deepshawn.hwcounter.data.studentStats
 import com.deepshawn.hwcounter.ui.LocalKit
 import com.deepshawn.hwcounter.ui.Route
@@ -252,6 +255,10 @@ fun GroupDetailScreen(vm: AppViewModel, data: AppData, name: String) {
                             Spacer(Modifier.width(6.dp))
                             Text("组长", fontSize = 10.sp, color = Color(0xFFB27800), modifier = Modifier.clip(CircleShape).background(Color(0xFFFFB300).copy(alpha = 0.18f)).padding(horizontal = 6.dp, vertical = 1.dp))
                         }
+                        if (s.id in c.reps) {
+                            Spacer(Modifier.width(6.dp))
+                            Text("课代表", fontSize = 10.sp, color = colors.primary, modifier = Modifier.clip(CircleShape).background(colors.primary.copy(alpha = 0.14f)).padding(horizontal = 6.dp, vertical = 1.dp))
+                        }
                     }
                     Text(
                         listOf(s.no, ins?.let { "交齐 ${pctText(it.rate)}" }, ins?.takeIf { it.missing > 0 }?.let { "缺交 ${it.missing}" }).filterNotNull().filter { it.isNotBlank() }.joinToString(" · "),
@@ -259,6 +266,63 @@ fun GroupDetailScreen(vm: AppViewModel, data: AppData, name: String) {
                     )
                 }
                 Text(st?.score?.fmt() ?: "", fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = colors.primary)
+            }
+        }
+        // ---------------- 组内分析 ----------------
+        item(key = "analysis") {
+            val rules = data.settings.rules
+            val rep = remember(c, rules) { com.deepshawn.hwcounter.data.GroupAnalysis.report(c, rules) }
+            val t = rep.teams.firstOrNull { it.name == name }
+            val (up, down) = remember(c, rules, name) { com.deepshawn.hwcounter.data.GroupAnalysis.memberProgress(c, rules, name) }
+            val lps = remember(c, rules, name) { info.leader?.let { l -> c.leaderPeriods(rules)[l.id].orEmpty() }.orEmpty() }
+            val gp = rep.progress.firstOrNull { it.group == name }
+            Column {
+                if (t != null) {
+                    top.yukonga.miuix.kmp.basic.SmallTitle("组内分析")
+                    HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row { Mini("交齐率", pctText(t.rate.toFloat()), Modifier.weight(1f)); Mini("按时率", pctText(t.onTimeRate.toFloat()), Modifier.weight(1f)); Mini("优秀率", pctText(t.excellentRate.toFloat()), Modifier.weight(1f)) }
+                            Row { Mini("全组交齐", "${t.complete}/${t.played} 次", Modifier.weight(1f)); Mini("当前连续", "${t.completeStreak} 次", Modifier.weight(1f)); Mini("最长连续", "${t.longestComplete} 次", Modifier.weight(1f)) }
+                            Row { Mini("人均作业扣分", t.deductPerCapita.fmt(), Modifier.weight(1f)); Mini("考试得分率", t.examPct?.let { pctText(it.toFloat()) } ?: "—", Modifier.weight(1f)); Mini("对抗排名", "${rep.teams.indexOf(t) + 1}/${rep.teams.size}", Modifier.weight(1f)) }
+                            if (rep.teams.size >= 2) Text("对抗战绩：单次作业胜 ${t.wins}${if (t.ties > 0) "、并列第一 ${t.ties}" else ""} · 周冠军 ${t.weekWins} 周 · 平均名次 ${"%.1f".format(t.avgRank)}", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                            gp?.let { p -> Text((if (p.index >= 0.02) "📈 进步：" else if (p.index <= -0.02) "📉 退步：" else "➖ 持平：") + p.reasons.joinToString(" · ").ifBlank { "变化不大" }, fontSize = 12.sp, color = if (p.index >= 0.02) Color(0xFF16A34A) else if (p.index <= -0.02) Color(0xFFE5384D) else colors.onSurfaceVariantSummary) }
+                        }
+                    }
+                }
+                if (up.isNotEmpty() || down.isNotEmpty()) {
+                    top.yukonga.miuix.kmp.basic.SmallTitle("组内进步与退步")
+                    HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                        Column(Modifier.padding(vertical = 6.dp)) {
+                            (up.map { it to true } + down.map { it to false }).forEach { (p, good) ->
+                                Row(Modifier.fillMaxWidth().clickable { kit.nav.push(Route.StudentDetail(p.student.id)) }.padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (good) "⭐" else "⚠️", fontSize = 16.sp); Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(p.student.name, fontWeight = FontWeight.Medium)
+                                        Text(p.reasons.take(2).joinToString(" · ").ifBlank { "综合变化" }, fontSize = 11.5.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Text("${if (p.index >= 0) "+" else ""}${(p.index * 100).roundToInt()}", fontWeight = FontWeight.Bold, color = if (good) Color(0xFF16A34A) else Color(0xFFE5384D))
+                                }
+                            }
+                        }
+                    }
+                }
+                if (info.leader != null && rules.leader.enabled) {
+                    top.yukonga.miuix.kmp.basic.SmallTitle("组长奖惩 · ${rules.leader.periodLabel} · 合计 ${lps.sumOf { it.points }.signed()}")
+                    HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                        Column(Modifier.padding(vertical = 6.dp)) {
+                            if (lps.isEmpty()) Text("还没有可计算的记录", fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(16.dp))
+                            lps.asReversed().take(12).forEach { lp ->
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(lp.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                        Text(lp.parts.joinToString("；") { "${it.first} ${it.second.signed()}" }, fontSize = 11.5.sp, color = colors.onSurfaceVariantSummary, maxLines = 3)
+                                    }
+                                    Text(lp.points.signed(), fontWeight = FontWeight.Bold, color = if (lp.points > 0) Color(0xFF16A34A) else if (lp.points < 0) Color(0xFFE5384D) else colors.onSurfaceVariantSummary)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -279,6 +343,8 @@ fun GroupDetailScreen(vm: AppViewModel, data: AppData, name: String) {
             actions = listOf(
                 if (isLeader) SheetAction("取消组长") { vm.setGroupLeader(name, null); kit.toast("已取消组长") }
                 else SheetAction("设为组长", "${name}的组长") { vm.setGroupLeader(name, s.id); kit.toast("${s.name} 是${name}的组长") },
+                if (s.id in c.reps) SheetAction("取消课代表") { vm.setRep(s.id, false); kit.toast("已取消课代表") }
+                else SheetAction("设为课代表", "可以同时是组长") { vm.setRep(s.id, true); kit.toast("${s.name} 是课代表") },
                 SheetAction("查看个人详情") { kit.nav.push(Route.StudentDetail(s.id)) },
             ),
         )
