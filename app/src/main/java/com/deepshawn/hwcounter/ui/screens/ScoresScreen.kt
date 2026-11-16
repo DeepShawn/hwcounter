@@ -123,6 +123,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
 
     MiuixPage(
         title = "积分",
+        swipe = if (selecting) null else Triple(3, mode) { mode = it },
         largeTitle = "积分榜",
         extraBottom = if (selecting) 150.dp else 0.dp,
         actions = {

@@ -187,36 +187,45 @@ fun HCard(
 private fun Modifier.combinedClickableCompat(onClick: () -> Unit, onLongClick: (() -> Unit)?): Modifier =
     this.combinedClickable(onClick = onClick, onLongClick = onLongClick)
 
-/** 分段选项卡：玻璃开启时整条为液态玻璃，选中项为浮起的亮色胶囊 */
+/**
+ * 分段选项卡：玻璃开启时整条为液态玻璃，选中项为浮起的亮色胶囊。
+ * 胶囊会在各项之间滑动；手指在条上左右拖动即可切换（跟手、松手吸附）。
+ */
 @Composable
 fun HTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier, height: Dp = 40.dp) {
     val colors = MiuixTheme.colorScheme
     val glass = glassActive()
     val dark = LocalExtra.current.isDark
     val shape = RoundedCornerShape(height / 2)
-    androidx.compose.foundation.layout.Row(
+    val lowPerf = LocalUiPrefs.current.lowPerf
+    SlidingSegments(
+        tabs.size, selected, onSelect,
         modifier.fillMaxWidth().height(height)
             .glassPanel(shape, tint = if (glass) colors.surfaceContainer else colors.secondaryContainer, refraction = 6.dp)
             .padding(3.dp),
-    ) {
-        tabs.forEachIndexed { i, t ->
-            val sel = i == selected
-            val bg by androidx.compose.animation.animateColorAsState(
-                if (sel) (if (dark) colors.surfaceContainerHigh else Color.White).copy(alpha = if (glass) 0.92f else 1f) else Color.Transparent, label = "tab",
-            )
+        thumb = { m ->
             androidx.compose.foundation.layout.Box(
-                Modifier.weight(1f).fillMaxSize()
-                    .then(if (sel && !LocalUiPrefs.current.lowPerf) Modifier.shadow(3.dp, RoundedCornerShape(height / 2), ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.10f)) else Modifier)
-                    .clip(RoundedCornerShape(height / 2)).background(bg)
-                    .clickable { onSelect(i) }
-                    .semantics { this.selected = sel; this.role = androidx.compose.ui.semantics.Role.Tab },
-                contentAlignment = androidx.compose.ui.Alignment.Center,
-            ) {
-                top.yukonga.miuix.kmp.basic.Text(
-                    t, fontSize = 14.sp, maxLines = 1,
-                    fontWeight = if (sel) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal,
-                    color = if (sel) colors.onSurface else colors.onSurfaceVariantSummary,
-                )
+                m.then(if (!lowPerf) Modifier.shadow(3.dp, shape, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.10f)) else Modifier)
+                    .clip(shape).background((if (dark) colors.surfaceContainerHigh else Color.White).copy(alpha = if (glass) 0.92f else 1f)),
+            )
+        },
+    ) { st ->
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+            tabs.forEachIndexed { i, t ->
+                val sel = i == st.hot
+                androidx.compose.foundation.layout.Box(
+                    Modifier.weight(1f).fillMaxSize()
+                        .clip(shape)
+                        .clickable(interactionSource = null, indication = null) { onSelect(i) }
+                        .semantics { this.selected = i == selected; this.role = androidx.compose.ui.semantics.Role.Tab },
+                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                ) {
+                    top.yukonga.miuix.kmp.basic.Text(
+                        t, fontSize = 14.sp, maxLines = 1,
+                        fontWeight = if (sel) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal,
+                        color = if (sel) colors.onSurface else colors.onSurfaceVariantSummary,
+                    )
+                }
             }
         }
     }

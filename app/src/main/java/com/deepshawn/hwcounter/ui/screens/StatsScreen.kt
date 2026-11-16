@@ -141,6 +141,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
 
     MiuixPage(
         title = "统计", largeTitle = "数据分析",
+        swipe = Triple(2, mode) { mode = it },
         actions = {
             IconButton(onClick = { share = true }, modifier = Modifier.padding(end = 16.dp)) { Icon(Icons.Filled.IosShare, "分析报告", tint = colors.onSurface) }
         },
