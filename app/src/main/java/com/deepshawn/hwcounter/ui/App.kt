@@ -304,6 +304,8 @@ fun App(vm: AppViewModel, data: AppData) {
                     }
                 }
                 if (!ui.lowPerf) Confetti(confetti)
+                // 新手引导：第一次打开时显示，可跳过（设置 → 新手引导 可再看）
+                if (!ui.onboarded) com.deepshawn.hwcounter.ui.components.Onboarding { com.deepshawn.hwcounter.ui.theme.UiPrefsStore.update(ctx) { it.copy(onboarded = true) } }
                 com.deepshawn.hwcounter.ui.screens.CloudConflictDialog(vm)
                 com.deepshawn.hwcounter.update.UpdateHost()
             }

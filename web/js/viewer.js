@@ -480,7 +480,7 @@ function ExamView({ c, rules, id, back, open }) {
 }
 
 // ---------------- 设置（只有本机的个性化显示） ----------------
-function Settings({ prefs, setPrefs, updatedAt, status, reload }) {
+function Settings({ prefs, setPrefs, updatedAt, status, reload, showGuide }) {
   return html`<${Page} title="设置">
     <${Title}>主题配色</${Title}>
     <section class="grp palettes">${Object.entries(PALETTES).map(([k, [a, b, n]]) => html`<button class=${'pal' + (prefs.theme === k ? ' on' : '')} onClick=${() => setPrefs({ theme: k })} aria-pressed=${prefs.theme === k}>
@@ -493,11 +493,43 @@ function Settings({ prefs, setPrefs, updatedAt, status, reload }) {
       <div class="cell lbl"><div class="cell-main"><div class="cell-title">作业页布局</div></div></div>
       <div class="cell-pad"><${Seg} items=${[['grid', '网格'], ['list', '列表']]} value=${prefs.layout} onChange=${(v) => setPrefs({ layout: v })} /></div>
     </${Group}>
+    <${Group} title="帮助">
+      <${Cell} title="新手提示" sub="重新查看网页版的功能介绍" onClick=${showGuide} />
+    </${Group}>
     <${Group} title="数据">
       <${Cell} title="刷新数据" sub=${status === 'loading' ? '正在加载…' : status === 'error' ? '加载失败，请检查网络' : updatedAt ? `数据更新于 ${fmtTime(updatedAt)}` : ''} onClick=${reload} />
     </${Group}>
     <div class="about"><div class="logo">📚</div><b>作业通 · 网页查看版</b><span>网页版只能查看，修改请在手机或 iPad 上操作</span></div>
   </${Page}>`;
+}
+
+// ---------------- 新手提示（只存本机，可跳过） ----------------
+const GUIDE_KEY = 'hw.onboarded';
+const GUIDE = [
+  ['📚', '欢迎使用作业通 · 网页查看版', '这里可以查看老师登记的作业、积分、考试和统计。网页版只能查看，不能修改。', ['底栏五个页面：首页、名单、积分、统计、设置', '数据会自动刷新，也可以在 设置 → 刷新数据'], ['#3482ff', '#6e5bff']],
+  ['✅', '作业', '首页列出每次作业的交齐率，点进去可以看每位同学的情况。', ['颜色代表状态：已交、优秀、迟交、未交、请假、复审不合格', '可以按状态筛选，切换网格 / 列表'], ['#12c2a0', '#2f8fea']],
+  ['🏆', '名单与积分', '名单里点同学进入档案：积分、名次、作业足迹、考试和每一笔积分流水。', ['积分页有排行榜和加减分记录', '小组里可以看组长、组员和各自积分'], ['#ffa62b', '#ff5e62']],
+  ['📈', '统计', '统计页有作业、考试、小组和热力图四个栏目。', ['小组：综合分对抗排名、本期排名、组长奖惩', '热力图：每格一次作业，点格子进入'], ['#9b59b6', '#3498db']],
+  ['🎨', '个性化', '设置里可以换主题配色、深色模式、界面动效、毛玻璃和作业页布局。', ['这些只保存在这台设备上', '随时可以在 设置 → 新手提示 再看一遍'], ['#37474f', '#90a4ae']],
+];
+function Guide({ onDone }) {
+  const [i, setI] = useState(0);
+  const [emoji, title, body, tips, [c1, c2]] = GUIDE[i];
+  const last = i === GUIDE.length - 1;
+  return html`<div class="guide" role="dialog" aria-modal="true" aria-label="新手提示">
+    <div class="guide-card">
+      <div class="guide-top"><span>新手提示 ${i + 1}/${GUIDE.length}</span><button class="guide-skip" onClick=${onDone}>跳过</button></div>
+      <div class="guide-icon" style=${{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}>${emoji}</div>
+      <h2>${title}</h2>
+      <p>${body}</p>
+      <ul>${tips.map((t) => html`<li><i style=${{ background: c1 }}></i>${t}</li>`)}</ul>
+      <div class="guide-dots">${GUIDE.map((_, k) => html`<b class=${k === i ? 'on' : ''}></b>`)}</div>
+      <div class="guide-btns">
+        ${i > 0 && html`<button class="btn2" onClick=${() => setI(i - 1)}>上一步</button>`}
+        <button class="btn1" onClick=${() => (last ? onDone() : setI(i + 1))}>${last ? '开始查看' : '下一步'}</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 // ---------------- 数据加载 ----------------
@@ -535,6 +567,8 @@ function App() {
   const setPrefs = (patch) => setPrefsState((p) => { const n = { ...p, ...patch }; try { localStorage.setItem(PREF_KEY, JSON.stringify(n)); } catch { /* 本机偏好 */ } return n; });
   const [{ data, status, updatedAt }, reload] = useData();
   const [tab, setTab] = useState('home');
+  const [guide, setGuide] = useState(() => { try { return localStorage.getItem(GUIDE_KEY) !== '1'; } catch { return false; } });
+  const doneGuide = () => { try { localStorage.setItem(GUIDE_KEY, '1'); } catch { /* 本机 */ } setGuide(false); };
   const [stack, setStack] = useState([]);
   const pos = useRef(new Map());
   const top = stack[stack.length - 1];
@@ -580,13 +614,14 @@ function App() {
   else if (tab === 'roster') body = h(Roster, props);
   else if (tab === 'scores') body = h(Scores, props);
   else if (tab === 'stats') body = h(Stats, props);
-  else body = h(Settings, { prefs, setPrefs, updatedAt, status, reload });
+  else body = h(Settings, { prefs, setPrefs, updatedAt, status, reload, showGuide: () => setGuide(true) });
   const idx = TABS.findIndex((t) => t[0] === tab);
   return html`<div class="app">
     <main key=${key} class=${top ? 'detail' : 'tabpage'}>${body}</main>
     ${!top && html`<nav class="tabbar" style=${{ '--i': idx }}><i class="tab-pill"></i>
       ${TABS.map(([k, l, d]) => html`<button class=${tab === k ? 'on' : ''} aria-current=${tab === k ? 'page' : null} onClick=${() => { pos.current.set(key, window.scrollY); setTab(k); }}><${Icon} d=${d} /><span>${l}</span></button>`)}
     </nav>`}
+    ${guide && html`<${Guide} onDone=${doneGuide} />`}
   </div>`;
 }
 

@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject var store: Store
+    @AppStorage("onboarded") private var onboarded = false
     @State private var email = ""
     @State private var password = ""
     @State private var history: [HistoryItem]? = nil
@@ -74,6 +75,9 @@ struct SettingsView: View {
                         Text("首字母一致即登记，如 张锦宇 = ZJY；可直接念字母“Z J Y”，连着念几个人也行").font(.caption).foregroundStyle(.secondary)
                     }
                 }
+            }
+            Section("❓ 帮助") {
+                Button { onboarded = false } label: { Label("重新查看新手引导", systemImage: "questionmark.circle") }
             }
             Section("💾 数据") {
                 Button { backupURL = writeBackup() } label: { Label("备份全部数据（JSON，与安卓/网页通用）", systemImage: "externaldrive") }

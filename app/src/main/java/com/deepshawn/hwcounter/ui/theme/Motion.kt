@@ -24,6 +24,8 @@ data class UiPrefs(
     val stockMode: Boolean = false,
     /** 股票模式配色：true 美股（绿涨红跌），false A股（红涨绿跌） */
     val usColors: Boolean = true,
+    /** 新手引导已看过（或跳过）；只存本机 */
+    val onboarded: Boolean = false,
 ) {
     /** 实际是否播放动画 */
     val motion: Boolean get() = animations && !lowPerf
@@ -48,6 +50,7 @@ object UiPrefsStore {
                 glass = sp.getBoolean("glass", true),
                 stockMode = sp.getBoolean("stockMode", false),
                 usColors = sp.getBoolean("usColors", true),
+                onboarded = sp.getBoolean("onboarded", false),
             )
             loaded = true
         }
@@ -63,6 +66,7 @@ object UiPrefsStore {
             .putBoolean("glass", next.glass)
             .putBoolean("stockMode", next.stockMode)
             .putBoolean("usColors", next.usColors)
+            .putBoolean("onboarded", next.onboarded)
             .apply()
     }
 }

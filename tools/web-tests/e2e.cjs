@@ -46,6 +46,13 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   const shot = async (n) => { await page.waitForTimeout(700); await page.screenshot({ path: `${OUT}/${n}.png`, fullPage: true }); };
   await page.goto(base);
 
+  // 新手提示：第一次打开出现，可以跳过
+  await page.waitForSelector('.guide', { timeout: 8000 });
+  check(await page.isVisible('text=欢迎使用作业通 · 网页查看版'), '第一次打开显示新手提示');
+  await page.click('.guide .btn1'); check(await page.isVisible('text=新手提示 2/5'), '新手提示：下一步');
+  await shot('0-guide');
+  await page.click('.guide-skip');
+  check((await page.locator('.guide').count()) === 0, '新手提示可以跳过');
   // 首页：不登录直接看到数据
   await page.waitForSelector('text=练习12', { timeout: 8000 });
   check(await page.isVisible('h1:has-text("高一(3)班")'), '首页大标题是班级名');
@@ -95,6 +102,8 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await shot('9-heat');
   await page.click('.tabbar button:has-text("设置")'); await page.waitForSelector('text=主题配色');
   check((await page.locator('input:not([type=checkbox])').count()) === 0, '设置里没有任何输入框（只有个性化开关）');
+  await page.click('.cell:has-text("新手提示")'); await page.waitForSelector('.guide');
+  check(true, '设置里可以重新打开新手提示'); await page.click('.guide-skip');
   await shot('10-settings');
   await page.click('.seg button:has-text("深色")');
   check(await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark', null, { timeout: 3000 }).then(() => true, () => false), '深色模式');
@@ -104,6 +113,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.click('.tabbar button:has-text("首页")'); await page.waitForSelector('text=练习12');
   await shot('12-home-dark');
   await page.reload(); await page.waitForSelector('text=练习12');
+  check((await page.locator('.guide').count()) === 0, '跳过后刷新不再出现新手提示');
   check((await page.getAttribute('html', 'data-theme')) === 'dark' && (await page.evaluate(() => document.documentElement.classList.contains('motion'))), '个性化设置记在本机');
 
   check(writes === 0, `网页端没有发出任何写请求（共 ${requests} 次请求）`);
