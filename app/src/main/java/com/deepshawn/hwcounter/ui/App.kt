@@ -132,6 +132,7 @@ sealed interface Route {
     data class Ledger(val studentId: String? = null) : Route
     data object Settlement : Route
     data class SettleRegister(val id: String) : Route
+    data class Personal(val id: String) : Route
 }
 
 class Nav(private val stack: MutableList<Route>, private val canOpen: (Route) -> Boolean = { true }) {
@@ -387,6 +388,7 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         is Route.Ledger -> com.deepshawn.hwcounter.ui.screens.LedgerScreen(vm, data, route.studentId)
         Route.Settlement -> com.deepshawn.hwcounter.ui.screens.SettlementScreen(vm, data)
         is Route.SettleRegister -> com.deepshawn.hwcounter.ui.screens.SettleRegisterScreen(vm, data, route.id)
+        is Route.Personal -> com.deepshawn.hwcounter.ui.screens.PersonalReportScreen(vm, data, route.id)
     }
 }
 

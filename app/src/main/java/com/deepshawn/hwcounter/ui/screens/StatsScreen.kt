@@ -134,6 +134,9 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
     }
     val report = remember(c, rules, spec) { Analytics.report(c, rules, spec) }
     var scoreFor by remember { mutableStateOf<Pair<List<String>, String>?>(null) }
+    // 关注度：数据一变就重算（实时追踪）
+    val attention = remember(c, rules) { com.deepshawn.hwcounter.data.Attention.all(c, rules) }
+    val attentionWeekly = remember(c, rules, mode == 2) { if (mode == 2) com.deepshawn.hwcounter.data.Attention.weekly(c, rules) else emptyMap() }
     val subjectsWithExams = remember(c.exams) { c.exams.map { it.subject }.filter { it.isNotBlank() }.distinct() }
     var examSubject by rememberSaveable { mutableIntStateOf(0) }
     val examReport = remember(c, examSubject, subjectsWithExams) { Analytics.examReport(c, subjectsWithExams.getOrNull(examSubject - 1)) }
@@ -141,7 +144,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
 
     MiuixPage(
         title = "统计", largeTitle = "数据分析",
-        swipe = Triple(2, mode) { mode = it },
+        swipe = Triple(3, mode) { mode = it },
         actions = {
             IconButton(onClick = { share = true }, modifier = Modifier.padding(end = 16.dp)) { Icon(Icons.Filled.IosShare, "分析报告", tint = colors.onSurface) }
         },
@@ -149,7 +152,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
         item(key = "mode") {
             Column(Modifier.padding(horizontal = 12.dp)) {
                 Text("${c.name} · ${c.students.size} 人 · ${c.assignments.size} 次作业 · ${c.exams.size} 场考试", fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, bottom = 10.dp))
-                HTabs(listOf("作业", "考试"), mode, { mode = it })
+                HTabs(listOf("作业", "考试", "关注"), mode, { mode = it })
             }
         }
         if (mode == 0) {
@@ -165,6 +168,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 onBatch = if (readOnly) null else { ids, reason -> kit.nav.push(Route.BatchScore(ids, reason)) },
             )
         }
+        else if (mode == 2) attentionSections(c, rules, attention, attentionWeekly) { kit.nav.push(Route.Personal(it)) }
         else examSections(
             c, examReport, subjectsWithExams, examSubject, { examSubject = it }, report.examCorrelation, onOpenExam = { kit.nav.push(Route.Exam(it)) }, onManage = { kit.nav.push(Route.Exams) }, onOpenStudent = { kit.nav.push(Route.StudentDetail(it)) },
             onScore = if (readOnly) null else { ids, reason -> scoreFor = ids to reason },
