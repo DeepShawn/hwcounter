@@ -522,9 +522,9 @@ object PdfReport {
                 "结算 ${done.size} 人 · 加分 ${done.count { it.delta > 0 }} 人 · 扣分 ${done.count { it.delta < 0 }} 人 · 合计 ${done.sumOf { it.delta }.signed()}" + if (s.resetId != null) " · 结算后开始新一轮" else "")
             val list = s.lines.sortedWith(compareByDescending<com.deepshawn.hwcounter.data.SettlementLine> { it.delta }.thenBy { names[it.studentId]?.no ?: "" })
             table(
-                p, listOf("学号", "姓名", "应交", "交齐度", "迟交", "缺交", "最长连缺", "结算分", "原因"), listOf(0.9f, 0.8f, 0.5f, 0.6f, 0.5f, 0.5f, 0.7f, 0.6f, 3f),
-                list.map { l -> val st = names[l.studentId]; listOf(st?.no ?: "", st?.name ?: "已删除", "${l.expected}", pct(l.rate), "${l.late}", "${l.missing}", "${l.longestMissing}", if (l.skipped) "不结算" else l.delta.signed(), l.reasons.joinToString("；")) },
-                list.map { l -> listOf(null, null, null, if (l.rate < 0.7) BAD else if (l.rate >= 0.95) GOOD else null, null, if (l.missing > 0) BAD else null, null, if (l.delta > 0) GOOD else if (l.delta < 0) BAD else MUTED, MUTED) },
+                p, listOf("学号", "姓名", "应交", "交齐度", "缺交", "连缺", "指数", "名次", "结算分", "原因"), listOf(0.9f, 0.75f, 0.45f, 0.6f, 0.45f, 0.45f, 0.6f, 0.45f, 0.6f, 2.8f),
+                list.map { l -> val st = names[l.studentId]; listOf(st?.no ?: "", st?.name ?: "已删除", "${l.expected}", pct(l.rate), "${l.missing}", "${l.longestMissing}", l.index?.let { "%+.2f".format(it) } ?: "", l.rank?.toString() ?: "", if (l.skipped) "不结算" else l.delta.signed(), l.reasons.joinToString("；")) },
+                list.map { l -> listOf(null, null, null, if (l.rate < 0.7) BAD else if (l.rate >= 0.95) GOOD else null, if (l.missing > 0) BAD else null, null, null, null, if (l.delta > 0) GOOD else if (l.delta < 0) BAD else MUTED, MUTED) },
             )
         }
     }
@@ -574,6 +574,7 @@ object PdfReport {
                 listOf("100% 且无迟交（全勤）", st.perfect.signed()), listOf("95% 及以上", st.r95.signed()), listOf("90%–95%", st.r90.signed()),
                 listOf("80%–90%", if (st.r80 == 0.0) "0" else st.r80.signed()), listOf("70%–80%", st.r70.signed()), listOf("70% 以下", st.below.signed()),
             ))
+            if (st.spreadEnabled) p.text("区分度：按综合表现指数加减分。交齐率 ${(st.wHand * 100).toInt()}%、按时率 ${(st.wOnTime * 100).toInt()}%、优秀率 ${(st.wExcellent * 100).toInt()}%、缺交度 ${(st.wMissing * 100).toInt()}%、考试 ${(st.wExam * 100).toInt()}%、进步 ${(st.wProgress * 100).toInt()}% 各自换算成全班标准分后加权，指数高于平均的加分、低于平均的扣分，每人 = ${st.spreadK.fmt()} × 指数（四舍五入到整数），最多 ±${st.spreadCap.fmt()} 分，全班合计约为 0。", 10f)
             p.text("另外：本轮缺交 ${st.manyMissing} 次及以上 ${st.manyMissingDelta.signed()}；最长连续缺交 ${st.streakMissing} 次及以上 ${st.streakMissingDelta.signed()}；交齐度比上一轮提高 ${(st.progressPts * 100).toInt()} 个百分点以上（进步奖）${st.progressDelta.signed()}；本轮平均交齐度第一的小组每人 ${st.groupDelta.signed()}。本轮应交少于 ${st.minExpected} 次的同学不参加结算。", 10f)
         }
     }

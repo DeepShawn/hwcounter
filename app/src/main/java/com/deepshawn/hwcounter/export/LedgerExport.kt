@@ -52,15 +52,16 @@ object Ledger {
         val names = c.students.associateBy { it.id }
         val x = XlsxWriter()
         x.sheet("结算") {
-            widths = listOf(12.0, 10.0, 8.0, 10.0, 8.0, 8.0, 10.0, 10.0, 60.0)
+            widths = listOf(12.0, 10.0, 8.0, 10.0, 8.0, 8.0, 10.0, 10.0, 8.0, 10.0, 60.0)
             row(XlsxWriter.Cell("${c.name} ${s.title}", XlsxWriter.Style.TITLE))
             row("结算时间", f.format(Date(s.time)), "", "范围", (s.roundStart?.let { f.format(Date(it)) + " 起" } ?: "有记录以来"))
-            rowCells(listOf("学号", "姓名", "应交", "交齐度%", "迟交", "缺交", "最长连缺", "结算分", "原因").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) })
+            rowCells(listOf("学号", "姓名", "应交", "交齐度%", "迟交", "缺交", "最长连缺", "综合指数", "名次", "结算分", "原因").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) })
             s.lines.sortedByDescending { it.delta }.forEach { l ->
                 val st = names[l.studentId]
                 rowCells(listOf(
                     XlsxWriter.Cell(st?.no ?: ""), XlsxWriter.Cell(st?.name ?: "已删除"), XlsxWriter.Cell(l.expected), XlsxWriter.Cell(Math.round(l.rate * 1000) / 10.0),
                     XlsxWriter.Cell(l.late), XlsxWriter.Cell(l.missing), XlsxWriter.Cell(l.longestMissing),
+                    XlsxWriter.Cell(l.index?.let { Math.round(it * 100) / 100.0 } ?: ""), XlsxWriter.Cell(l.rank ?: ""),
                     if (l.skipped) XlsxWriter.Cell("不结算") else XlsxWriter.Cell(l.delta, if (l.delta > 0) XlsxWriter.Style.GREEN else if (l.delta < 0) XlsxWriter.Style.RED else XlsxWriter.Style.NORMAL),
                     XlsxWriter.Cell(l.reasons.joinToString("；")),
                 ))

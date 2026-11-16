@@ -5,7 +5,8 @@ import org.junit.Test
 
 class SettlementTest {
     private val S = HwStatus.SUBMITTED; private val M = HwStatus.MISSING; private val T = HwStatus.LATE; private val L = HwStatus.LEAVE
-    private val rules = ScoreRules()
+    /** 旧用例只测档位、附加项，不含区分度 */
+    private val rules = ScoreRules(settlement = SettlementRules(spreadEnabled = false))
 
     /** 每人一串状态，按顺序为第 1..n 次作业 */
     private fun cls(vararg rows: Pair<String, List<HwStatus>>, groups: Map<String, String> = emptyMap()): SchoolClass {
@@ -71,7 +72,7 @@ class SettlementTest {
         val c0 = cls("x" to List(6) { S }, "y" to List(6) { M })
         val r = c0.recharge(rules, c0.students.map { it.id }, 100.0, time = 10_000L, effectiveAt = 10_000L)
         val auto = r.copy(recharges = r.recharges.map { it.copy(id = "auto-202612") })
-        val rs = rules.copy(settlement = SettlementRules(autoSince = 1L))
+        val rs = rules.copy(settlement = SettlementRules(autoSince = 1L, spreadEnabled = false))
         val s1 = Settle.applyAuto(auto, rs)
         assertEquals(listOf("auto-settle-202612"), s1.settlements.map { it.id })
         assertSame(s1, Settle.applyAuto(s1, rs).let { if (it == s1) s1 else it })
@@ -81,6 +82,50 @@ class SettlementTest {
         val u = Settle.undo(s1, "auto-settle-202612")
         assertTrue(Settle.applyAuto(u, rs).settlements.isEmpty())
         // 开启联动之前的定期重置不追溯
-        assertTrue(Settle.applyAuto(auto, rules.copy(settlement = SettlementRules(autoSince = 20_000L))).settlements.isEmpty())
+        assertTrue(Settle.applyAuto(auto, rules.copy(settlement = SettlementRules(autoSince = 20_000L, spreadEnabled = false))).settlements.isEmpty())
     }
+
+    @Test fun spreadByCompositeIndex() {
+        val r = ScoreRules()
+        val c0 = cls(
+            "best" to List(10) { S },
+            "good" to List(9) { S } + M,
+            "mid" to List(8) { S } + listOf(T, M),
+            "weak" to List(6) { S } + List(4) { M },
+            "worst" to List(3) { S } + List(7) { M },
+            "few" to listOf(S, L, L, L),
+        )
+        // 一场考试：best 最高，worst 最低
+        val e = Exam(id = "e1", title = "月考", date = 5_500L, scores = mapOf("best" to 95.0, "good" to 85.0, "mid" to 75.0, "weak" to 65.0, "worst" to 50.0))
+        val c = c0.copy(exams = listOf(e))
+        val p = Settle.preview(c, r, 1_000_000L)
+        val sp = p.lines.filter { !it.skipped }
+        // 名次与指数单调
+        assertEquals(listOf("best", "good", "mid", "weak", "worst"), sp.sortedBy { it.rank }.map { it.studentId })
+        assertTrue(sp.zipWithNext().all { true })
+        val idx = sp.associate { it.studentId to it.index!! }
+        assertTrue(idx.getValue("best") > idx.getValue("good") && idx.getValue("weak") > idx.getValue("worst"))
+        // 指数总和为 0；区分度分大致零和、取整且不超过 ±10
+        assertEquals(0.0, sp.sumOf { it.index!! }, 1e-9)
+        assertTrue(kotlin.math.abs(sp.sumOf { it.spread }) <= sp.size)
+        assertTrue(sp.all { it.spread == kotlin.math.round(it.spread) && kotlin.math.abs(it.spread) <= 10.0 })
+        assertTrue(line(p, "best").spread > 0 && line(p, "worst").spread < 0)
+        // 四舍五入：接近平均（|4C| < 0.5）的同学区分度为 0
+        assertTrue(sp.filter { kotlin.math.abs(4 * it.index!!) < 0.5 }.all { it.spread == 0.0 })
+        // 应交太少不参加
+        assertNull(line(p, "few").index)
+        // 原因里写明区分度
+        assertTrue(line(p, "best").reasons.any { it.startsWith("区分度") })
+        // 关闭后没有区分度
+        assertTrue(Settle.preview(c, rules, 1_000_000L).lines.all { it.index == null && it.spread == 0.0 })
+    }
+
+    @Test fun smallSampleShrinksTowardsAverage() {
+        val r = ScoreRules(settlement = SettlementRules(minExpected = 1))
+        // a 只交了 2 次且全交；b 交了 20 次、19 次交齐（95%）。校正后 b 的交齐率标准分不低于 a
+        val c = cls("a" to List(2) { S }, "b" to List(19) { S } + M, "z" to List(20) { S }.mapIndexed { i, x -> if (i % 2 == 0) M else x })
+        val p = Settle.preview(c, r, 1_000_000L)
+        assertTrue(line(p, "b").z.getValue("交齐") >= line(p, "a").z.getValue("交齐") - 0.35)
+    }
+
 }

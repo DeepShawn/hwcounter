@@ -75,6 +75,7 @@ class ShotsTest {
             ),
             autoReset = AutoReset(target = 100.0, day = 1, since = now - 400 * day),
         )
+        c = Settle.apply(c, Settle.preview(c, ScoreRules(), now - 16 * day).copy(time = now - 16 * day))
         c = c.recharge(ScoreRules(), st.map { it.id }, 100.0, "期中重新计分", now - 15 * day, assignment = assigns[9])
         return AppData(classes = listOf(c), currentClassId = "c1", settings = Settings(onboarded = true))
     }
@@ -140,7 +141,7 @@ class ShotsTest {
             save("${prefix}_15_batch_pick"); scroll(); save("${prefix}_16_batch_list"); back()
         }
 
-        safe { rule.onAllNodes(hasContentDescription("更多")).onFirst().performClick(); click("结算本轮"); save("${prefix}_17_settle"); scroll(); save("${prefix}_18_settle"); back() }
+        safe { rule.onAllNodes(hasContentDescription("更多")).onFirst().performClick(); click("结算本轮"); save("${prefix}_17_settle"); scroll(); save("${prefix}_18_settle"); scroll(3); click("导出 / 撤销 ›"); click("积分登记表"); save("${prefix}_18b_register"); scroll(); save("${prefix}_18c_register"); back(); back() }
         safe { rule.onAllNodes(hasContentDescription("更多")).onFirst().performClick(); click("积分流水"); save("${prefix}_19_ledger"); click("结算"); save("${prefix}_19b_ledger_kind"); back() }
 
         tab("统计"); save("${prefix}_20_stats")
