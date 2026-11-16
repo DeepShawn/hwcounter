@@ -103,7 +103,7 @@ fun LazyListScope.groupSections(c: SchoolClass, rules: ScoreRules, r: GroupAnaly
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             r.periods.asReversed().take(12).forEach { p ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(p.label, Modifier.width(96.dp), fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(p.label.removeSuffix(" 这周"), Modifier.width(92.dp), fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         p.standings.forEach { st ->
                             val col = colorOf[st.group] ?: colors.primary
@@ -154,7 +154,8 @@ fun LazyListScope.groupSections(c: SchoolClass, rules: ScoreRules, r: GroupAnaly
         val colors = MiuixTheme.colorScheme
         Column(Modifier.padding(vertical = 6.dp)) {
             r.progress.forEach { p ->
-                val up = p.index >= 0.02; val down = p.index <= -0.02
+                val shownIdx = (p.index * 100).roundToInt()
+                val up = shownIdx >= 2; val down = shownIdx <= -2
                 Row(Modifier.fillMaxWidth().clickable { onGroup(p.group) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(if (up) "📈" else if (down) "📉" else "➖", fontSize = 18.sp)
                     Spacer(Modifier.width(10.dp))
