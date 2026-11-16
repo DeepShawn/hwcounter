@@ -279,7 +279,8 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.fill('.modal input[type=number]', '0');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.waitForSelector('.modal', { state: 'hidden' });
-  check(Number(await scoreRow('张锦宇').locator('.score').textContent()) === Number(beforeBase) - 100 && JSON.stringify((await readClass()).scores) === JSON.stringify(scored.scores), '基准100改0仅平移积分，原始加减分流水完整保留');
+  // 显示的积分取整（正分向上、负分向下），所以只平移 100 分时允许 1 分以内的取整差
+  check(Math.abs(Number(await scoreRow('张锦宇').locator('.score').textContent()) - (Number(beforeBase) - 100)) <= 1 && JSON.stringify((await readClass()).scores) === JSON.stringify(scored.scores), '基准100改0仅平移积分，原始加减分流水完整保留');
   check(await scoreRow('张锦宇').locator('.muted').textContent() === beforeMissing, '修改基准保留未交次数');
   await page.click('.toast button:has-text("撤销")');
   check(await scoreRow('张锦宇').locator('.score').textContent() === beforeBase, '修改基准可撤销');

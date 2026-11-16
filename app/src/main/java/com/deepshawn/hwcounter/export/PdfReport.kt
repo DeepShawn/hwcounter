@@ -562,7 +562,7 @@ object PdfReport {
                 p.text("举例：连续交第 1–${b.after} 次不额外加分，第 ${b.after + 1} 次起每次 +${b.bonus.fmt()}。", 10f, MUTED)
             }
             p.heading("四、取整与其他加减分")
-            p.text(if (rules.roundPoints) "所有加减分都取整数：加分向上取整（如 +0.5 记 +1），扣分向下取整（如 −0.5 记 −1）。" else "加减分保留小数。", 10.5f)
+            p.text(if (rules.roundPoints) "每一笔加减分按原值累计，最终显示的积分取整：正分向上取整（如 98.5 显示 99），负分向下取整（如 −2.5 显示 −3）。" else "积分保留小数。", 10.5f)
             p.text("老师可根据课堂表现等手动加减分，原因会记录在积分流水中。", 10f)
             if (rules.exam.enabled) {
                 p.text("考试按得分率自动加减分：" + rules.exam.bands.sortedByDescending { it.minPct }.joinToString("；") { "${it.minPct.fmt()}%–${it.maxPct.fmt()}% ${it.delta.signed()}" } + if (rules.exam.absent != 0.0) "；缺考 ${rules.exam.absent.signed()}" else "。", 10f)

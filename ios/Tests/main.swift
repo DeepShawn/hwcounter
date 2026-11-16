@@ -385,6 +385,11 @@ do {
     let p = c0.recharging(rules, ids: ["s1"], target: 100, time: 99000, assignmentId: "a6").autoPoints(rules, "s1")
     check(p["a5"] == 1 && p["a6"] == 0 && p["a7"] == 0, "每轮重置重新计")
     check(roundAway(0.5) == 1 && roundAway(-0.5) == -1 && roundAway(-2.1) == -3 && roundAway(0) == 0, "正分向上、负分向下取整")
+    var halfLate = Rules(); halfLate.late = -0.5
+    let lc = mk(["LATE"])
+    check(lc.autoPoints(halfLate, "s1")["a0"] == -0.5 && lc.stats(halfLate)[0].score == 100, "单笔保留原值，只对最终积分取整")
+    var neg = halfLate; neg.initial = -2
+    check(lc.stats(neg)[0].score == -3, "负分向下取整")
 }
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

@@ -861,7 +861,7 @@ function Settings({ s }) {
       ${sb.enabled !== false && html`<div class="row between rule"><span>连续交满几次后</span><input class="input num" type="number" step="1" min="0" value=${sb.after ?? 5} onChange=${(e) => { const v = parseInt(e.target.value, 10); if (v >= 0) setB({ after: v }); }} /></div>
         <div class="row between rule"><span>之后每次额外加</span><input class="input num" type="number" step="1" min="0" value=${sb.bonus ?? 1} onChange=${(e) => { const v = parseFloat(e.target.value); if (v >= 0) setB({ bonus: v }); }} /></div>
         <label class="row between rule"><span>迟交也算连续交</span><input type="checkbox" checked=${!!sb.lateCounts} onChange=${(e) => setB({ lateCounts: e.target.checked })} /></label>`}
-      <label class="row between rule"><span>加减分取整（加分向上、扣分向下）</span><input type="checkbox" checked=${data.settings.rules.roundPoints !== false} onChange=${(e) => set((x) => ({ ...x, rules: { ...x.rules, roundPoints: e.target.checked } }))} /></label>
+      <label class="row between rule"><span>积分取整（最终显示：正分向上、负分向下）</span><input type="checkbox" checked=${data.settings.rules.roundPoints !== false} onChange=${(e) => set((x) => ({ ...x, rules: { ...x.rules, roundPoints: e.target.checked } }))} /></label>
       <div class="muted tiny">本轮连续按时交满 ${sb.after ?? 5} 次后，之后每连续交一次额外加 ${fmtNum(sb.bonus ?? 1)} 分；请假、未登记不打断，未交打断；每次积分重置后重新计。</div>`; })()}
       ${(() => { const esc = data.settings.rules.escalation || {}; const setE = (patch) => set((x) => ({ ...x, rules: { ...x.rules, escalation: { ...(x.rules.escalation || {}), ...patch } } })); return html`
       <label class="row between rule"><span>未交连续加倍扣分</span><input type="checkbox" checked=${esc.enabled !== false} onChange=${(e) => setE({ enabled: e.target.checked })} /></label>

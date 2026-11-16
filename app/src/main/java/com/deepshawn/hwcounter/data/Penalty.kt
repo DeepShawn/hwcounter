@@ -42,8 +42,12 @@ data class StreakBonus(
 /** 正分向上取整、负分向下取整（远离 0 取整） */
 fun roundAway(x: Double): Double = if (x > 0) kotlin.math.ceil(x - 1e-9) else if (x < 0) kotlin.math.floor(x + 1e-9) else 0.0
 
-/** 按规则对一次加减分取整（[ScoreRules.roundPoints] 开启时） */
-fun ScoreRules.pt(x: Double): Double = if (roundPoints) roundAway(x) else x
+/** 单笔加减分保留原值（取整只作用在最终显示的总积分上，见 [ScoreRules.shown]） */
+@Suppress("UNUSED_PARAMETER", "NOTHING_TO_INLINE")
+inline fun ScoreRules.pt(x: Double): Double = x
+
+/** 最终显示的总积分：[ScoreRules.roundPoints] 开启时正分向上取整、负分向下取整 */
+fun ScoreRules.shown(total: Double): Double = if (roundPoints) roundAway(total) else total
 
 /** 某次作业的计分明细 */
 data class AutoPoint(val points: Double, val missStreak: Int = 0, val handStreak: Int = 0, val bonus: Double = 0.0)

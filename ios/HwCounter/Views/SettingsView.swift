@@ -42,8 +42,8 @@ struct SettingsView: View {
                 }
                 Toggle(isOn: Binding(get: { store.data.rules.roundPoints }, set: { v in store.setSetting { d in var r = d.rules; r.roundPoints = v; d.rules = r } })) {
                     VStack(alignment: .leading) {
-                        Text("加减分取整")
-                        Text("每次加分向上取整、扣分向下取整").font(.caption).foregroundStyle(.secondary)
+                        Text("积分取整")
+                        Text("最终显示的积分：正分向上取整、负分向下取整；单笔加减分保留原值").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Toggle(isOn: Binding(get: { store.data.rules.escalation.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.escalation.enabled = v; d.rules = r } })) {
