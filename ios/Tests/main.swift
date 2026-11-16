@@ -391,5 +391,56 @@ do {
     var neg = halfLate; neg.initial = -2
     check(lc.stats(neg)[0].score == -3, "负分向下取整")
 }
+// 作业复审：与安卓 ReviewTest、网页同一组用例
+do {
+    print("== 作业复审")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    func mk(_ m: [String], failed: Set<Int> = []) -> SchoolClass {
+        var c = SchoolClass(name: "一班", students: [Student(id: "s", no: "1", name: "甲")])
+        for (i, x) in m.enumerated() { var a = Assignment(title: "作业\(i)", subject: ""); a.id = "a\(i)"; a.createdAt = Int64((i + 1) * 1000); a.statuses = ["s": x]; if failed.contains(i) { a.reviewFailed = ["s"] }; c.assignments.append(a) }
+        return c
+    }
+    func pts(_ c: SchoolClass, _ r: Rules = Rules()) -> [Double] { let p = c.autoPoints(r, "s"); return c.assignments.map { p[$0.id] ?? 0 } }
+    let M = "MISSING"
+    check(pts(mk([M, M], failed: [0])) == [-4, -4], "复审不合格翻倍（2×2），并算一次未交")
+    check(pts(mk([M, M, M], failed: [2]))[2] == -16, "连续第 3 次 8 分翻倍为 16")
+    check(pts(mk(Array(repeating: M, count: 6), failed: [5]))[5] == -60, "上限 30 之后再翻倍")
+    var off = Rules(); off.review.enabled = false
+    check(pts(mk([M], failed: [0]), off) == [-2], "关闭复审按普通未交")
+    check(pts(mk(["SUBMITTED"], failed: [0])) == [0], "状态不是未交时标记不生效")
+    check(mk([M], failed: [0]).stats(Rules())[0].score == 96, "积分 100 − 4")
+    let back = try! JSONDecoder().decode(Assignment.self, from: JSONEncoder().encode(mk([M], failed: [0]).assignments[0]))
+    check(back.reviewFailed == ["s"], "复审标记可编码/解码")
+}
+// 组长奖惩：与安卓 LeaderTest、网页 leader.test.mjs 同一组用例
+do {
+    print("== 组长奖惩")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    let ids = ["a1", "a2", "a3", "b1", "b2", "b3", "c1", "c2", "c3", "x"]
+    var c = SchoolClass(name: "一班", students: ids.map { id in var s = Student(id: id, no: id, name: id); s.group = ["a": "一组", "b": "二组", "c": "三组"][String(id.prefix(1))] ?? ""; return s })
+    for k in 0..<6 {
+        var a = Assignment(title: "作业\(k)", subject: ""); a.id = "a\(k)"; a.createdAt = Int64((k + 1) * 86_400_000)
+        var m: [String: String] = [:]; for id in ids { m[id] = "SUBMITTED" }
+        if k == 0 { m["b2"] = "MISSING" }
+        if k <= 1 { m["c2"] = "MISSING"; m["c3"] = "MISSING" }
+        a.statuses = m; c.assignments.append(a)
+    }
+    c.groupLeaders = ["一组": "a1", "二组": "b1", "三组": "c1"]
+    var each = Rules(); each.leader.period = "assignment"
+    let lp = c.leaderPeriods(each)
+    check(lp["a1"]!.map(\.points) == [4, 4, 5, 5, 5, 5], "零扣分、最少、连续、每段上限")
+    check(lp["b1"]![0].points == 1 && lp["b1"]![1].points == 5, "不高于平均；比上一段少")
+    check(Array(lp["c1"]!.map(\.points).prefix(3)) == [-3, -5, 4], "超平均 2 倍、最多、连续扣分偏多")
+    check(lp["a2"] == nil && lp["x"] == nil, "组员、未分组没有组长奖惩")
+    var off = each; off.leader.enabled = false
+    check(c.stats(each).first { $0.id == "a1" }!.score - c.stats(off).first { $0.id == "a1" }!.score == 28, "计入积分")
+    var month = Rules(); month.leader.period = "month"
+    let lm = c.leaderPeriods(month)
+    check(lm["a1"]!.count == 1 && lm["a1"]![0].points == 4 && lm["c1"]![0].points == -4, "按月")
+    let rc = c.recharging(each, ids: ["a1"], target: 100, time: 3 * 86_400_000 + 1, assignmentId: "a3")
+    check(rc.leaderPeriods(each)["a1"]!.map(\.points) == [4, 4, 5, 3, 4, 5] && rc.stats(each).first { $0.id == "a1" }!.score == 112, "组长重置后重新算")
+    let back = try! JSONDecoder().decode(SchoolClass.self, from: JSONEncoder().encode({ var x = c; x.reps = ["a1"]; return x }()))
+    check(back.reps == ["a1"], "课代表可编码/解码")
+}
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

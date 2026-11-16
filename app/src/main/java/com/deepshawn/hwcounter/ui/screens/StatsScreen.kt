@@ -141,6 +141,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
     // 股票模式：关注度按美股行情显示
     val stockUi = rememberStockUi()
     val stockBoard = if (mode == 2 && stockMode) rememberBoard(c, rules, stockUi.span) else null
+    val groupReport = remember(c, rules, mode == 3) { if (mode == 3) com.deepshawn.hwcounter.data.GroupAnalysis.report(c, rules) else null }
     val subjectsWithExams = remember(c.exams) { c.exams.map { it.subject }.filter { it.isNotBlank() }.distinct() }
     var examSubject by rememberSaveable { mutableIntStateOf(0) }
     val examReport = remember(c, examSubject, subjectsWithExams) { Analytics.examReport(c, subjectsWithExams.getOrNull(examSubject - 1)) }
@@ -148,7 +149,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
 
     MiuixPage(
         title = "统计", largeTitle = "数据分析",
-        swipe = Triple(3, mode) { mode = it },
+        swipe = Triple(4, mode) { mode = it },
         actions = {
             IconButton(onClick = { share = true }, modifier = Modifier.padding(end = 16.dp)) { Icon(Icons.Filled.IosShare, "分析报告", tint = colors.onSurface) }
         },
@@ -156,7 +157,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
         item(key = "mode") {
             Column(Modifier.padding(horizontal = 12.dp)) {
                 Text("${c.name} · ${c.students.size} 人 · ${c.assignments.size} 次作业 · ${c.exams.size} 场考试", fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, bottom = 10.dp))
-                HTabs(listOf("作业", "考试", "关注"), mode, { mode = it })
+                HTabs(listOf("作业", "考试", "关注", "小组"), mode, { mode = it })
             }
         }
         if (mode == 0) {
@@ -172,6 +173,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 onBatch = if (readOnly) null else { ids, reason -> kit.nav.push(Route.BatchScore(ids, reason)) },
             )
         }
+        else if (mode == 3) groupReport?.let { gr -> groupSections(c, rules, gr) { kit.nav.push(Route.Group(it)) } }
         else if (mode == 2) {
             item(key = "att-view") {
                 HTabs(

@@ -263,7 +263,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setStatus(assignmentId: String, studentIds: Collection<String>, status: HwStatus) = editAssignment(assignmentId) { a ->
         val m = a.statuses.toMutableMap()
         studentIds.forEach { if (status == HwStatus.NONE) m.remove(it) else m[it] = status }
-        a.copy(statuses = m)
+        // 改成其他状态时取消复审不合格
+        a.copy(statuses = m, reviewFailed = a.reviewFailed - studentIds.toSet())
+    }
+
+    /** 复审不合格：记为未交（多算一次未交），扣分翻倍 */
+    fun markReviewFailed(assignmentId: String, studentIds: Collection<String>) = editAssignment(assignmentId) { a ->
+        a.copy(statuses = a.statuses + studentIds.associateWith { HwStatus.MISSING }, reviewFailed = (a.reviewFailed + studentIds).distinct())
     }
 
     /** 未登记的人 -> 某状态 */
@@ -327,6 +333,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         c.copy(exams = c.exams.map { e -> if (e.id != examId) e else if (scores) e.copy(scores = e.scores - ids) else e.copy(absent = e.absent - ids) })
     }
     fun setGroupLeader(group: String, studentId: String?) = updateClass { it.setGroupLeader(group, studentId) }
+    /** 设为 / 取消课代表（可以同时是组长） */
+    fun setRep(studentId: String, on: Boolean) = updateClass { c -> c.copy(reps = if (on) (c.reps + studentId).distinct() else c.reps - studentId) }
 
     /** 撤销某次重置（删除记录，分数按全部历史重新计算） */
     fun removeRecharge(id: String) = updateClass { c -> c.undoRecharge(id) }

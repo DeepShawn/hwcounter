@@ -60,7 +60,12 @@ data class Assignment(
     /** 通过“数本数”得到的实物本数 */
     val countedBooks: Int? = null,
     val pinned: Boolean = false,
-)
+    /** 复审不合格的同学：状态记为未交（多算一次未交），扣分按 [ReviewRules.multiplier] 翻倍 */
+    val reviewFailed: List<String> = emptyList(),
+) {
+    /** 这位同学是否复审不合格（只有状态仍是“未交”时才算） */
+    fun failedReview(studentId: String): Boolean = studentId in reviewFailed && statuses[studentId] == HwStatus.MISSING
+}
 
 @Serializable
 data class ScoreEntry(
@@ -89,6 +94,8 @@ data class SchoolClass(
     val exams: List<Exam> = emptyList(),
     /** 小组 → 组长学生 id */
     val groupLeaders: Map<String, String> = emptyMap(),
+    /** 课代表（学生 id）：每次结算加分；可以同时是组长 */
+    val reps: List<String> = emptyList(),
     /** 每月定期重置（见 AutoReset.kt），null = 未设置 */
     val autoReset: AutoReset? = null,
     /** 结算记录（见 Settlement.kt） */
@@ -122,6 +129,10 @@ data class ScoreRules(
     val roundPoints: Boolean = true,
     /** 结算规则 */
     val settlement: SettlementRules = SettlementRules(),
+    /** 作业复审：不合格记一次未交，扣分翻倍 */
+    val review: ReviewRules = ReviewRules(),
+    /** 组长奖惩：按课代表选的周期，看小组人均作业扣分（见 Leader.kt） */
+    val leader: LeaderRules = LeaderRules(),
 ) {
     fun of(s: HwStatus): Double = when (s) {
         HwStatus.NONE -> 0.0
@@ -214,6 +225,7 @@ fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
     val last = latestRecharges()
     val manual = HashMap<String, Double>()
     for (e in scores) if (e.countsAfter(last[e.studentId])) manual[e.studentId] = (manual[e.studentId] ?: 0.0) + rules.pt(e.delta)
+    val lead = leaderPeriods(rules)
     return students.map { st ->
         val r = last[st.id]
         val counts = HashMap<HwStatus, Int>()
@@ -226,7 +238,8 @@ fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
         }
         var examPts = 0.0
         for (e in exams) if (r == null || r.counts(e.date)) examPts += rules.pt(rules.exam.deltaFor(e, st.id))
-        StudentStat(st, rules.shown((r?.target ?: rules.initial) + auto + (manual[st.id] ?: 0.0) + examPts), counts)
+        val leaderPts = lead[st.id].orEmpty().filter { r == null || r.counts(it.time) }.sumOf { rules.pt(it.points) }
+        StudentStat(st, rules.shown((r?.target ?: rules.initial) + auto + (manual[st.id] ?: 0.0) + examPts + leaderPts), counts)
     }
 }
 

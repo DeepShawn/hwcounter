@@ -52,6 +52,15 @@ struct SettingsView: View {
                         Text("连续未交第 1 次扣 \(fmtNum(store.data.rules.escalation.base))，第 2 次 \(fmtNum(pow(store.data.rules.escalation.base, 2)))，第 3 次 \(fmtNum(pow(store.data.rules.escalation.base, 3)))…；请假不打断，交过一次就重新算；本轮累计超过 \(store.data.rules.escalation.heavyAfter) 次后底数变为 \(fmtNum(store.data.rules.escalation.heavyBase))；每次积分重置后重新开始").font(.caption).foregroundStyle(.secondary)
                     }
                 }
+                Toggle(isOn: Binding(get: { store.data.rules.review.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.review.enabled = v; d.rules = r } })) {
+                    VStack(alignment: .leading) {
+                        Text("作业复审")
+                        Text("老师复审不合格：记一次未交（参与连续 / 累计未交），这一次扣分 ×\(fmtNum(store.data.rules.review.multiplier))；没有复审的默认合格").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if store.data.rules.review.enabled {
+                    Stepper("复审不合格扣分倍数 ×\(fmtNum(store.data.rules.review.multiplier))", value: Binding(get: { store.data.rules.review.multiplier }, set: { v in store.setSetting { d in var r = d.rules; r.review.multiplier = v; d.rules = r } }), in: 1...5, step: 0.5)
+                }
             }
             .disabled(store.readOnly)
             Section("🎙️ 语音登记") {

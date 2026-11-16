@@ -13,7 +13,13 @@ export const STATUS_KEYS = Object.keys(STATUS);
 
 export const defaultEscalation = () => ({ enabled: true, base: 2, heavyBase: 3, heavyAfter: 6, cap: 30 });
 export const defaultStreakBonus = () => ({ enabled: true, after: 5, bonus: 1, lateCounts: false });
-export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true });
+/** 作业复审：不合格记一次未交（参与连续 / 累计），这一次扣分 × multiplier；没复审的默认合格 */
+export const defaultReview = () => ({ enabled: true, multiplier: 2 });
+/** 组长奖惩（与安卓 Leader.kt 同算法）：按周期（assignment / day / week / month）看小组人均作业扣分 */
+export const defaultLeader = () => ({ enabled: true, period: 'week', clean: 3, low: 2, below: 1, above: -1, high: -2, veryHigh: -3, top: 1, bottom: -1, progress: 1, regress: -1, streakStep: 1, streakMax: 3, cap: 5 });
+export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true, review: defaultReview(), leader: defaultLeader() });
+/** 这位同学这次作业是否复审不合格（只有状态仍是未交时才算） */
+export const failedReview = (a, sid) => (a.reviewFailed || []).includes(sid) && a.statuses[sid] === 'MISSING';
 /** 正分向上取整、负分向下取整（与安卓 roundAway 一致） */
 export const roundAway = (x) => (x > 0 ? Math.ceil(x - 1e-9) : x < 0 ? Math.floor(x + 1e-9) : 0);
 /** 单笔加减分保留原值；取整只作用在最终显示的总积分上 */
@@ -37,11 +43,13 @@ export function normalizeData(d) {
   out.settings.rules = { ...defaultRules(), ...(out.settings.rules || {}) };
   out.settings.rules.escalation = { ...defaultEscalation(), ...(out.settings.rules.escalation || {}) };
   out.settings.rules.streakBonus = { ...defaultStreakBonus(), ...(out.settings.rules.streakBonus || {}) };
+  out.settings.rules.review = { ...defaultReview(), ...(out.settings.rules.review || {}) };
+  out.settings.rules.leader = { ...defaultLeader(), ...(out.settings.rules.leader || {}) };
   out.settings.ai = { ...base.settings.ai, ...(out.settings.ai || {}) };
   out.classes = (out.classes || []).map((c) => ({
     id: newId(), emoji: '🎒', students: [], assignments: [], scores: [], ...c,
     students: (c.students || []).map((s) => ({ id: newId(), group: '', gender: '', note: '', longLeave: false, ...s })),
-    assignments: (c.assignments || []).map((a) => ({ id: newId(), subject: '', createdAt: Date.now(), statuses: {}, comments: {}, countedBooks: null, pinned: false, ...a })),
+    assignments: (c.assignments || []).map((a) => ({ id: newId(), subject: '', createdAt: Date.now(), statuses: {}, comments: {}, countedBooks: null, pinned: false, reviewFailed: [], ...a })),
     scores: (c.scores || []).map((e) => ({ id: newId(), time: Date.now(), ...e })),
     exams: (c.exams || []).map((e) => ({ id: newId(), subject: '', date: Date.now(), fullScore: 100, scores: {}, absent: [], note: '', autoScore: true, ...e })),
     groupLeaders: c.groupLeaders || {},
@@ -123,6 +131,7 @@ export function examDelta(rules, e, sid) {
 export function autoPoints(c, rules, sid) {
   const esc = { ...defaultEscalation(), ...(rules.escalation || {}) };
   const sb = { ...defaultStreakBonus(), ...(rules.streakBonus || {}) };
+  const rv = { ...defaultReview(), ...(rules.review || {}) };
   const out = {};
   const resets = (c.recharges || []).filter((r) => (r.studentIds || []).includes(sid))
     .sort((a, b) => rechargeStart(a) - rechargeStart(b) || a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -134,10 +143,10 @@ export function autoPoints(c, rules, sid) {
     if (r !== round) { round = r; streak = 0; total = 0; run = 0; }
     if (s === 'MISSING') {
       streak++; total++; run = 0;
-      if (!esc.enabled) { out[a.id] = pt(rules, ruleOf(rules, s)); continue; }
-      const b = total > esc.heavyAfter ? esc.heavyBase : esc.base;
-      let p = b ** streak; if (esc.cap > 0) p = Math.min(p, esc.cap);
-      out[a.id] = pt(rules, -p);
+      let base;
+      if (!esc.enabled) base = ruleOf(rules, s);
+      else { const b = total > esc.heavyAfter ? esc.heavyBase : esc.base; let p = b ** streak; if (esc.cap > 0) p = Math.min(p, esc.cap); base = -p; }
+      out[a.id] = pt(rules, rv.enabled && failedReview(a, sid) ? base * rv.multiplier : base);
     } else if (s === 'SUBMITTED' || s === 'EXCELLENT' || s === 'LATE') {
       streak = 0;
       const counts = s !== 'LATE' || sb.lateCounts;
@@ -149,6 +158,82 @@ export function autoPoints(c, rules, sid) {
   return out;
 }
 
+/** 当前有效的组长：组长须仍在该组 */
+export function leaderOf(c, group) {
+  const id = (c.groupLeaders || {})[group];
+  return id ? c.students.find((s) => s.id === id && (s.group || '未分组') === group) || null : null;
+}
+const f1 = (x) => { const r = Math.round(x * 10) / 10; return Number.isInteger(r) ? String(r) : String(r); };
+/** 某次作业所在的段：[key, 显示名] */
+export function periodKey(lr, a) {
+  if (lr.period === 'assignment') return [a.id, `「${a.title}」`];
+  const d = new Date(a.createdAt); d.setHours(0, 0, 0, 0);
+  if (lr.period === 'day') return [`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`, `${d.getMonth() + 1}月${d.getDate()}日`];
+  if (lr.period === 'month') return [`${d.getFullYear()}-${d.getMonth() + 1}`, `${d.getFullYear()}年${d.getMonth() + 1}月`];
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; const m = d.getMonth() + 1; const day = d.getDate();
+  d.setDate(d.getDate() + 6);
+  return [key, `${m}/${day}–${d.getMonth() + 1}/${d.getDate()} 这周`];
+}
+/** 全班所有组长的每段奖惩：组长 id → [{ group, key, label, time, perCapita, average, parts:[[文字, 分]], points }] */
+export function leaderPeriods(c, rules) {
+  const lr = { ...defaultLeader(), ...(rules.leader || {}) };
+  if (!lr.enabled) return {};
+  const groups = {};
+  for (const s of c.students) if (s.group) (groups[s.group] = groups[s.group] || []).push(s);
+  for (const g of Object.keys(groups)) if (groups[g].length < 2) delete groups[g];
+  const leaders = {};
+  for (const g of Object.keys(groups)) { const l = leaderOf(c, g); if (l) leaders[g] = l; }
+  if (!Object.keys(leaders).length) return {};
+  const auto = {}; for (const ms of Object.values(groups)) for (const m of ms) auto[m.id] = autoPoints(c, rules, m.id);
+  const sorted = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const buckets = new Map();
+  for (const a of sorted) { const [k, l] = periodKey(lr, a); if (!buckets.has(k)) buckets.set(k, { label: l, list: [] }); buckets.get(k).list.push(a); }
+  const resetsOf = {};
+  for (const l of Object.values(leaders)) resetsOf[l.id] = (c.recharges || []).filter((r) => (r.studentIds || []).includes(l.id)).sort((a, b) => rechargeStart(a) - rechargeStart(b) || a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const round = {}; const prevD = {}; const lastSub = {}; const run = {}; const out = {};
+  for (const [key, { label, list }] of buckets) {
+    const per = {};
+    for (const [g, ms] of Object.entries(groups)) {
+      const active = ms.some((m) => list.some((a) => { const k = a.statuses[m.id] || 'NONE'; return k !== 'NONE' && k !== 'LEAVE'; }));
+      if (!active) continue;
+      let total = 0; for (const m of ms) for (const a of list) { const p = auto[m.id][a.id] ?? 0; if (p < 0) total -= p; }
+      per[g] = total / ms.length;
+    }
+    const vals = Object.values(per);
+    if (!vals.length) continue;
+    const avg = vals.reduce((x, y) => x + y, 0) / vals.length;
+    const best = Math.min(...vals); const worst = Math.max(...vals);
+    const first = list[0].createdAt; const last = list[list.length - 1].createdAt;
+    for (const [g, d] of Object.entries(per)) {
+      const leader = leaders[g]; if (!leader) continue;
+      let r = null; for (const x of resetsOf[leader.id]) if (rechargeCounts(x, first)) r = x.id;
+      if (!(g in round) || round[g] !== r) { round[g] = r; delete prevD[g]; delete lastSub[g]; delete run[g]; }
+      const parts = [];
+      if (d <= 1e-9) parts.push(['全组零扣分', lr.clean]);
+      else if (d <= avg * 0.5) parts.push([`人均扣分 ${f1(d)}，不到各组平均 ${f1(avg)} 的一半`, lr.low]);
+      else if (d <= avg) parts.push([`人均扣分 ${f1(d)}，不高于各组平均 ${f1(avg)}`, lr.below]);
+      else if (d <= avg * 1.5) parts.push([`人均扣分 ${f1(d)}，高于各组平均 ${f1(avg)}`, lr.above]);
+      else if (d <= avg * 2) parts.push([`人均扣分 ${f1(d)}，超过各组平均 1.5 倍`, lr.high]);
+      else parts.push([`人均扣分 ${f1(d)}，超过各组平均 2 倍`, lr.veryHigh]);
+      if (vals.length >= 3 && best < worst) {
+        if (d === best && vals.filter((v) => v === best).length === 1) parts.push(['人均扣分各组最少', lr.top]);
+        if (d === worst && vals.filter((v) => v === worst).length === 1) parts.push(['人均扣分各组最多', lr.bottom]);
+      }
+      if (g in prevD) { const p = prevD[g]; if (p > 0 && d <= p * 0.7) parts.push([`比上一段少（${f1(p)} → ${f1(d)}）`, lr.progress]); else if (d >= p * 1.5 && d - p >= 2) parts.push([`比上一段多（${f1(p)} → ${f1(d)}）`, lr.regress]); }
+      const sub = parts.reduce((n, x) => n + x[1], 0);
+      const ps = lastSub[g];
+      const k = sub !== 0 && ps != null && ps !== 0 && (ps > 0) === (sub > 0) ? (run[g] || 1) : 0;
+      if (lr.streakMax > 0 && k > 0) parts.push([sub > 0 ? `连续 ${k + 1} 段表现好` : `连续 ${k + 1} 段扣分偏多`, (sub > 0 ? 1 : -1) * Math.min(k, lr.streakMax) * lr.streakStep]);
+      run[g] = k > 0 ? k + 1 : 1; lastSub[g] = sub; prevD[g] = d;
+      const total = parts.reduce((n, x) => n + x[1], 0);
+      if (lr.cap > 0 && Math.abs(total) > lr.cap) parts.push([`每段最多 ±${f1(lr.cap)}`, (total > 0 ? lr.cap : -lr.cap) - total]);
+      (out[leader.id] = out[leader.id] || []).push({ group: g, key, label, time: last, perCapita: d, average: avg, parts, points: parts.reduce((n, x) => n + x[1], 0) });
+    }
+  }
+  return out;
+}
+
 export function studentStats(c, rules) {
   let byRules = statsCache.get(c);
   if (!byRules) { byRules = new WeakMap(); statsCache.set(c, byRules); }
@@ -156,6 +241,7 @@ export function studentStats(c, rules) {
   const last = latestRecharges(c);
   const manual = {};
   for (const e of c.scores) if (entryCounts(e, last[e.studentId])) manual[e.studentId] = (manual[e.studentId] || 0) + pt(rules, e.delta);
+  const lead = leaderPeriods(c, rules);
   const result = c.students.map((st) => {
     const r = last[st.id];
     const counts = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
@@ -164,7 +250,8 @@ export function studentStats(c, rules) {
     for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; if (assignmentCounts(a, r)) auto += pts[a.id] ?? ruleOf(rules, s); }
     let examPts = 0;
     for (const e of c.exams || []) if (!r || rechargeCounts(r, e.date)) examPts += pt(rules, examDelta(rules, e, st.id));
-    return { student: st, score: shown(rules, (r ? r.target : rules.initial) + auto + (manual[st.id] || 0) + examPts), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };
+    const leaderPts = (lead[st.id] || []).filter((p) => !r || rechargeCounts(r, p.time)).reduce((n, p) => n + pt(rules, p.points), 0);
+    return { student: st, score: shown(rules, (r ? r.target : rules.initial) + auto + (manual[st.id] || 0) + examPts + leaderPts), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };
   });
   byRules.set(rules, result);
   return result;
