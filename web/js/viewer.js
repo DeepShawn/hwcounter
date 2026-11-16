@@ -374,7 +374,7 @@ function ExamView({ c, rules, id, back, open }) {
 }
 
 // ---------------- 设置（只有本机的个性化显示） ----------------
-function Settings({ prefs, setPrefs, updatedAt, status, reload, showGuide }) {
+function Settings({ prefs, setPrefs, status, reload, showGuide }) {
   return html`<${Page} title="设置">
     <${Title}>主题配色</${Title}>
     <section class="grp palettes">${Object.entries(PALETTES).map(([k, [a, b, n]]) => html`<button class=${'pal' + (prefs.theme === k ? ' on' : '')} onClick=${() => setPrefs({ theme: k })} aria-pressed=${prefs.theme === k}>
@@ -392,7 +392,7 @@ function Settings({ prefs, setPrefs, updatedAt, status, reload, showGuide }) {
       <${Cell} title="新手提示" sub="重新查看网页版的功能介绍" onClick=${showGuide} />
     </${Group}>
     <${Group} title="数据">
-      <${Cell} title="刷新数据" sub=${status === 'loading' ? '正在加载…' : status === 'error' ? '加载失败，请检查网络' : updatedAt ? `数据更新于 ${fmtTime(updatedAt)}` : ''} onClick=${reload} />
+      <${Cell} title="刷新数据" sub=${status === 'loading' ? '正在加载…' : status === 'error' ? '加载失败，请检查网络' : '重新获取老师公开的最新数据'} onClick=${reload} />
     </${Group}>
     <div class="about"><div class="logo">📚</div><b>作业通 · 网页查看版</b><span>网页版只能查看，修改请在手机或 iPad 上操作</span></div>
   </${Page}>`;
@@ -460,7 +460,7 @@ const TABS = [['home', '首页', I.home], ['roster', '名单', I.people], ['scor
 function App() {
   const [prefs, setPrefsState] = useState(loadPrefs);
   const setPrefs = (patch) => setPrefsState((p) => { const n = { ...p, ...patch }; try { localStorage.setItem(PREF_KEY, JSON.stringify(n)); } catch { /* 本机偏好 */ } return n; });
-  const [{ data, status, updatedAt }, reload] = useData();
+  const [{ data, status }, reload] = useData();
   const [tab, setTab] = useState('home');
   const [guide, setGuide] = useState(() => { try { return localStorage.getItem(GUIDE_KEY) !== '1'; } catch { return false; } });
   const doneGuide = () => { try { localStorage.setItem(GUIDE_KEY, '1'); } catch { /* 本机 */ } setGuide(false); };
@@ -509,7 +509,7 @@ function App() {
   else if (tab === 'roster') body = h(Roster, props);
   else if (tab === 'scores') body = h(Scores, props);
   else if (tab === 'stats') body = h(Stats, props);
-  else body = h(Settings, { prefs, setPrefs, updatedAt, status, reload, showGuide: () => setGuide(true) });
+  else body = h(Settings, { prefs, setPrefs, status, reload, showGuide: () => setGuide(true) });
   const idx = TABS.findIndex((t) => t[0] === tab);
   return html`<div class="app">
     <main key=${key} class=${top ? 'detail' : 'tabpage'}>${body}</main>
