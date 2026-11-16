@@ -534,7 +534,7 @@ object PdfReport {
         val e = rules.escalation; val b = rules.streakBonus; val st = rules.settlement
         doc(out, c, "${c.name} · 积分计分标准", now) { p ->
             banner(p, "关于实行新积分计分标准的通知", "${c.name} · 自 ${SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(Date(now))} 起执行", "以前的积分已按新标准重新计算，历史记录全部保留可查")
-            p.text("为鼓励同学们按时、完整地完成作业，班级积分采用以下计分标准。每位同学初始 ${rules.initial.fmt()} 分，以下各项自动计入。", 10.5f); p.gap(6f)
+            p.text("为鼓励同学们按时、完整地完成作业，班级积分采用以下计分标准。每位同学初始 ${rules.initial.fmt()} 分，以下各项自动计入；每一笔积分变化都记录在积分流水中，可随时向老师查询。请同学们按时完成作业，积极争取连续交作业奖励和结算加分。", 10.5f); p.gap(6f)
             p.heading("一、每次作业")
             table(p, listOf("情况", "计分", "说明"), listOf(1f, 0.8f, 3f), listOf(
                 listOf("按时交", rules.submitted.signed().let { if (rules.submitted == 0.0) "0" else it }, "正常完成"),
@@ -575,13 +575,6 @@ object PdfReport {
                 listOf("80%–90%", if (st.r80 == 0.0) "0" else st.r80.signed()), listOf("70%–80%", st.r70.signed()), listOf("70% 以下", st.below.signed()),
             ))
             p.text("另外：本轮缺交 ${st.manyMissing} 次及以上 ${st.manyMissingDelta.signed()}；最长连续缺交 ${st.streakMissing} 次及以上 ${st.streakMissingDelta.signed()}；交齐度比上一轮提高 ${(st.progressPts * 100).toInt()} 个百分点以上（进步奖）${st.progressDelta.signed()}；本轮平均交齐度第一的小组每人 ${st.groupDelta.signed()}。本轮应交少于 ${st.minExpected} 次的同学不参加结算。", 10f)
-            p.gap(3f)
-            // 结语和落款放在一起，不让落款单独掉到下一页
-            p.ensure(34f)
-            p.text("请同学们按时完成作业，积极争取连续交作业奖励和结算加分。积分明细可随时向老师查询。", 10f)
-            p.gap(2f)
-            p.cell("${c.name}    ${SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(Date(now))}", M, p.y, W - 2 * M, 10.5f, INK, align = Layout.Alignment.ALIGN_OPPOSITE)
-            p.gap(16f)
         }
     }
 }
