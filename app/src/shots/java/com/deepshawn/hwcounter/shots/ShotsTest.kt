@@ -161,7 +161,7 @@ class ShotsTest {
             click("本轮"); save("${prefix}_30_stats_period")
             click("考试"); save("${prefix}_31_stats_exam")
             for (i in 2..9) { scroll(); save("${prefix}_3${i}_stats_exam") }
-            top(); click("小组"); save("${prefix}_34a_groups"); scroll(); save("${prefix}_34b_groups"); scroll(); save("${prefix}_34c_groups"); scroll(); save("${prefix}_34d_groups")
+            top(); click("小组"); save("${prefix}_34a_groups"); scroll(); save("${prefix}_34b_groups"); scroll(); save("${prefix}_34c_groups"); scroll(); save("${prefix}_34d_groups"); scroll(); save("${prefix}_34e_groups")
             top(); click("关注"); save("${prefix}_35a_attention"); scroll(); save("${prefix}_35b_attention")
             safe {
                 top(); click("股票"); waitStock(); save("${prefix}_37a_stock"); scroll(); save("${prefix}_37b_stock"); scroll(); save("${prefix}_37c_stock"); scroll(); save("${prefix}_37d_stock")

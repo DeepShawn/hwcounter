@@ -441,6 +441,19 @@ struct LeaderRules: Equatable {
     var clean = 3.0, low = 2.0, below = 1.0, above = -1.0, high = -2.0, veryHigh = -3.0
     var top = 1.0, bottom = -1.0, progress = 1.0, regress = -1.0, streakStep = 1.0, streakMax = 3, cap = 5.0
 }
+/// 小组对抗排名（与安卓 GroupRank.kt、网页 model.js 同算法）：按周期给小组综合排名，按名次给整组每人加减分
+struct GroupRankRules: Equatable {
+    var enabled = true, period = "week"
+    var first = 2.0, second = 1.0, third = 0.0, last = -1.0
+    var wRate = 0.5, wDeduct = 0.25, wExcellent = 0.15, wExam = 0.1
+    func points(rank: Int, worst: Int, n: Int) -> Double {
+        if n >= 3 && rank == worst && rank > 1 { return last }
+        return rank == 1 ? first : rank == 2 ? second : rank == 3 ? third : 0
+    }
+}
+struct GroupStanding { var group: String; var rank: Int; var score: Double; var points: Double }
+struct RankPeriod { var key: String; var label: String; var time: Int64; var standings: [GroupStanding] }
+
 struct LeaderPeriod { var group: String; var key: String; var label: String; var time: Int64; var perCapita: Double; var parts: [(String, Double)]; var points: Double { parts.reduce(0) { $0 + $1.1 } } }
 
 /// 作业复审：不合格记一次未交，这一次扣分 × multiplier（默认翻倍）
@@ -457,6 +470,7 @@ struct Rules: Equatable {
     var roundPoints = true
     var review = ReviewRules()
     var leader = LeaderRules()
+    var groupRank = GroupRankRules()
     /// 单笔加减分保留原值；取整只作用在最终显示的总积分上
     func pt(_ x: Double) -> Double { x }
     func shown(_ total: Double) -> Double { roundPoints ? roundAway(total) : total }
@@ -523,6 +537,18 @@ struct AppData: Codable, Equatable {
                 x.leader.streakStep = v["streakStep"]?.double ?? x.leader.streakStep
                 x.leader.streakMax = v["streakMax"]?.int ?? x.leader.streakMax
                 x.leader.cap = v["cap"]?.double ?? x.leader.cap
+            }
+            if let v = r?["groupRank"] {
+                x.groupRank.enabled = v["enabled"]?.bool ?? x.groupRank.enabled
+                x.groupRank.period = v["period"]?.string ?? x.groupRank.period
+                x.groupRank.first = v["first"]?.double ?? x.groupRank.first
+                x.groupRank.second = v["second"]?.double ?? x.groupRank.second
+                x.groupRank.third = v["third"]?.double ?? x.groupRank.third
+                x.groupRank.last = v["last"]?.double ?? x.groupRank.last
+                x.groupRank.wRate = v["wRate"]?.double ?? x.groupRank.wRate
+                x.groupRank.wDeduct = v["wDeduct"]?.double ?? x.groupRank.wDeduct
+                x.groupRank.wExcellent = v["wExcellent"]?.double ?? x.groupRank.wExcellent
+                x.groupRank.wExam = v["wExam"]?.double ?? x.groupRank.wExam
             }
             if let v = r?["review"] {
                 x.review.enabled = v["enabled"]?.bool ?? x.review.enabled
@@ -685,11 +711,14 @@ extension SchoolClass {
     /// 某次作业所在的段
     static func periodKey(_ lr: LeaderRules, _ a: Assignment) -> (String, String) {
         if lr.period == "assignment" { return (a.id, "「\(a.title)」") }
+        return periodKeyAt(lr.period, a.date)
+    }
+    static func periodKeyAt(_ period: String, _ date: Date) -> (String, String) {
         let cal = Calendar.current
-        var d = cal.startOfDay(for: a.date)
+        var d = cal.startOfDay(for: date)
         let y = cal.component(.year, from: d), m = cal.component(.month, from: d), day = cal.component(.day, from: d)
-        if lr.period == "day" { return ("\(y)-\(m)-\(day)", "\(m)月\(day)日") }
-        if lr.period == "month" { return ("\(y)-\(m)", "\(y)年\(m)月") }
+        if period == "day" { return ("\(y)-\(m)-\(day)", "\(m)月\(day)日") }
+        if period == "month" { return ("\(y)-\(m)", "\(y)年\(m)月") }
         let wd = cal.component(.weekday, from: d) // 周日 = 1
         d = cal.date(byAdding: .day, value: -((wd + 5) % 7), to: d)!
         let y2 = cal.component(.year, from: d), m2 = cal.component(.month, from: d), d2 = cal.component(.day, from: d)
@@ -764,11 +793,66 @@ extension SchoolClass {
         return out
     }
 
+    /// 全班每一段的小组排名（旧 → 新）
+    func groupRankPeriods(_ rules: Rules) -> [RankPeriod] {
+        let gr = rules.groupRank
+        guard gr.enabled else { return [] }
+        var groups: [String: [Student]] = [:]
+        for s in students where !s.group.isEmpty { groups[s.group, default: []].append(s) }
+        groups = groups.filter { $0.value.count >= 2 }
+        guard groups.count >= 2 else { return [] }
+        var auto: [String: [String: Double]] = [:]
+        for ms in groups.values { for m in ms { auto[m.id] = autoPoints(rules, m.id) } }
+        let sorted = assignments.sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
+        var order: [String] = []; var buckets: [String: (String, [Assignment])] = [:]
+        for a in sorted {
+            let (k, l) = gr.period == "assignment" ? (a.id, "「\(a.title)」") : SchoolClass.periodKeyAt(gr.period, a.date)
+            if buckets[k] == nil { order.append(k); buckets[k] = (l, []) }
+            buckets[k]!.1.append(a)
+        }
+        var examsBy: [String: [Exam]] = [:]
+        if gr.period != "assignment" { for e in exams { examsBy[SchoolClass.periodKeyAt(gr.period, Date(timeIntervalSince1970: Double(e.date) / 1000)).0, default: []].append(e) } }
+        var out: [RankPeriod] = []
+        for key in order {
+            let (label, list) = buckets[key]!
+            var raws: [(g: String, rate: Double, deduct: Double, exc: Double, exam: Double?)] = []
+            for g in groups.keys.sorted() {
+                let ms = groups[g]!
+                var st: [HwStatus] = []
+                for a in list { for m in ms { let k = a.status(m.id); if k != .NONE && k != .LEAVE { st.append(k) } } }
+                if st.isEmpty { continue }
+                var ded = 0.0
+                for m in ms { for a in list { let p = auto[m.id]?[a.id] ?? 0; if p < 0 { ded -= p } } }
+                var ex: [Double] = []
+                for e in examsBy[key] ?? [] { for m in ms { if let v = e.scores[m.id] { ex.append(v / (e.fullScore > 0 ? e.fullScore : 100)) } } }
+                let handed = st.filter { $0 == .SUBMITTED || $0 == .EXCELLENT || $0 == .LATE }.count
+                raws.append((g, Double(handed) / Double(st.count), ded / Double(ms.count), Double(st.filter { $0 == .EXCELLENT }.count) / Double(st.count), ex.isEmpty ? nil : ex.reduce(0, +) / Double(ex.count)))
+            }
+            if raws.count < 2 { continue }
+            let maxD = raws.map(\.deduct).max()!
+            let allExam = raws.allSatisfy { $0.exam != nil }
+            let scored: [(String, Double, Double)] = raws.map { r in
+                let dn = maxD <= 1e-9 ? 1 : 1 - r.deduct / maxD
+                var num = gr.wRate * r.rate + gr.wDeduct * dn + gr.wExcellent * r.exc
+                var den = gr.wRate + gr.wDeduct + gr.wExcellent
+                if allExam, let x = r.exam { num += gr.wExam * x; den += gr.wExam }
+                return (r.g, ((den <= 0 ? 0 : num / den) * 10000).rounded() / 10000, 0)
+            }
+            func rankOf(_ sc: Double) -> Int { 1 + scored.filter { $0.1 > sc }.count }
+            let worst = scored.map { rankOf($0.1) }.max()!
+            let standings = scored.map { x -> GroupStanding in let rk = rankOf(x.1); return GroupStanding(group: x.0, rank: rk, score: x.1, points: gr.points(rank: rk, worst: worst, n: scored.count)) }
+                .sorted { ($0.rank, $0.group) < ($1.rank, $1.group) }
+            out.append(RankPeriod(key: key, label: label, time: list.last!.createdAt, standings: standings))
+        }
+        return out
+    }
+
     func stats(_ rules: Rules) -> [Stat] {
         let last = latestRecharges()
         var manual: [String: Double] = [:]
         for e in scores where last[e.studentId].map({ $0.counts(e.time) }) ?? true { manual[e.studentId, default: 0] += rules.pt(e.delta) }
         let lead = leaderPeriods(rules)
+        let periods = groupRankPeriods(rules)
         return students.map { st in
             let r = last[st.id]
             var auto = 0.0, sub = 0, late = 0, miss = 0
@@ -782,7 +866,12 @@ extension SchoolClass {
             }
             var examPts = 0.0
             for e in exams where r.map({ $0.counts(e.date) }) ?? true { examPts += rules.pt(rules.exam.delta(e, st.id)) }
-            let leaderPts = (lead[st.id] ?? []).filter { p in r.map { $0.counts(p.time) } ?? true }.reduce(0.0) { $0 + rules.pt($1.points) }
+            var leaderPts = (lead[st.id] ?? []).filter { p in r.map { $0.counts(p.time) } ?? true }.reduce(0.0) { $0 + rules.pt($1.points) }
+            if !st.group.isEmpty {
+                for p in periods where r.map({ $0.counts(p.time) }) ?? true {
+                    if let g = p.standings.first(where: { $0.group == st.group }) { leaderPts += rules.pt(g.points) }
+                }
+            }
             return Stat(student: st, score: rules.shown((r?.target ?? rules.initial) + auto + (manual[st.id] ?? 0) + examPts + leaderPts), submitted: sub, late: late, missing: miss)
         }
     }

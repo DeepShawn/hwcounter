@@ -133,6 +133,8 @@ data class ScoreRules(
     val review: ReviewRules = ReviewRules(),
     /** 组长奖惩：按课代表选的周期，看小组人均作业扣分（见 Leader.kt） */
     val leader: LeaderRules = LeaderRules(),
+    /** 小组对抗排名：按名次给整组每人加减分（见 GroupRank.kt） */
+    val groupRank: GroupRankRules = GroupRankRules(),
 ) {
     fun of(s: HwStatus): Double = when (s) {
         HwStatus.NONE -> 0.0
@@ -226,6 +228,7 @@ fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
     val manual = HashMap<String, Double>()
     for (e in scores) if (e.countsAfter(last[e.studentId])) manual[e.studentId] = (manual[e.studentId] ?: 0.0) + rules.pt(e.delta)
     val lead = leaderPeriods(rules)
+    val rank = groupRankPoints(rules)
     return students.map { st ->
         val r = last[st.id]
         val counts = HashMap<HwStatus, Int>()
@@ -239,7 +242,8 @@ fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
         var examPts = 0.0
         for (e in exams) if (r == null || r.counts(e.date)) examPts += rules.pt(rules.exam.deltaFor(e, st.id))
         val leaderPts = lead[st.id].orEmpty().filter { r == null || r.counts(it.time) }.sumOf { rules.pt(it.points) }
-        StudentStat(st, rules.shown((r?.target ?: rules.initial) + auto + (manual[st.id] ?: 0.0) + examPts + leaderPts), counts)
+        val rankPts = rank[st.id].orEmpty().filter { r == null || r.counts(it.first.time) }.sumOf { rules.pt(it.third) }
+        StudentStat(st, rules.shown((r?.target ?: rules.initial) + auto + (manual[st.id] ?: 0.0) + examPts + leaderPts + rankPts), counts)
     }
 }
 

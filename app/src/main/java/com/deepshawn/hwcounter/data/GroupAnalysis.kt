@@ -22,6 +22,8 @@ object GroupAnalysis {
         val leaderPoints: Double, val leaderPeriods: Int,
         /** 作业人均扣分（全部作业） */
         val deductPerCapita: Double,
+        /** 综合分（0–1，口径同小组排名）与综合名次；小组排名加减分合计（计入当前积分、按每人算） */
+        val score: Double = 0.0, val rank: Int = 0, val rankPoints: Double = 0.0,
     ) {
         val rate: Double get() = if (expected == 0) 1.0 else handed.toDouble() / expected
         val onTimeRate: Double get() = if (expected == 0) 1.0 else onTime.toDouble() / expected
@@ -31,7 +33,7 @@ object GroupAnalysis {
     data class Progress(val group: String, val beforeRate: Double, val afterRate: Double, val beforeExam: Double?, val afterExam: Double?, val beforeDeduct: Double, val afterDeduct: Double, val index: Double, val reasons: List<String>)
     data class Week(val label: String, val start: Long, val rates: Map<String, Double>, val winners: List<String>)
     data class Duel(val a: String, val b: String, val aWins: Int, val bWins: Int, val draws: Int, val recent: List<Triple<Assignment, Double?, Double?>>)
-    data class Report(val teams: List<Team>, val progressBasis: String?, val progress: List<Progress>, val weeks: List<Week>)
+    data class Report(val teams: List<Team>, val progressBasis: String?, val progress: List<Progress>, val weeks: List<Week>, val periods: List<RankPeriod> = emptyList())
 
     private val HANDED = setOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE)
 
@@ -114,9 +116,28 @@ object GroupAnalysis {
                 complete, played, cur, longest, wins[g] ?: 0, ties[g] ?: 0, rankN[g]?.let { (rankSum[g] ?: 0.0) / it } ?: 0.0,
                 weekWins[g] ?: 0, lps.sumOf { it.points }, lps.size, deduct,
             )
-        }.sortedWith(compareByDescending<Team> { it.wins + it.ties * 0.5 }.thenBy { it.avgRank }.thenByDescending { it.rate }.thenByDescending { it.avgScore })
+        }
+        // 综合分（全部作业，口径同小组排名）
+        val gr = rules.groupRank
+        val maxD = teams.maxOfOrNull { it.deductPerCapita } ?: 0.0
+        val allExam = teams.all { it.examPct != null }
+        val scored = teams.map { t ->
+            val dn = if (maxD <= 1e-9) 1.0 else 1 - t.deductPerCapita / maxD
+            var num = gr.wRate * t.rate + gr.wDeduct * dn + gr.wExcellent * t.excellentRate
+            var den = gr.wRate + gr.wDeduct + gr.wExcellent
+            if (allExam) { num += gr.wExam * t.examPct!!; den += gr.wExam }
+            t.copy(score = Math.round((if (den <= 0) 0.0 else num / den) * 10000) / 10000.0)
+        }
+        val periods = c.groupRankPeriods(rules)
+        val rankTotal = HashMap<String, Double>()
+        for (p in periods) for (st in p.standings) {
+            val member = groups[st.group]?.firstOrNull() ?: continue
+            if (last[member.id]?.counts(p.time) != false) rankTotal[st.group] = (rankTotal[st.group] ?: 0.0) + st.points
+        }
+        val ranked = scored.map { t -> t.copy(rank = 1 + scored.count { it.score > t.score }, rankPoints = rankTotal[t.name] ?: 0.0) }
+            .sortedWith(compareBy<Team> { it.rank }.thenByDescending { it.wins + it.ties * 0.5 }.thenBy { it.name })
         val (basis, prog) = progress(c, rules, groups, sorted, auto)
-        return Report(teams, basis, prog, weeks)
+        return Report(ranked, basis, prog, weeks, periods)
     }
 
     /** 小组进步 / 退步：与全班进步之星同样的分段（最近一次全班重置前后；没有时前半段 vs 后半段） */

@@ -84,8 +84,8 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.click('.tabbar button:has-text("统计")'); await page.waitForSelector('text=数据分析');
   check(await page.isVisible('text=复审不合格'), '统计里有复审不合格人次');
   await shot('7-stats');
-  await page.click('.seg button:has-text("小组")'); await page.waitForSelector('text=小组对抗榜');
-  check(await page.isVisible('text=组长奖惩（计入当前积分）'), '小组对抗榜与组长奖惩');
+  await page.click('.seg button:has-text("小组")'); await page.waitForSelector('text=小组对抗排名');
+  check(await page.isVisible('text=组长奖惩（计入当前积分）') && await page.isVisible('text=本期排名'), '小组对抗排名、本期排名与组长奖惩');
   await shot('7b-groups');
   await page.click('.seg button:has-text("考试")'); await page.click('text=第一次月考'); await page.waitForSelector('text=成绩排名');
   check(await page.isVisible('text=缺考 · 1 人'), '考试详情：排名与缺考');

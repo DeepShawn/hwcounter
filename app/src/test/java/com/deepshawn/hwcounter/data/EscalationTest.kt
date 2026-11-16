@@ -4,7 +4,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /** 旧测试沿用“未交固定扣分”规则，专门测试其他功能 */
-val FLAT = ScoreRules(escalation = MissingEscalation(enabled = false), streakBonus = StreakBonus(enabled = false), roundPoints = false)
+val FLAT = ScoreRules(escalation = MissingEscalation(enabled = false), streakBonus = StreakBonus(enabled = false), roundPoints = false, leader = LeaderRules(enabled = false), groupRank = GroupRankRules(enabled = false))
 
 class EscalationTest {
     private val M = HwStatus.MISSING; private val S = HwStatus.SUBMITTED; private val L = HwStatus.LEAVE; private val N = HwStatus.NONE; private val T = HwStatus.LATE

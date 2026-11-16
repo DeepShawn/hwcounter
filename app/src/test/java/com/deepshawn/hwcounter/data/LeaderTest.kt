@@ -20,7 +20,7 @@ class LeaderTest {
         }
         return SchoolClass(name = "一班", students = st, assignments = asg, groupLeaders = mapOf("一组" to "a1", "二组" to "b1", "三组" to "c1"))
     }
-    private val each = ScoreRules(leader = LeaderRules(period = "assignment"))
+    private val each = ScoreRules(leader = LeaderRules(period = "assignment"), groupRank = GroupRankRules(enabled = false))
 
     @Test fun perAssignment() {
         val lp = cls().leaderPeriods(each)

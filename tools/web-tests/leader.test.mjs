@@ -15,7 +15,7 @@ function cls() {
   });
   return normalizeData({ classes: [{ id: 'c', name: '一班', students, assignments, groupLeaders: { 一组: 'a1', 二组: 'b1', 三组: 'c1' } }] }).classes[0];
 }
-const each = { ...defaultRules(), leader: { ...defaultLeader(), period: 'assignment' } };
+const each = { ...defaultRules(), leader: { ...defaultLeader(), period: 'assignment' }, groupRank: { enabled: false } };
 
 test('按单次作业：零扣分、平均、超 2 倍、名次、连续、上限', () => {
   const lp = leaderPeriods(cls(), each);

@@ -25,7 +25,7 @@ jobs:
           node-version: 22
 
       - name: Test scores, review, voice parser, seating and stats
-        run: node --test tools/web-tests/scores.test.mjs tools/web-tests/recharge.test.mjs tools/web-tests/review.test.mjs tools/web-tests/leader.test.mjs && node tools/web-tests/voice.test.mjs && node tools/web-tests/seating.test.mjs && node tools/web-tests/stats.test.mjs
+        run: node --test tools/web-tests/scores.test.mjs tools/web-tests/recharge.test.mjs tools/web-tests/review.test.mjs tools/web-tests/leader.test.mjs tools/web-tests/grouprank.test.mjs && node tools/web-tests/voice.test.mjs && node tools/web-tests/seating.test.mjs && node tools/web-tests/stats.test.mjs
 
       - name: End-to-end test (Chromium, mocked Supabase)
         run: |
