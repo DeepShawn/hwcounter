@@ -473,7 +473,7 @@ private fun ScoreHero(stats: List<StudentStat>, base: Double, rules: com.deepsha
             HeroNumber("重置", "$recharges 次", Modifier.weight(1f))
         }
         Text(
-            "基准 ${base.fmt()} · " + (if (rules.escalation.enabled) "未交连续 −${rules.escalation.base.fmt()}、−${(rules.escalation.base * rules.escalation.base).fmt()}、−${(rules.escalation.base * rules.escalation.base * rules.escalation.base).fmt()}…" else "未交 ${rules.missing.signed()}") + " · 迟交 ${rules.late.signed()} · 优秀 ${rules.excellent.signed()}",
+            "基准 ${base.fmt()} · " + (if (rules.escalation.enabled) "未交连续 −${rules.escalation.base.fmt()}、−${(rules.escalation.base * rules.escalation.base).fmt()}、−${(rules.escalation.base * rules.escalation.base * rules.escalation.base).fmt()}…" else "未交 ${rules.missing.signed()}") + " · 迟交 ${rules.late.signed()} · 优秀 ${rules.excellent.signed()}" + if (rules.streakBonus.enabled) " · 连续交满 ${rules.streakBonus.after} 次后每次 +${rules.streakBonus.bonus.fmt()}" else "",
             color = colors.onSurfaceVariantSummary, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )

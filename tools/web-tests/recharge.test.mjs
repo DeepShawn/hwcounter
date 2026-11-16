@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultRules, studentStats, rechargeScores, removeRecharge, normalizeData } from '../../web/js/model.js';
 
-const rules = { ...defaultRules(), escalation: { enabled: false } }; // 旧用例沿用“未交固定扣分”
+const rules = { ...defaultRules(), escalation: { enabled: false }, streakBonus: { enabled: false }, roundPoints: false }; // 旧用例沿用旧规则
 const fixture = () => ({
   id: 'c1', name: '一班', recharges: [],
   students: [{ id: 's1', no: '01', name: '张三' }, { id: 's2', no: '02', name: '李四' }],
@@ -125,4 +125,24 @@ test('未交连续递增扣分（与安卓 EscalationTest 一致）', () => {
   assert.equal(studentStats(reset, r)[0].score, 94);
   assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING'), { ...r, escalation: { ...r.escalation, cap: 5 } }), [-2, -4, -5]);
   assert.deepEqual(pts(mk('MISSING', 'MISSING'), { ...r, escalation: { enabled: false } }), [-2, -2]);
+});
+
+import { roundAway } from '../../web/js/model.js';
+test('连续交奖励与取整（与安卓 StreakBonusAndRoundingTest 一致）', () => {
+  const r = defaultRules();
+  const mk = (...m) => ({ id: 'c', name: '一班', recharges: [], scores: [], students: [{ id: 's1', no: '01', name: '张三' }], assignments: m.map((x, i) => ({ id: `a${i}`, title: `作业${i}`, createdAt: (i + 1) * 1000, statuses: { s1: x } })) });
+  const pts = (c, rr = r) => c.assignments.map((a) => autoPoints(c, rr, 's1')[a.id]);
+  const S = 'SUBMITTED';
+  assert.deepEqual(pts(mk(S, S, S, S, S, S, S, 'EXCELLENT')), [0, 0, 0, 0, 0, 1, 1, 2]);
+  assert.deepEqual(pts(mk(S, S, 'LEAVE', S, S, S, S)), [0, 0, 0, 0, 0, 0, 1]);
+  assert.equal(pts(mk(S, S, S, S, S, 'MISSING', S))[6], 0);
+  assert.equal(pts(mk(S, S, S, S, S, 'LATE', S))[6], 0);
+  assert.equal(pts(mk(S, S, S, S, S, 'LATE'), { ...r, streakBonus: { ...r.streakBonus, lateCounts: true } })[5], 0);
+  const c0 = mk(S, S, S, S, S, S, S, S);
+  const p = autoPoints(rechargeScores(c0, r, ['s1'], 100, '', 99000, { assignmentId: 'a6' }), r, 's1');
+  assert.equal(p.a5, 1); assert.equal(p.a6, 0); assert.equal(p.a7, 0);
+  assert.equal(roundAway(0.5), 1); assert.equal(roundAway(-0.5), -1); assert.equal(roundAway(-2.1), -3); assert.equal(roundAway(0), 0);
+  const c = { ...mk(S), scores: [{ id: 'e1', studentId: 's1', delta: 0.5, reason: '表现', time: 5 }, { id: 'e2', studentId: 's1', delta: -1.5, reason: '迟到', time: 6 }] };
+  assert.equal(studentStats(c, { ...r, late: -0.5 })[0].score, 99);
+  assert.equal(studentStats(c, { ...r, late: -0.5, roundPoints: false })[0].score, 99);
 });

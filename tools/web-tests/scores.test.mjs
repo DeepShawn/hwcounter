@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultRules, summary, studentStats, compareStudentNumbers, addStudentScores, resetStudentScores } from '../../web/js/model.js';
 
-const rules = { ...defaultRules(), escalation: { enabled: false } }; // 旧用例沿用“未交固定扣分”
+const rules = { ...defaultRules(), escalation: { enabled: false }, streakBonus: { enabled: false }, roundPoints: false }; // 旧用例沿用旧规则
 
 test('学号自然排序处理数字、前导零、字母、超长学号和空值，不修改原名单', () => {
   for (const [input, expected] of [

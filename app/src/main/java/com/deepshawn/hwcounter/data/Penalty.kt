@@ -27,25 +27,57 @@ data class MissingEscalation(
     }
 }
 
-/** 某位同学每次作业的自动计分（作业 id → 分），未交按连续递增规则计算 */
-fun SchoolClass.autoPoints(rules: ScoreRules, studentId: String): Map<String, Double> {
-    val esc = rules.escalation
-    val out = HashMap<String, Double>()
+/**
+ * 连续交作业奖励（三端同一算法）：本轮连续按时交（已交 / 优秀）满 [after] 次后，之后每连续交一次额外加 [bonus] 分。
+ * 请假、未登记不打断也不计次；未交打断；迟交默认也打断（[lateCounts] 为 true 时迟交算连续交）。每次积分重置开始新一轮。
+ */
+@Serializable
+data class StreakBonus(
+    val enabled: Boolean = true,
+    val after: Int = 5,
+    val bonus: Double = 1.0,
+    val lateCounts: Boolean = false,
+)
+
+/** 正分向上取整、负分向下取整（远离 0 取整） */
+fun roundAway(x: Double): Double = if (x > 0) kotlin.math.ceil(x - 1e-9) else if (x < 0) kotlin.math.floor(x + 1e-9) else 0.0
+
+/** 按规则对一次加减分取整（[ScoreRules.roundPoints] 开启时） */
+fun ScoreRules.pt(x: Double): Double = if (roundPoints) roundAway(x) else x
+
+/** 某次作业的计分明细 */
+data class AutoPoint(val points: Double, val missStreak: Int = 0, val handStreak: Int = 0, val bonus: Double = 0.0)
+
+/** 某位同学每次作业的自动计分明细（作业 id → 明细）：未交连续递增扣分 + 连续交奖励，每轮重置重新计 */
+fun SchoolClass.autoPointDetails(rules: ScoreRules, studentId: String): Map<String, AutoPoint> {
+    val esc = rules.escalation; val sb = rules.streakBonus
+    val out = HashMap<String, AutoPoint>()
     val resets = recharges.filter { studentId in it.studentIds }.sortedWith(compareBy<ScoreRecharge> { it.start }.thenBy { it.time }.thenBy { it.id })
-    var round: String? = null; var streak = 0; var total = 0
+    var round: String? = null; var streak = 0; var total = 0; var run = 0
     for (a in assignments.sortedWith(compareBy<Assignment> { it.createdAt }.thenBy { it.id })) {
         val st = a.statuses[studentId] ?: HwStatus.NONE
-        if (!esc.enabled) { out[a.id] = rules.of(st); continue }
         val r = resets.lastOrNull { it.counts(a.createdAt) }?.id
-        if (r != round) { round = r; streak = 0; total = 0 }
+        if (r != round) { round = r; streak = 0; total = 0; run = 0 }
         out[a.id] = when (st) {
-            HwStatus.MISSING -> { streak++; total++; -esc.penalty(streak, total) }
-            HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE -> { streak = 0; rules.of(st) }
-            else -> rules.of(st)
+            HwStatus.MISSING -> {
+                streak++; total++; run = 0
+                AutoPoint(rules.pt(if (esc.enabled) -esc.penalty(streak, total) else rules.of(st)), missStreak = streak)
+            }
+            HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE -> {
+                streak = 0
+                val counts = st != HwStatus.LATE || sb.lateCounts
+                if (counts) run++ else run = 0
+                val b = if (sb.enabled && counts && run > sb.after) sb.bonus else 0.0
+                AutoPoint(rules.pt(rules.of(st)) + rules.pt(b), handStreak = run, bonus = rules.pt(b))
+            }
+            else -> AutoPoint(rules.pt(rules.of(st)))
         }
     }
     return out
 }
+
+/** 某位同学每次作业的自动计分（作业 id → 分） */
+fun SchoolClass.autoPoints(rules: ScoreRules, studentId: String): Map<String, Double> = autoPointDetails(rules, studentId).mapValues { it.value.points }
 
 /** 全班每位同学的作业自动计分 */
 fun SchoolClass.autoPointsAll(rules: ScoreRules): Map<String, Map<String, Double>> = students.associate { it.id to autoPoints(rules, it.id) }

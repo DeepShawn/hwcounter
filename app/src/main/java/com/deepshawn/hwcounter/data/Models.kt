@@ -112,6 +112,10 @@ data class ScoreRules(
     val exam: ExamRules = ExamRules(),
     /** 未交连续递增扣分（开启时代替固定的 [missing]） */
     val escalation: MissingEscalation = MissingEscalation(),
+    /** 连续交作业奖励 */
+    val streakBonus: StreakBonus = StreakBonus(),
+    /** 每次加减分取整：正分向上、负分向下 */
+    val roundPoints: Boolean = true,
 ) {
     fun of(s: HwStatus): Double = when (s) {
         HwStatus.NONE -> 0.0
@@ -203,7 +207,7 @@ fun SchoolClass.resetStudentScores(rules: ScoreRules, studentIds: Collection<Str
 fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
     val last = latestRecharges()
     val manual = HashMap<String, Double>()
-    for (e in scores) if (e.countsAfter(last[e.studentId])) manual[e.studentId] = (manual[e.studentId] ?: 0.0) + e.delta
+    for (e in scores) if (e.countsAfter(last[e.studentId])) manual[e.studentId] = (manual[e.studentId] ?: 0.0) + rules.pt(e.delta)
     return students.map { st ->
         val r = last[st.id]
         val counts = HashMap<HwStatus, Int>()
@@ -215,7 +219,7 @@ fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
             if (a.countsAfter(r)) auto += pts[a.id] ?: rules.of(s)
         }
         var examPts = 0.0
-        for (e in exams) if (r == null || r.counts(e.date)) examPts += rules.exam.deltaFor(e, st.id)
+        for (e in exams) if (r == null || r.counts(e.date)) examPts += rules.pt(rules.exam.deltaFor(e, st.id))
         StudentStat(st, (r?.target ?: rules.initial) + auto + (manual[st.id] ?: 0.0) + examPts, counts)
     }
 }

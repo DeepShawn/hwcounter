@@ -210,6 +210,24 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
                 Text("修改后所有历史作业的自动计分会立即按新规则重算；已积分重置的同学从重置分数起算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }
         }
+        group("连续交作业奖励", key = "streakBonus") {
+            val b = s.rules.streakBonus
+            fun sb(f: (com.deepshawn.hwcounter.data.StreakBonus) -> com.deepshawn.hwcounter.data.StreakBonus) = rules { it.copy(streakBonus = f(it.streakBonus)) }
+            SuperSwitch(
+                checked = b.enabled, onCheckedChange = { v -> sb { it.copy(enabled = v) } }, title = "连续交满后每次加分",
+                summary = "本轮连续按时交满 ${b.after} 次后，之后每连续交一次额外 ${b.bonus.signed()}",
+            )
+            if (b.enabled) Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                RuleRow("连续交满几次后", b.after.toDouble(), 1.0) { v -> if (v >= 0) sb { it.copy(after = v.toInt()) } }
+                RuleRow("之后每次额外加", b.bonus, 1.0) { v -> if (v >= 0) sb { it.copy(bonus = v) } }
+            }
+            if (b.enabled) SuperSwitch(checked = b.lateCounts, onCheckedChange = { v -> sb { it.copy(lateCounts = v) } }, title = "迟交也算连续交", summary = if (b.lateCounts) "迟交不打断连续，也能拿奖励" else "迟交会打断连续（请假、未登记不打断）")
+            SuperSwitch(
+                checked = s.rules.roundPoints, onCheckedChange = { v -> rules { it.copy(roundPoints = v) } }, title = "加减分取整",
+                summary = "每次加分向上取整、扣分向下取整（如 +0.5 记 +1，−0.5 记 −1）；关闭则保留小数",
+            )
+            Text("每次积分重置后重新开始计连续次数。修改后历史积分自动重算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
+        }
         group("未交连续递增扣分", key = "escalation") {
             val e = s.rules.escalation
             fun esc(f: (com.deepshawn.hwcounter.data.MissingEscalation) -> com.deepshawn.hwcounter.data.MissingEscalation) = rules { it.copy(escalation = f(it.escalation)) }

@@ -103,18 +103,23 @@ data class LedgerRow(
 fun SchoolClass.ledger(rules: ScoreRules, studentId: String): List<LedgerRow> {
     val last = latestRecharges()[studentId]
     val rows = ArrayList<LedgerRow>()
-    val pts = autoPoints(rules, studentId)
+    val pts = autoPointDetails(rules, studentId)
     for (e in scores) if (e.studentId == studentId) {
-        rows += LedgerRow("m" + e.id, LedgerRow.Kind.MANUAL, e.time, e.delta, e.reason, e.countsAfter(last), entryId = e.id)
+        rows += LedgerRow("m" + e.id, LedgerRow.Kind.MANUAL, e.time, rules.pt(e.delta), e.reason, e.countsAfter(last), entryId = e.id)
     }
     for (a in assignments) {
         val st = a.statuses[studentId] ?: HwStatus.NONE
-        val d = pts[a.id] ?: rules.of(st)
-        val extra = if (st == HwStatus.MISSING && rules.escalation.enabled && -d > rules.escalation.base) "（连续递增）" else ""
+        val p = pts[a.id]
+        val d = p?.points ?: rules.of(st)
+        val extra = when {
+            p != null && p.missStreak >= 2 && rules.escalation.enabled -> "（连续第 ${p.missStreak} 次未交）"
+            p != null && p.bonus != 0.0 -> "（连续交第 ${p.handStreak} 次 ${p.bonus.signed()}）"
+            else -> ""
+        }
         if (d != 0.0) rows += LedgerRow("a" + a.id, LedgerRow.Kind.AUTO, a.createdAt, d, "${a.subject}「${a.title}」${st.label}$extra", a.countsAfter(last), assignmentId = a.id)
     }
     for (e in exams) {
-        val d = rules.exam.deltaFor(e, studentId)
+        val d = rules.pt(rules.exam.deltaFor(e, studentId))
         if (d != 0.0) {
             val what = if (studentId in e.absent) "缺考" else "${e.scores[studentId]?.fmt()} 分"
             rows += LedgerRow("e" + e.id, LedgerRow.Kind.EXAM, e.date, d, "考试「${e.title}」$what", last?.counts(e.date) ?: true)
