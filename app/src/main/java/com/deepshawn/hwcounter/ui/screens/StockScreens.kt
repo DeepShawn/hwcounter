@@ -201,7 +201,7 @@ private fun StockChart(q: AttentionStock.Quote, kline: Boolean, sc: StockColors,
                 drawLine(muted.copy(alpha = 0.8f), Offset(0f, y(q.base)), Offset(w, y(q.base)), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 3.dp.toPx())))
                 if (kline) {
                     val slot = w / n
-                    val bw = (slot * 0.62f).coerceIn(1.5.dp.toPx(), 14.dp.toPx())
+                    val bw = (slot - maxOf(1.dp.toPx(), slot * 0.22f)).coerceIn(1.dp.toPx(), 20.dp.toPx())
                     q.candles.forEachIndexed { i, k ->
                         val cx = slot * i + slot / 2
                         val col = sc.of(k.close - k.open).let { if (it == sc.flat) colors.onSurface.copy(alpha = 0.55f) else it }
@@ -235,12 +235,13 @@ private fun StockChart(q: AttentionStock.Quote, kline: Boolean, sc: StockColors,
         }
         // 成交量
         val vmax = (q.candles.maxOfOrNull { it.volume } ?: 0).coerceAtLeast(1)
-        Row(Modifier.padding(top = 6.dp)) {
-            Canvas(Modifier.weight(1f).height(38.dp).then(gestures)) {
+        Row(Modifier.padding(top = 2.dp)) {
+            Canvas(Modifier.weight(1f).height(34.dp).then(gestures)) {
                 val slot = size.width / n
-                val bw = (slot * 0.62f).coerceIn(1.5.dp.toPx(), 14.dp.toPx())
+                // 成交量柱：紧挨着排，只留 1dp 左右的缝；没有成交的那天画一条细底线
+                val bw = (slot - maxOf(1.dp.toPx(), slot * 0.12f)).coerceIn(1.dp.toPx(), 24.dp.toPx())
                 q.candles.forEachIndexed { i, k ->
-                    val bh = size.height * k.volume / vmax
+                    val bh = if (k.volume == 0) 1.dp.toPx() else size.height * k.volume / vmax
                     val col = sc.of(k.close - k.open).copy(alpha = if (selNow == null || selNow == i) 0.65f else 0.3f)
                     drawRect(col, Offset(slot * i + slot / 2 - bw / 2, size.height - bh), Size(bw, bh))
                 }
