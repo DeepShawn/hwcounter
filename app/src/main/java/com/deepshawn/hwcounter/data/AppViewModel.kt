@@ -263,9 +263,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setStatus(assignmentId: String, studentIds: Collection<String>, status: HwStatus) = editAssignment(assignmentId) { a ->
         val m = a.statuses.toMutableMap()
         studentIds.forEach { if (status == HwStatus.NONE) m.remove(it) else m[it] = status }
-        // 改成其他状态时取消复审不合格
-        a.copy(statuses = m, reviewFailed = a.reviewFailed - studentIds.toSet())
+        // 改成其他状态时取消复审不合格和抄袭标记
+        a.copy(statuses = m, reviewFailed = a.reviewFailed - studentIds.toSet()).withoutPlagiarism(studentIds)
     }
+
+    /** 抄袭：抄袭者抄了提供者的，双方都记为未交（扣分翻倍，累犯加重） */
+    fun markPlagiarism(assignmentId: String, receivers: Collection<String>, providers: Collection<String>) = editAssignment(assignmentId) { a ->
+        val p = a.plagiarism.toMutableMap()
+        for (r in receivers) {
+            val list = (p[r].orEmpty() + providers).filter { it != r }.distinct()
+            if (list.isNotEmpty()) p[r] = list
+        }
+        a.copy(statuses = a.statuses + (receivers + providers).associateWith { HwStatus.MISSING }, plagiarism = p)
+    }
+
+    /** 取消这些同学的抄袭标记（状态保持“未交”，需要时再改） */
+    fun clearPlagiarism(assignmentId: String, studentIds: Collection<String>) = editAssignment(assignmentId) { it.withoutPlagiarism(studentIds) }
 
     /** 复审不合格：记为未交（多算一次未交），扣分翻倍 */
     fun markReviewFailed(assignmentId: String, studentIds: Collection<String>) = editAssignment(assignmentId) { a ->

@@ -472,5 +472,37 @@ do {
     var cl = c; cl.groupLeaders = ["三组": "c1"]
     check(cl.leaderPeriods(lp)["c1"]!.allSatisfy { $0.points >= 0 }, "组长仅加分")
 }
+// 抄袭：与安卓 PlagiarismTest、网页 plagiarism.test.mjs 同一组用例
+do {
+    print("== 抄袭")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    let S = "SUBMITTED", M = "MISSING"
+    var c = SchoolClass(name: "一班", students: [("a", "甲"), ("b", "乙"), ("c", "丙"), ("d", "丁")].enumerated().map { Student(id: $0.element.0, no: "\($0.offset + 1)", name: $0.element.1) })
+    let rows: [([String: String], [String: [String]])] = [
+        (["a": M, "b": M, "c": S, "d": S], ["b": ["a"]]),
+        (["a": S, "b": S, "c": S, "d": S], [:]),
+        (["a": M, "b": M, "c": M, "d": S], ["b": ["a"], "c": ["a"]]),
+        (["a": M, "b": S, "c": S, "d": S], ["b": ["a"]]),
+    ]
+    for (k, (st, p)) in rows.enumerated() { var a = Assignment(title: "作业\(k)", subject: ""); a.id = "a\(k)"; a.createdAt = Int64((k + 1) * 86_400_000); a.statuses = st; a.plagiarism = p; c.assignments.append(a) }
+    func pts(_ c: SchoolClass, _ r: Rules, _ id: String) -> [Double] { let p = c.autoPoints(r, id); return c.assignments.map { p[$0.id] ?? 0 } }
+    let R = Rules()
+    check(pts(c, R, "a") == [-4, 0, -8, -4] && pts(c, R, "b") == [-4, 0, -8, 0] && pts(c, R, "c")[2] == -4 && pts(c, R, "d").reduce(0, +) == 0, "抄袭者和提供者都翻倍，累犯加重")
+    check(!c.assignments[3].plagiarized("a") && c.stats(R).first { $0.id == "a" }!.missing == 3, "对方已交不算；抄袭算一次未交")
+    let reset = c.recharging(R, ids: c.students.map(\.id), target: 100, time: 10 * 86_400_000, assignmentId: "a2")
+    check(reset.autoPoints(R, "a")["a2"] == -4, "重置后重新计次")
+    var off = R; off.plagiarism.enabled = false
+    var flat = R; flat.plagiarism.escalate = false
+    check(c.autoPoints(off, "b")["a0"] == -2 && c.autoPoints(flat, "b")["a2"] == -4, "关闭 / 不加重")
+    check((1...5).map { PlagiarismRules().factor($0) } == [2, 4, 6, 8, 8], "最多 ×4")
+    let g = c.plagiarismReport(R)
+    check(g.cases.count == 3 && g.edges.map { "\($0.provider.id)→\($0.receiver.id)\($0.count)" } == ["a→b2", "a→c1"], "关系边")
+    let na = g.nodes.first { $0.student.id == "a" }!, nb = g.nodes.first { $0.student.id == "b" }!
+    check(na.copied == 0 && na.provided == 2 && na.points == -12 && na.role == "提供者" && nb.copied == 2 && nb.points == -12, "每人次数与扣分")
+    check(g.clusters.map { $0.map(\.id) } == [["a", "b", "c"]] && g.copiers == 2 && g.providers == 1, "抄袭圈")
+    var a2 = c.assignments[2]; a2.removePlagiarism(["a"])
+    let back = try! JSONDecoder().decode(Assignment.self, from: JSONEncoder().encode(c.assignments[2]))
+    check(a2.plagiarism.isEmpty && back.plagiarism == ["b": ["a"], "c": ["a"]], "取消标记；可编码/解码")
+}
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

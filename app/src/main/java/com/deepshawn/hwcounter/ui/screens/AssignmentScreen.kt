@@ -219,6 +219,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
     val selected = remember(c.id, a.id, readOnly) { mutableStateOf(setOf<String>()) }
     var scoreFor by remember(c.id, a.id, readOnly) { mutableStateOf<List<String>?>(null) }
     var sheetFor by remember { mutableStateOf<Student?>(null) }
+    var plagFor by remember { mutableStateOf<List<String>?>(null) }
     var menu by remember { mutableStateOf(false) }
     var photoSheet by remember { mutableStateOf(false) }
     var edit by remember { mutableStateOf(false) }
@@ -583,7 +584,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     Box(Modifier.padding(horizontal = if (settings.layout == "list") 16.dp else 4.dp)) {
                         when (settings.layout) {
                             "list" -> StudentListRow(s, a, ptsOf(s), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
-                            "seat" -> SeatCell(s, st, a.failedReview(s.id), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
+                            "seat" -> SeatCell(s, st, a.failedReview(s.id), a.plagiarized(s.id), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
                             else -> StudentCard(s, a, ptsOf(s), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
                         }
                     }
@@ -633,6 +634,9 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                                 selected.value = emptySet()
                             }
                         }
+                        PlagiarismButton {
+                            if (selected.value.isEmpty()) kit.toast("先选择抄袭的同学") else plagFor = selected.value.toList()
+                        }
                     }
                 }
             }
@@ -641,6 +645,13 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
 
     sheetFor?.let { s ->
         StudentSheet(vm, data, c, a, s) { sheetFor = null }
+    }
+    plagFor?.let { ids ->
+        ProviderPickerDialog(c, a, ids, settings.rules, { plagFor = null }) { providers ->
+            vm.markPlagiarism(a.id, ids, providers)
+            kit.undoable("已记为抄袭：${ids.size} 人抄袭、${providers.size} 人提供，双方都记未交（${settings.rules.plagiarismText().removePrefix("抄袭：")}）")
+            plagFor = null; selected.value = emptySet(); batch = false
+        }
     }
     scoreFor?.takeIf { !readOnly }?.let { ids ->
         val targets = c.students.filter { it.id in ids }
@@ -721,6 +732,11 @@ val ReviewColor = Color(0xFFB0306F)
 fun ReviewButton(selected: Boolean = false, onClick: () -> Unit) =
     ChoiceButton("⛔", "复审不合格", ReviewColor, ReviewColor.copy(alpha = 0.13f), selected, onClick)
 
+/** 抄袭按钮：选出抄了谁的，双方都记未交，扣分翻倍 */
+@Composable
+fun PlagiarismButton(selected: Boolean = false, onClick: () -> Unit) =
+    ChoiceButton("🕵️", "抄袭", PlagiarismColor, PlagiarismColor.copy(alpha = 0.13f), selected, onClick)
+
 @Composable
 private fun ChoiceButton(emoji: String, label: String, col: Color, container: Color, selected: Boolean, onClick: () -> Unit) {
     Column(
@@ -739,8 +755,9 @@ private fun ChoiceButton(emoji: String, label: String, col: Color, container: Co
 private fun StudentCard(s: Student, a: Assignment, delta: Double, batch: Boolean, sel: Boolean, onTap: () -> Unit, onLong: () -> Unit) {
     val st = a.statuses[s.id] ?: HwStatus.NONE
     val failed = a.failedReview(s.id)
-    val col = if (failed) ReviewColor else statusColor(st)
-    val bg by animateColorAsState(if (failed) ReviewColor.copy(alpha = 0.13f) else if (st == HwStatus.NONE) MaterialTheme.colorScheme.surfaceContainerLowest else statusContainer(st), label = "bg")
+    val plag = a.plagiarized(s.id)
+    val col = if (plag) PlagiarismColor else if (failed) ReviewColor else statusColor(st)
+    val bg by animateColorAsState(if (plag) PlagiarismColor.copy(alpha = 0.13f) else if (failed) ReviewColor.copy(alpha = 0.13f) else if (st == HwStatus.NONE) MaterialTheme.colorScheme.surfaceContainerLowest else statusContainer(st), label = "bg")
     val scale by animateFloatAsState(if (sel) 0.94f else 1f, spring(dampingRatio = 0.5f), label = "sc")
     Surface(
         shape = MaterialTheme.shapes.medium,
@@ -752,7 +769,7 @@ private fun StudentCard(s: Student, a: Assignment, delta: Double, batch: Boolean
             Box {
                 Avatar(s.name, size = 42.dp)
                 if (st != HwStatus.NONE) {
-                    Text(if (failed) "⛔" else st.emoji, fontSize = 13.sp, modifier = Modifier.align(Alignment.BottomEnd))
+                    Text(if (plag) "🕵️" else if (failed) "⛔" else st.emoji, fontSize = 13.sp, modifier = Modifier.align(Alignment.BottomEnd))
                 }
                 if (batch && sel) {
                     Box(Modifier.size(18.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary).align(Alignment.TopEnd), contentAlignment = Alignment.Center) {
@@ -765,7 +782,7 @@ private fun StudentCard(s: Student, a: Assignment, delta: Double, batch: Boolean
             Text(s.no, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace, maxLines = 1)
             Spacer(Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (failed) "复审不合格" else st.label, color = col, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(if (plag) "抄袭" else if (failed) "复审不合格" else st.label, color = col, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 if (delta != 0.0) Text(" ${delta.signed()}", color = if (delta > 0) statusColor(HwStatus.SUBMITTED) else statusColor(HwStatus.MISSING), fontSize = 11.sp, fontWeight = FontWeight.Black)
             }
             if (a.comments[s.id] != null) Text("💬 " + a.comments[s.id], fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -783,7 +800,8 @@ private fun StudentListRow(s: Student, a: Assignment, delta: Double, batch: Bool
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val failed = a.failedReview(s.id)
-        Box(Modifier.size(width = 4.dp, height = 36.dp).clip(CircleShape).background(if (failed) ReviewColor else statusColor(st)))
+        val plag = a.plagiarized(s.id)
+        Box(Modifier.size(width = 4.dp, height = 36.dp).clip(CircleShape).background(if (plag) PlagiarismColor else if (failed) ReviewColor else statusColor(st)))
         Spacer(Modifier.width(10.dp))
         Avatar(s.name, size = 38.dp)
         Spacer(Modifier.width(12.dp))
@@ -800,6 +818,10 @@ private fun StudentListRow(s: Student, a: Assignment, delta: Double, batch: Bool
         }
         if (batch) {
             Icon(if (sel) Icons.Filled.Check else Icons.Filled.Close, null, tint = if (sel) MaterialTheme.colorScheme.primary else Color.Transparent)
+        } else if (plag) {
+            Box(Modifier.clip(CircleShape).background(PlagiarismColor.copy(alpha = 0.13f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
+                Text("抄袭", color = PlagiarismColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
         } else if (failed) {
             Box(Modifier.clip(CircleShape).background(ReviewColor.copy(alpha = 0.13f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
                 Text("复审不合格", color = ReviewColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -809,8 +831,8 @@ private fun StudentListRow(s: Student, a: Assignment, delta: Double, batch: Bool
 }
 
 @Composable
-private fun SeatCell(s: Student, st: HwStatus, failed: Boolean, batch: Boolean, sel: Boolean, onTap: () -> Unit, onLong: () -> Unit) {
-    val col = if (failed) ReviewColor else statusColor(st)
+private fun SeatCell(s: Student, st: HwStatus, failed: Boolean, plag: Boolean, batch: Boolean, sel: Boolean, onTap: () -> Unit, onLong: () -> Unit) {
+    val col = if (plag) PlagiarismColor else if (failed) ReviewColor else statusColor(st)
     val bg by animateColorAsState(if (st == HwStatus.NONE) MaterialTheme.colorScheme.surfaceContainerLowest else col, label = "bg")
     Box(
         Modifier.aspectRatio(1f).clip(MaterialTheme.shapes.small).background(bg)
@@ -832,6 +854,11 @@ fun StudentSheet(vm: AppViewModel, data: AppData, c: SchoolClass, a: Assignment,
     val kit = LocalKit.current
     val st = a.statuses[s.id] ?: HwStatus.NONE
     var comment by remember(s.id) { mutableStateOf(a.comments[s.id] ?: "") }
+    var pick by remember(s.id) { mutableStateOf(false) }
+    if (pick) ProviderPickerDialog(c, a, listOf(s.id), data.settings.rules, { pick = false }) { providers ->
+        vm.markPlagiarism(a.id, listOf(s.id), providers); kit.haptic(); pick = false
+        kit.undoable("${s.name} 抄袭：与提供者都记未交（${data.settings.rules.plagiarismText().removePrefix("抄袭：")}）")
+    }
     val total = remember(c, data.settings.rules) {
         c.studentStats(data.settings.rules).firstOrNull { it.student.id == s.id }?.score
     }
@@ -864,10 +891,17 @@ fun StudentSheet(vm: AppViewModel, data: AppData, c: SchoolClass, a: Assignment,
                     vm.markReviewFailed(a.id, listOf(s.id)); kit.haptic()
                     kit.undoable("${s.name} 复审不合格：记一次未交，扣分 ×${data.settings.rules.review.multiplier.fmt()}")
                 }
+                PlagiarismButton(a.plagiarized(s.id)) { pick = true }
+            }
+            if (a.plagiarized(s.id)) {
+                Row(Modifier.padding(top = 8.dp).fillMaxWidth().clip(MaterialTheme.shapes.medium).background(PlagiarismColor.copy(alpha = 0.1f)).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("🕵️ " + plagiarismLine(c, a, s.id), color = PlagiarismColor, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { vm.clearPlagiarism(a.id, listOf(s.id)); kit.undoable("已取消 ${s.name} 的抄袭标记（仍为未交）") }) { Text("取消抄袭") }
+                }
             }
             Text(
                 "计分：${HwStatus.entries.filter { it != HwStatus.NONE && !(it == HwStatus.MISSING && data.settings.rules.escalation.enabled) }.joinToString("  ") { it.label + data.settings.rules.of(it).signed() }}" + (if (data.settings.rules.escalation.enabled) "  ${data.settings.rules.missingText()}" else "") +
-                    if (data.settings.rules.review.enabled) "  复审不合格：记一次未交，扣分 ×${data.settings.rules.review.multiplier.fmt()}" else "",
+                    (if (data.settings.rules.review.enabled) "  复审不合格：记一次未交，扣分 ×${data.settings.rules.review.multiplier.fmt()}" else "") + "  " + data.settings.rules.plagiarismText(),
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
             )
             Spacer(Modifier.height(16.dp))

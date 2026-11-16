@@ -2,7 +2,7 @@
 // 纯计算，不碰界面，便于测试：node --test tools/web-tests/analytics.test.mjs
 import {
   summary, studentStats, autoPoints, ruleOf, examDelta, leaderOf, leaderPeriods, groupRankPeriods, latestRecharges,
-  rechargeStart, rechargeCounts, startOfDay, fmtNum, signed, defaultGroupRank,
+  rechargeStart, rechargeCounts, startOfDay, fmtNum, signed, defaultGroupRank, copiedFrom, copiedBy, plagiarized, compareStudentNumbers,
 } from './model.js';
 
 const DAY = 86_400_000;
@@ -852,4 +852,42 @@ export function groupDuel(c, a, b) {
     if (ra > rb + 1e-9) aw++; else if (rb > ra + 1e-9) bw++; else dr++;
   }
   return { a, b, aWins: aw, bWins: bw, draws: dr, recent: rows.slice(-10).reverse() };
+}
+
+// ---------------- 抄袭关系（与安卓 Plagiarism.kt 同算法） ----------------
+
+/** 抄袭记录、提供者 → 抄袭者的关系边、每人的次数与扣分、抄袭圈（连在一起的同学） */
+export function plagiarismReport(c, rules) {
+  const byId = Object.fromEntries(c.students.map((s) => [s.id, s]));
+  const sorted = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const cases = []; const edges = new Map();
+  for (const a of sorted) for (const rid of Object.keys(a.plagiarism || {})) {
+    const r = byId[rid]; if (!r) continue;
+    const ps = copiedFrom(a, rid).filter((id) => a.statuses[id] === 'MISSING').map((id) => byId[id]).filter(Boolean);
+    if (!ps.length) continue;
+    cases.push({ assignment: a, receiver: r, providers: ps });
+    for (const p of ps) { const k = `${p.id}\u0000${r.id}`; if (!edges.has(k)) edges.set(k, { provider: p, receiver: r, assignments: [] }); edges.get(k).assignments.push(a); }
+  }
+  const involved = [...new Set([...edges.values()].flatMap((e) => [e.provider.id, e.receiver.id]))];
+  const last = latestRecharges(c);
+  const nodes = involved.map((id) => {
+    const copied = sorted.filter((a) => copiedFrom(a, id).some((p) => a.statuses[p] === 'MISSING')).length;
+    const provided = sorted.filter((a) => copiedBy(a, id).length > 0).length;
+    const pts = autoPoints(c, rules, id); const list = sorted.filter((a) => plagiarized(a, id));
+    const role = copied > 0 && provided > 0 ? '既抄又提供' : copied > 0 ? '抄袭者' : '提供者';
+    return { student: byId[id], copied, provided, total: copied + provided, role, points: sum(list, (a) => pts[a.id] ?? 0), roundTimes: list.filter((a) => !last[id] || rechargeCounts(last[id], a.createdAt)).length };
+  }).sort(chain(byDesc((n) => n.total), byAsc((n) => n.points), (a, b) => compareStudentNumbers(a.student.no, b.student.no)));
+  const adj = {};
+  for (const e of edges.values()) { (adj[e.provider.id] = adj[e.provider.id] || new Set()).add(e.receiver.id); (adj[e.receiver.id] = adj[e.receiver.id] || new Set()).add(e.provider.id); }
+  const seen = new Set(); const clusters = [];
+  for (const id of involved) {
+    if (seen.has(id)) continue; seen.add(id);
+    const comp = []; const stack = [id];
+    while (stack.length) { const x = stack.pop(); comp.push(x); for (const y of adj[x] || []) if (!seen.has(y)) { seen.add(y); stack.push(y); } }
+    clusters.push(comp.map((x) => byId[x]).sort((a, b) => compareStudentNumbers(a.no, b.no)));
+  }
+  const edgeList = [...edges.values()].map((e) => ({ ...e, count: e.assignments.length }))
+    .sort(chain(byDesc((e) => e.count), byDesc((e) => e.assignments[e.assignments.length - 1].createdAt)));
+  return { cases: cases.reverse(), edges: edgeList, nodes, clusters: clusters.sort(byDesc((x) => x.length)),
+    copiers: nodes.filter((n) => n.copied > 0).length, providers: nodes.filter((n) => n.provided > 0).length, points: sum(nodes, (n) => n.points) };
 }
