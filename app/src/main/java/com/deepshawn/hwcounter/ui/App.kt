@@ -301,6 +301,7 @@ fun App(vm: AppViewModel, data: AppData) {
                 }
                 if (!ui.lowPerf) Confetti(confetti)
                 com.deepshawn.hwcounter.ui.screens.CloudConflictDialog(vm)
+                com.deepshawn.hwcounter.update.UpdateHost()
             }
         }
     }

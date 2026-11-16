@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import com.deepshawn.hwcounter.ui.components.MiuixPage
+import com.deepshawn.hwcounter.update.UpdateSettings
 import com.deepshawn.hwcounter.ui.components.group
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.extra.SuperArrow
@@ -458,6 +459,9 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
                 titleColor = top.yukonga.miuix.kmp.basic.BasicComponentDefaults.titleColor(color = MiuixTheme.colorScheme.error),
             )
         }
+
+        // ---------------- 更新 ----------------
+        group("软件更新", key = "update") { UpdateSettings() }
 
         item(key = "about") {
             Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
