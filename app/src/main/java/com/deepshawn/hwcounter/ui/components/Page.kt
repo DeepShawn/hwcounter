@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Dp
@@ -78,11 +79,25 @@ fun MiuixPage(
             containerColor = surface,
             contentWindowInsets = WindowInsets(0),
             topBar = {
+                // 顶栏背景：列表在顶部时完全透明（与页面背景融为一体，没有分界线）；
+                // 内容滚到顶栏下面时，毛玻璃随滚动距离渐渐出现
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                val fade = androidx.compose.runtime.remember(listState, density) {
+                    androidx.compose.runtime.derivedStateOf {
+                        if (listState.firstVisibleItemIndex > 0) 1f
+                        else (listState.firstVisibleItemScrollOffset / with(density) { 48.dp.toPx() }).coerceIn(0f, 1f)
+                    }
+                }
+                Box {
+                    Box(
+                        Modifier.matchParentSize()
+                            .graphicsLayer { alpha = fade.value }
+                            .frosted(barBackdrop, MiuixTheme.colorScheme.surface),
+                    )
                 TopAppBar(
                     title = title,
                     largeTitle = largeTitle,
                     color = Color.Transparent,
-                    modifier = Modifier.frosted(barBackdrop, MiuixTheme.colorScheme.surface),
                     scrollBehavior = behavior,
                     navigationIcon = {
                         if (onBack != null) IconButton(onClick = onBack, modifier = Modifier.padding(start = 16.dp)) {
@@ -91,6 +106,7 @@ fun MiuixPage(
                     },
                     actions = actions,
                 )
+                }
             },
         ) { pad ->
             LazyColumn(
