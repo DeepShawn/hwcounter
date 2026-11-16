@@ -198,6 +198,8 @@ class ShotsTest {
     }
     @Test fun dark() = run("dark", 2, UiPrefs())
     @Test fun plain() = run("plain", 1, UiPrefs(glass = false))
+    /** 动效开启：检查所有动画都能正常跑完（截图为动画结束后的状态） */
+    @Test fun motion() = run("motion", 1, UiPrefs(animations = true))
 
     @Suppress("unused") private val keep: SemanticsMatcher? = null
 }

@@ -178,8 +178,12 @@ fun GroupDetailScreen(vm: AppViewModel, data: AppData, name: String) {
             )
         },
         floating = {
-            if (selecting && !readOnly) Row(
-                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp + LocalBottomInset.current)
+            androidx.compose.animation.AnimatedVisibility(
+                selecting && !readOnly, Modifier.align(Alignment.BottomCenter),
+                enter = androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.slideOutVertically { it } + androidx.compose.animation.fadeOut(),
+            ) { Row(
+                Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp + LocalBottomInset.current)
                     .widthIn(max = 560.dp).fillMaxWidth().glass(RoundedCornerShape(24.dp)).padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -187,7 +191,7 @@ fun GroupDetailScreen(vm: AppViewModel, data: AppData, name: String) {
                 TextButton("全选", onClick = { selected = members.map { it.id }.toSet() }, minHeight = 36.dp, insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp))
                 Spacer(Modifier.width(8.dp))
                 TextButton("加减分", onClick = { scoreFor = selected.toList() }, enabled = selected.isNotEmpty(), colors = ButtonDefaults.textButtonColorsPrimary(), minHeight = 36.dp, insideMargin = PaddingValues(horizontal = 14.dp, vertical = 6.dp))
-            }
+            } }
         },
     ) {
         item(key = "head") {

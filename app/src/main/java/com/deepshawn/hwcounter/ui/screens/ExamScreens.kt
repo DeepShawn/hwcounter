@@ -217,7 +217,7 @@ fun ExamListScreen(vm: AppViewModel, data: AppData) {
 @Composable
 private fun Num(label: String, value: String, modifier: Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(com.deepshawn.hwcounter.ui.components.animatedText(value), fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         Text(label, fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
     }
 }
@@ -323,8 +323,12 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
             if (!readOnly) IconButton(onClick = { menu = true }, modifier = Modifier.padding(start = 4.dp, end = 16.dp)) { Icon(Icons.Filled.MoreVert, "更多", tint = colors.onSurface) }
         },
         floating = {
-            if (selecting && !readOnly) Column(
-                Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp + com.deepshawn.hwcounter.ui.components.LocalBottomInset.current)
+            androidx.compose.animation.AnimatedVisibility(
+                selecting && !readOnly, Modifier.align(Alignment.BottomCenter),
+                enter = androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.slideOutVertically { it } + androidx.compose.animation.fadeOut(),
+            ) { Column(
+                Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp + com.deepshawn.hwcounter.ui.components.LocalBottomInset.current)
                     .widthIn(max = 560.dp).fillMaxWidth().glass(RoundedCornerShape(24.dp)).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -348,7 +352,7 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
                         val ids = selected.filter { it in e.scores }; vm.clearExamMarks(e.id, ids, scores = true); exitSelect(); kit.undoable("已清除 ${ids.size} 人的成绩")
                     })
                 }
-            }
+            } }
         },
     ) {
         item(key = "sub") {

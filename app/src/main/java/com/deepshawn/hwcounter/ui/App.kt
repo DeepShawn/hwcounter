@@ -79,6 +79,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -265,11 +266,13 @@ fun App(vm: AppViewModel, data: AppData) {
                                 transitionSpec = {
                                     val forward = targetState.second > initialState.second
                                     val back = targetState.second < initialState.second
-                                    val ease = top.yukonga.miuix.kmp.anim.DecelerateEasing(1.5f)
+                                    // 弹簧曲线：进入页面从右侧滑入，返回时向右滑出；切换底栏页面淡入并轻微放大
+                                    val slide = androidx.compose.animation.core.spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = 0.92f, stiffness = 420f)
+                                    val fadeSpec = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = 500f)
                                     val transition = when {
-                                        forward -> (slideInHorizontally(tween(320, easing = ease)) { it } ) togetherWith (slideOutHorizontally(tween(320, easing = ease)) { -it / 4 } + fadeOut(tween(320), 0.6f))
-                                        back -> (slideInHorizontally(tween(320, easing = ease)) { -it / 4 } + fadeIn(tween(320), 0.6f)) togetherWith (slideOutHorizontally(tween(320, easing = ease)) { it })
-                                        else -> fadeIn(tween(160)) togetherWith fadeOut(tween(120))
+                                        forward -> (slideInHorizontally(slide) { it } + fadeIn(fadeSpec, 0.85f)) togetherWith (slideOutHorizontally(slide) { -it / 4 } + fadeOut(fadeSpec, 0.5f) + androidx.compose.animation.scaleOut(fadeSpec, 0.96f))
+                                        back -> (slideInHorizontally(slide) { -it / 4 } + fadeIn(fadeSpec, 0.5f) + androidx.compose.animation.scaleIn(fadeSpec, 0.96f)) togetherWith (slideOutHorizontally(slide) { it } + fadeOut(fadeSpec, 0.85f))
+                                        else -> (fadeIn(tween(220)) + androidx.compose.animation.scaleIn(androidx.compose.animation.core.spring(dampingRatio = 0.85f, stiffness = 500f), 0.97f)) togetherWith fadeOut(tween(140))
                                     }
                                     transition.apply { targetContentZIndex = if (back) -1f else 1f }.using(null)
                                 },
@@ -330,7 +333,9 @@ private fun GlassTabBar(tabs: List<Tab>, current: Route, onSelect: (Tab) -> Unit
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
                 ) {
-                    Icon(if (sel) t.iconSel else t.icon, t.label, tint = fg, modifier = Modifier.size(24.dp))
+                    val bump by androidx.compose.animation.core.animateFloatAsState(if (sel) 1.12f else 1f, com.deepshawn.hwcounter.ui.components.Springs.bouncy, label = "tabIcon")
+                    val tint by androidx.compose.animation.animateColorAsState(fg, label = "tabTint")
+                    Icon(if (sel) t.iconSel else t.icon, t.label, tint = tint, modifier = Modifier.size(24.dp).graphicsLayer { scaleX = bump; scaleY = bump })
                     Text(t.label, color = fg, fontSize = 11.sp, fontWeight = if (sel) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Normal)
                 }
             }

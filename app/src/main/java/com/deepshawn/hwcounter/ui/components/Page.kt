@@ -70,6 +70,9 @@ fun MiuixPage(
     val barBackdrop = if (ui.glassOn) combined else null
     val behavior = MiuixScrollBehavior()
     val bottom = LocalBottomInset.current + extraBottom
+    // 页面打开（或切换选项卡）时的入场动画起点
+    val entrance = androidx.compose.runtime.remember(swipe?.second) { PageEntrance(System.currentTimeMillis()) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalPageEntrance provides entrance) {
     Box(modifier.fillMaxSize().then(if (swipe != null) Modifier.swipeToSwitch(swipe.first, swipe.second, swipe.third) else Modifier)) {
         Scaffold(
             containerColor = surface,
@@ -102,6 +105,7 @@ fun MiuixPage(
             )
         }
         CompositionLocalProvider(LocalBackdrop provides glass) { floating(glass) }
+    }
     }
 }
 
