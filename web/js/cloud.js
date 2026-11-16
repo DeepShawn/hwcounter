@@ -169,7 +169,8 @@ export function merge(local, remote) {
     const ar0 = l.autoReset || r.autoReset || null;
     const autoReset = ar0 ? { ...ar0, skipped: [...new Set([...(ar0.skipped || []), ...((l.autoReset || {}).skipped || []), ...((r.autoReset || {}).skipped || [])])] } : null;
     const kept = autoReset ? recharges.filter((x) => !(String(x.id).startsWith('auto-') && autoReset.skipped.includes(String(x.id).slice(5)))) : recharges;
-    classes.set(l.id, { ...l, students: [...students.values()], assignments: [...assigns.values()], scores, recharges: kept, exams: [...exams.values()].sort((a, b) => a.date - b.date), groupLeaders: { ...(r.groupLeaders || {}), ...(l.groupLeaders || {}) }, seating: l.seating || r.seating || null, ...(autoReset ? { autoReset } : {}) });
+    const settlements = [...new Map([...(r.settlements || []), ...(l.settlements || [])].map((x) => [x.id, x])).values()].sort((a, b) => a.time - b.time);
+    classes.set(l.id, { ...l, settlements, students: [...students.values()], assignments: [...assigns.values()], scores, recharges: kept, exams: [...exams.values()].sort((a, b) => a.date - b.date), groupLeaders: { ...(r.groupLeaders || {}), ...(l.groupLeaders || {}) }, seating: l.seating || r.seating || null, ...(autoReset ? { autoReset } : {}) });
   }
   return { ...local, classes: [...classes.values()], currentClassId: local.currentClassId ?? remote.currentClassId };
 }

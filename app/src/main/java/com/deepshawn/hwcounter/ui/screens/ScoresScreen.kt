@@ -219,6 +219,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         actions = buildList {
             if (!readOnly) {
                 add(SheetAction("批量加减分", "按小组、作业、考试、进步之星等快速选人，可逐人设分值", enabled = c.students.isNotEmpty()) { exitSelect(); kit.nav.push(Route.BatchScore()) })
+                add(SheetAction("结算本轮", "按交齐度与缺交度加减分，可随即开始新一轮", enabled = c.students.isNotEmpty() && c.assignments.isNotEmpty()) { exitSelect(); kit.nav.push(Route.Settlement) })
                 add(SheetAction("全班积分重置", "只重置积分，保留全部历史记录", enabled = c.students.isNotEmpty()) { exitSelect(); rechargeFor = c.students.map { it.id } })
                 add(SheetAction("每月定期重置", c.autoReset?.takeIf { it.enabled }?.let { "已开启：每月 ${it.day} 号重置为 ${it.target.fmt()} 分" } ?: "未开启：每月自动重置全班积分") { editAuto = true })
                 add(SheetAction("全班 +1", "全班表现好", enabled = c.students.isNotEmpty()) {
@@ -226,7 +227,10 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
                 })
                 add(SheetAction("修改基准分", "当前 ${rules.initial.fmt()} 分，适用于所有班级") { editBase = true })
             }
+            add(SheetAction("积分流水", "全班每一笔加减分，可筛选、导出 Excel / PDF") { kit.nav.push(Route.Ledger()) })
+            add(SheetAction("结算记录", if (c.settlements.isEmpty()) "暂无" else "共 ${c.settlements.size} 次") { kit.nav.push(Route.Settlement) })
             add(SheetAction("重置记录", if (c.recharges.isEmpty()) "暂无" else "共 ${c.recharges.size} 次", enabled = c.recharges.isNotEmpty()) { history = true })
+            add(SheetAction("导出计分规则通知 PDF", "按当前计分规则生成，可发给学生和家长") { runCatching { com.deepshawn.hwcounter.ui.screens.shareRulesNotice(ctx, c, rules) }.onFailure { kit.toast("导出失败：${it.message}") } })
             add(SheetAction("修改计分规则", "已交 / 优秀 / 迟交 / 未交 / 请假") { kit.nav.tab(Route.Settings) })
         },
     )
@@ -473,7 +477,7 @@ private fun ScoreHero(stats: List<StudentStat>, base: Double, rules: com.deepsha
             HeroNumber("重置", "$recharges 次", Modifier.weight(1f))
         }
         Text(
-            "基准 ${base.fmt()} · " + (if (rules.escalation.enabled) "未交连续 −${rules.escalation.base.fmt()}、−${(rules.escalation.base * rules.escalation.base).fmt()}、−${(rules.escalation.base * rules.escalation.base * rules.escalation.base).fmt()}…" else "未交 ${rules.missing.signed()}") + " · 迟交 ${rules.late.signed()} · 优秀 ${rules.excellent.signed()}",
+            "基准 ${base.fmt()} · " + (if (rules.escalation.enabled) "未交连续 −${rules.escalation.base.fmt()}、−${(rules.escalation.base * rules.escalation.base).fmt()}、−${(rules.escalation.base * rules.escalation.base * rules.escalation.base).fmt()}…" else "未交 ${rules.missing.signed()}") + " · 迟交 ${rules.late.signed()} · 优秀 ${rules.excellent.signed()}" + if (rules.streakBonus.enabled) " · 连续交满 ${rules.streakBonus.after} 次后每次 +${rules.streakBonus.bonus.fmt()}" else "",
             color = colors.onSurfaceVariantSummary, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )

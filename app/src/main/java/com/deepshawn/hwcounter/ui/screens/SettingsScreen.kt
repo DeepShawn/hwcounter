@@ -210,6 +210,52 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
                 Text("修改后所有历史作业的自动计分会立即按新规则重算；已积分重置的同学从重置分数起算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
             }
         }
+        group("连续交作业奖励", key = "streakBonus") {
+            val b = s.rules.streakBonus
+            fun sb(f: (com.deepshawn.hwcounter.data.StreakBonus) -> com.deepshawn.hwcounter.data.StreakBonus) = rules { it.copy(streakBonus = f(it.streakBonus)) }
+            SuperSwitch(
+                checked = b.enabled, onCheckedChange = { v -> sb { it.copy(enabled = v) } }, title = "连续交满后每次加分",
+                summary = "本轮连续按时交满 ${b.after} 次后，之后每连续交一次额外 ${b.bonus.signed()}",
+            )
+            if (b.enabled) Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                RuleRow("连续交满几次后", b.after.toDouble(), 1.0) { v -> if (v >= 0) sb { it.copy(after = v.toInt()) } }
+                RuleRow("之后每次额外加", b.bonus, 1.0) { v -> if (v >= 0) sb { it.copy(bonus = v) } }
+            }
+            if (b.enabled) SuperSwitch(checked = b.lateCounts, onCheckedChange = { v -> sb { it.copy(lateCounts = v) } }, title = "迟交也算连续交", summary = if (b.lateCounts) "迟交不打断连续，也能拿奖励" else "迟交会打断连续（请假、未登记不打断）")
+            SuperSwitch(
+                checked = s.rules.roundPoints, onCheckedChange = { v -> rules { it.copy(roundPoints = v) } }, title = "加减分取整",
+                summary = "每次加分向上取整、扣分向下取整（如 +0.5 记 +1，−0.5 记 −1）；关闭则保留小数",
+            )
+            Text("每次积分重置后重新开始计连续次数。修改后历史积分自动重算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
+        }
+        group("结算规则", key = "settlement") {
+            val st = s.rules.settlement
+            fun sr(f: (com.deepshawn.hwcounter.data.SettlementRules) -> com.deepshawn.hwcounter.data.SettlementRules) = rules { it.copy(settlement = f(it.settlement)) }
+            Column(Modifier.padding(16.dp)) {
+                Text("按本轮交齐度（已交 + 优秀 + 迟交 ÷ 应交，请假不算应交）结算", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                RuleRow("全勤（100% 无迟交）", st.perfect, 1.0) { v -> sr { it.copy(perfect = v) } }
+                RuleRow("≥95%", st.r95, 1.0) { v -> sr { it.copy(r95 = v) } }
+                RuleRow("90%–95%", st.r90, 1.0) { v -> sr { it.copy(r90 = v) } }
+                RuleRow("80%–90%", st.r80, 1.0) { v -> sr { it.copy(r80 = v) } }
+                RuleRow("70%–80%", st.r70, 1.0) { v -> sr { it.copy(r70 = v) } }
+                RuleRow("<70%", st.below, 1.0) { v -> sr { it.copy(below = v) } }
+                RuleRow("缺交满几次", st.manyMissing.toDouble(), 1.0) { v -> if (v >= 0) sr { it.copy(manyMissing = v.toInt()) } }
+                RuleRow("  再加减", st.manyMissingDelta, 1.0) { v -> sr { it.copy(manyMissingDelta = v) } }
+                RuleRow("连续缺交满几次", st.streakMissing.toDouble(), 1.0) { v -> if (v >= 0) sr { it.copy(streakMissing = v.toInt()) } }
+                RuleRow("  再加减", st.streakMissingDelta, 1.0) { v -> sr { it.copy(streakMissingDelta = v) } }
+                RuleRow("进步奖（提高百分点）", st.progressPts * 100, 5.0) { v -> if (v >= 0) sr { it.copy(progressPts = v / 100) } }
+                RuleRow("  进步奖分数", st.progressDelta, 1.0) { v -> sr { it.copy(progressDelta = v) } }
+                RuleRow("小组第一每人", st.groupDelta, 1.0) { v -> sr { it.copy(groupDelta = v) } }
+                RuleRow("应交少于几次不结算", st.minExpected.toDouble(), 1.0) { v -> if (v >= 0) sr { it.copy(minExpected = v.toInt()) } }
+            }
+            SuperSwitch(checked = st.withMonthlyReset, onCheckedChange = { v -> sr { it.copy(withMonthlyReset = v) } }, title = "每月定期重置前自动结算", summary = "开启了“每月定期重置”的班级，每次重置前先结算上一轮，结算分计入新一轮")
+        }
+        group("计分规则通知", key = "notice") {
+            val ctx2 = androidx.compose.ui.platform.LocalContext.current
+            top.yukonga.miuix.kmp.extra.SuperArrow(title = "导出计分规则通知 PDF", summary = "按当前全部计分规则生成一份通知，可发给学生和家长", onClick = {
+                vm.currentClass(data)?.let { c -> runCatching { com.deepshawn.hwcounter.ui.screens.shareRulesNotice(ctx2, c, s.rules) } }
+            })
+        }
         group("未交连续递增扣分", key = "escalation") {
             val e = s.rules.escalation
             fun esc(f: (com.deepshawn.hwcounter.data.MissingEscalation) -> com.deepshawn.hwcounter.data.MissingEscalation) = rules { it.copy(escalation = f(it.escalation)) }

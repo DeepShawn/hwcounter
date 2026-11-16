@@ -337,13 +337,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         applyAutoResets()
     }
 
-    /** 补上所有班级到期的定期重置（打开 App、回到前台时调用） */
+    /** 补上所有班级到期的定期重置，以及与之联动的结算（打开 App、回到前台时调用） */
     fun applyAutoResets(now: Long = System.currentTimeMillis()) {
         if (_readOnly.value) return
+        // 第一次运行新版本时记下联动结算的起点，之前的定期重置不追溯结算
+        if (_data.value.settings.rules.settlement.autoSince <= 0L)
+            update(undoable = false) { it.copy(settings = it.settings.copy(rules = it.settings.rules.copy(settlement = it.settings.rules.settlement.copy(autoSince = now)))) }
         val d = _data.value
         val rules = d.settings.rules
-        val next = d.classes.map { it.applyAutoReset(rules, now) }
-        if (next.indices.any { next[it] !== d.classes[it] }) update(undoable = false) { it.copy(classes = it.classes.map { c -> c.applyAutoReset(rules, now) }) }
+        fun step(c: SchoolClass) = Settle.applyAuto(c.applyAutoReset(rules, now), rules)
+        val next = d.classes.map { step(it) }
+        if (next.indices.any { next[it] != d.classes[it] }) update(undoable = false) { it.copy(classes = it.classes.map { c -> step(c) }) }
+    }
+
+    /** 结算：写入记录和每人加减分；[resetTo] 不为空时随即开始新一轮（结算分计入新一轮） */
+    fun settle(s: Settlement, resetTo: Double?) = updateClass { c ->
+        if (resetTo == null) Settle.apply(c, s)
+        else {
+            val withReset = c.recharge(_data.value.settings.rules, c.students.map { it.id }, resetTo, "${s.title}后开始新一轮", time = s.time)
+            Settle.apply(withReset, s.copy(resetId = withReset.recharges.last().id), entryTime = s.time + 1)
+        }
+    }
+
+    /** 撤销结算（同时删除结算产生的加减分；若结算时开始了新一轮，那次重置也一起撤销） */
+    fun undoSettlement(id: String) = updateClass { c ->
+        val s = c.settlements.firstOrNull { it.id == id }
+        val out = Settle.undo(c, id)
+        if (s?.resetId != null && !id.startsWith(AUTO_SETTLE_PREFIX)) out.removeRecharge(s.resetId) else out
     }
 
     /** 批量加减分：每人分值可以不同 */

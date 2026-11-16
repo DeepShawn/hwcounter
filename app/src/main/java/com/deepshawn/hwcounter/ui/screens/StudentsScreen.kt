@@ -476,6 +476,7 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
         }
         item {
             SectionTitle("积分流水", Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                TextButton(onClick = { kit.nav.push(com.deepshawn.hwcounter.ui.Route.Ledger(s.id)) }) { Text("筛选 / 导出") }
                 if (!readOnlyState) FilledTonalButton(onClick = { scoreDialog = true }) { Text("加减分") }
             }
         }

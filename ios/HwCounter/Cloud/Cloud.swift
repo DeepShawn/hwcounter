@@ -282,6 +282,9 @@ final class CloudClient {
             c.exams = exams.sorted { $0.date < $1.date }
             c.groupLeaders = r.groupLeaders.merging(l.groupLeaders) { _, n in n }
             c.seating = l.seating ?? r.seating
+            var seen = Set<String>(); var sts: [JSONValue] = []
+            for x in r.settlements + l.settlements { let k = x["id"]?.string ?? UUID().uuidString; if seen.insert(k).inserted { sts.append(x) } else if let i = sts.firstIndex(where: { $0["id"]?.string == k }) { sts[i] = x } }
+            c.settlements = sts
             if var ar = l.autoReset ?? r.autoReset {
                 ar.skipped = Array(Set(ar.skipped + (l.autoReset?.skipped ?? []) + (r.autoReset?.skipped ?? []))).sorted()
                 c.autoReset = ar

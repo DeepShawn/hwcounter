@@ -12,7 +12,11 @@ export const STATUS = {
 export const STATUS_KEYS = Object.keys(STATUS);
 
 export const defaultEscalation = () => ({ enabled: true, base: 2, heavyBase: 3, heavyAfter: 6, cap: 30 });
-export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation() });
+export const defaultStreakBonus = () => ({ enabled: true, after: 5, bonus: 1, lateCounts: false });
+export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true });
+/** 正分向上取整、负分向下取整（与安卓 roundAway 一致） */
+export const roundAway = (x) => (x > 0 ? Math.ceil(x - 1e-9) : x < 0 ? Math.floor(x + 1e-9) : 0);
+export const pt = (rules, x) => (rules.roundPoints === false ? x : roundAway(x));
 export const defaultSettings = () => ({
   theme: 'mint', dark: 0, layout: 'grid', shape: 1, compact: false, rules: defaultRules(),
   ai: { provider: 'openai', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', apiKey: '', model: 'qwen-vl-max', vision: true },
@@ -30,6 +34,7 @@ export function normalizeData(d) {
   out.settings = { ...base.settings, ...(out.settings || {}) };
   out.settings.rules = { ...defaultRules(), ...(out.settings.rules || {}) };
   out.settings.rules.escalation = { ...defaultEscalation(), ...(out.settings.rules.escalation || {}) };
+  out.settings.rules.streakBonus = { ...defaultStreakBonus(), ...(out.settings.rules.streakBonus || {}) };
   out.settings.ai = { ...base.settings.ai, ...(out.settings.ai || {}) };
   out.classes = (out.classes || []).map((c) => ({
     id: newId(), emoji: '🎒', students: [], assignments: [], scores: [], ...c,
@@ -115,22 +120,29 @@ export function examDelta(rules, e, sid) {
  */
 export function autoPoints(c, rules, sid) {
   const esc = { ...defaultEscalation(), ...(rules.escalation || {}) };
+  const sb = { ...defaultStreakBonus(), ...(rules.streakBonus || {}) };
   const out = {};
   const resets = (c.recharges || []).filter((r) => (r.studentIds || []).includes(sid))
     .sort((a, b) => rechargeStart(a) - rechargeStart(b) || a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const list = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  let round; let streak = 0; let total = 0;
+  let round; let streak = 0; let total = 0; let run = 0;
   for (const a of list) {
     const s = a.statuses[sid] || 'NONE';
-    if (!esc.enabled) { out[a.id] = ruleOf(rules, s); continue; }
     let r = null; for (const x of resets) if (rechargeCounts(x, a.createdAt)) r = x.id;
-    if (r !== round) { round = r; streak = 0; total = 0; }
+    if (r !== round) { round = r; streak = 0; total = 0; run = 0; }
     if (s === 'MISSING') {
-      streak++; total++;
+      streak++; total++; run = 0;
+      if (!esc.enabled) { out[a.id] = pt(rules, ruleOf(rules, s)); continue; }
       const b = total > esc.heavyAfter ? esc.heavyBase : esc.base;
       let p = b ** streak; if (esc.cap > 0) p = Math.min(p, esc.cap);
-      out[a.id] = -p;
-    } else { if (s === 'SUBMITTED' || s === 'EXCELLENT' || s === 'LATE') streak = 0; out[a.id] = ruleOf(rules, s); }
+      out[a.id] = pt(rules, -p);
+    } else if (s === 'SUBMITTED' || s === 'EXCELLENT' || s === 'LATE') {
+      streak = 0;
+      const counts = s !== 'LATE' || sb.lateCounts;
+      run = counts ? run + 1 : 0;
+      const bonus = sb.enabled && counts && run > sb.after ? sb.bonus : 0;
+      out[a.id] = pt(rules, ruleOf(rules, s)) + pt(rules, bonus);
+    } else out[a.id] = pt(rules, ruleOf(rules, s));
   }
   return out;
 }
@@ -141,7 +153,7 @@ export function studentStats(c, rules) {
   if (byRules.has(rules)) return byRules.get(rules);
   const last = latestRecharges(c);
   const manual = {};
-  for (const e of c.scores) if (entryCounts(e, last[e.studentId])) manual[e.studentId] = (manual[e.studentId] || 0) + e.delta;
+  for (const e of c.scores) if (entryCounts(e, last[e.studentId])) manual[e.studentId] = (manual[e.studentId] || 0) + pt(rules, e.delta);
   const result = c.students.map((st) => {
     const r = last[st.id];
     const counts = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
@@ -149,7 +161,7 @@ export function studentStats(c, rules) {
     const pts = autoPoints(c, rules, st.id);
     for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; if (assignmentCounts(a, r)) auto += pts[a.id] ?? ruleOf(rules, s); }
     let examPts = 0;
-    for (const e of c.exams || []) if (!r || rechargeCounts(r, e.date)) examPts += examDelta(rules, e, st.id);
+    for (const e of c.exams || []) if (!r || rechargeCounts(r, e.date)) examPts += pt(rules, examDelta(rules, e, st.id));
     return { student: st, score: (r ? r.target : rules.initial) + auto + (manual[st.id] || 0) + examPts, counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };
   });
   byRules.set(rules, result);

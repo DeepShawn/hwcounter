@@ -338,6 +338,7 @@ class SyncManager(
             return l.copy(
                 students = students.values.toList(), assignments = assigns.values.toList(), scores = scores, recharges = recharges,
                 exams = exams.values.sortedBy { it.date }, groupLeaders = r.groupLeaders + l.groupLeaders, seating = l.seating ?: r.seating,
+                settlements = (r.settlements + l.settlements).distinctBy { it.id }.sortedBy { it.time },
                 autoReset = (l.autoReset ?: r.autoReset)?.let { ar -> ar.copy(skipped = (ar.skipped + l.autoReset?.skipped.orEmpty() + r.autoReset?.skipped.orEmpty()).distinct()) },
             ).let { with(com.deepshawn.hwcounter.data.AutoResetOps) { it.dropSkipped() } }
         }

@@ -34,6 +34,18 @@ struct SettingsView: View {
                 ruleRow("🐢 迟交", \.late)
                 if !store.data.rules.escalation.enabled { ruleRow("❌ 未交", \.missing) }
                 ruleRow("🏖️ 请假", \.leave)
+                Toggle(isOn: Binding(get: { store.data.rules.streakBonus.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.streakBonus.enabled = v; d.rules = r } })) {
+                    VStack(alignment: .leading) {
+                        Text("连续交满后每次加分")
+                        Text("本轮连续按时交满 \(store.data.rules.streakBonus.after) 次后，之后每连续交一次 +\(fmtNum(store.data.rules.streakBonus.bonus))；请假不打断，未交、迟交打断；每次积分重置后重新计").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Toggle(isOn: Binding(get: { store.data.rules.roundPoints }, set: { v in store.setSetting { d in var r = d.rules; r.roundPoints = v; d.rules = r } })) {
+                    VStack(alignment: .leading) {
+                        Text("加减分取整")
+                        Text("每次加分向上取整、扣分向下取整").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                 Toggle(isOn: Binding(get: { store.data.rules.escalation.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.escalation.enabled = v; d.rules = r } })) {
                     VStack(alignment: .leading) {
                         Text("未交连续加倍扣分")

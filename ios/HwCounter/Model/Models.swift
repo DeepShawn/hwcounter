@@ -171,6 +171,8 @@ struct ScoreEntry: Codable, Identifiable, Equatable {
     var delta: Double
     var reason: String
     var time: Int64 = nowMillis()
+    /// 来自哪次结算（安卓结算写入，三端保留）
+    var settlementId: String? = nil
 
     init(studentId: String, delta: Double, reason: String) {
         self.studentId = studentId; self.delta = delta; self.reason = reason
@@ -182,6 +184,7 @@ struct ScoreEntry: Codable, Identifiable, Equatable {
         delta = try c.decodeIfPresent(Double.self, forKey: .delta) ?? 0
         reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
         time = try c.decodeIfPresent(Int64.self, forKey: .time) ?? nowMillis()
+        settlementId = try c.decodeIfPresent(String.self, forKey: .settlementId)
     }
 }
 
@@ -290,6 +293,8 @@ struct SchoolClass: Codable, Identifiable, Equatable {
     var groupLeaders: [String: String] = [:]
     /// 每月定期重置（与安卓 AutoReset.kt 同格式同算法）
     var autoReset: AutoReset? = nil
+    /// 结算记录（安卓生成；iPad 原样保留并同步）
+    var settlements: [JSONValue] = []
 
     init(name: String, emoji: String = "🎒", students: [Student] = []) {
         self.name = name; self.emoji = emoji; self.students = students
@@ -307,6 +312,7 @@ struct SchoolClass: Codable, Identifiable, Equatable {
         exams = (try? c.decodeIfPresent([Exam].self, forKey: .exams)) ?? []
         groupLeaders = (try? c.decodeIfPresent([String: String].self, forKey: .groupLeaders)) ?? [:]
         autoReset = try? c.decodeIfPresent(AutoReset.self, forKey: .autoReset)
+        settlements = (try? c.decodeIfPresent([JSONValue].self, forKey: .settlements)) ?? []
     }
 }
 
@@ -418,10 +424,19 @@ struct MissingEscalation: Equatable {
     }
 }
 
+/// 连续交作业奖励：本轮连续按时交满 after 次后，之后每连续交一次额外加 bonus
+struct StreakBonus: Equatable { var enabled = true, after = 5, bonus = 1.0, lateCounts = false }
+
+/// 正分向上取整、负分向下取整
+func roundAway(_ x: Double) -> Double { x > 0 ? (x - 1e-9).rounded(.up) : x < 0 ? (x + 1e-9).rounded(.down) : 0 }
+
 struct Rules: Equatable {
     var initial = 100.0, submitted = 0.0, excellent = 1.0, late = -1.0, missing = -2.0, leave = 0.0
     var exam = ExamRules()
     var escalation = MissingEscalation()
+    var streakBonus = StreakBonus()
+    var roundPoints = true
+    func pt(_ x: Double) -> Double { roundPoints ? roundAway(x) : x }
     func of(_ s: HwStatus) -> Double {
         switch s {
         case .NONE: return 0
@@ -462,6 +477,13 @@ struct AppData: Codable, Equatable {
             x.late = r?["late"]?.double ?? x.late
             x.missing = r?["missing"]?.double ?? x.missing
             x.leave = r?["leave"]?.double ?? x.leave
+            if let b = r?["streakBonus"] {
+                x.streakBonus.enabled = b["enabled"]?.bool ?? x.streakBonus.enabled
+                x.streakBonus.after = b["after"]?.int ?? x.streakBonus.after
+                x.streakBonus.bonus = b["bonus"]?.double ?? x.streakBonus.bonus
+                x.streakBonus.lateCounts = b["lateCounts"]?.bool ?? x.streakBonus.lateCounts
+            }
+            x.roundPoints = r?["roundPoints"]?.bool ?? x.roundPoints
             if let e = r?["escalation"] {
                 x.escalation.enabled = e["enabled"]?.bool ?? x.escalation.enabled
                 x.escalation.base = e["base"]?.double ?? x.escalation.base
@@ -490,6 +512,11 @@ struct AppData: Codable, Equatable {
             e["enabled"] = .bool(newValue.escalation.enabled); e["base"] = .number(newValue.escalation.base)
             e["heavyBase"] = .number(newValue.escalation.heavyBase); e["heavyAfter"] = .number(Double(newValue.escalation.heavyAfter)); e["cap"] = .number(newValue.escalation.cap)
             r["escalation"] = e
+            var b = r["streakBonus"] ?? .object([:])
+            b["enabled"] = .bool(newValue.streakBonus.enabled); b["after"] = .number(Double(newValue.streakBonus.after))
+            b["bonus"] = .number(newValue.streakBonus.bonus); b["lateCounts"] = .bool(newValue.streakBonus.lateCounts)
+            r["streakBonus"] = b
+            r["roundPoints"] = .bool(newValue.roundPoints)
             settings["rules"] = r
         }
     }
@@ -576,19 +603,25 @@ extension SchoolClass {
 
     /// 某位同学每次作业的自动计分（作业 id → 分），未交按连续递增规则
     func autoPoints(_ rules: Rules, _ sid: String) -> [String: Double] {
-        let esc = rules.escalation
+        let esc = rules.escalation, sb = rules.streakBonus
         var out: [String: Double] = [:]
         let resets = recharges.filter { $0.studentIds.contains(sid) }.sorted { ($0.start, $0.time, $0.id) < ($1.start, $1.time, $1.id) }
-        var round: String? = nil, streak = 0, total = 0
+        var round: String? = nil, streak = 0, total = 0, run = 0
         for a in assignments.sorted(by: { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }) {
             let s = a.status(sid)
-            if !esc.enabled { out[a.id] = rules.of(s); continue }
             let r = resets.last { $0.counts(a.createdAt) }?.id
-            if r != round { round = r; streak = 0; total = 0 }
+            if r != round { round = r; streak = 0; total = 0; run = 0 }
             switch s {
-            case .MISSING: streak += 1; total += 1; out[a.id] = -esc.penalty(streak: streak, total: total)
-            case .SUBMITTED, .EXCELLENT, .LATE: streak = 0; out[a.id] = rules.of(s)
-            default: out[a.id] = rules.of(s)
+            case .MISSING:
+                streak += 1; total += 1; run = 0
+                out[a.id] = rules.pt(esc.enabled ? -esc.penalty(streak: streak, total: total) : rules.of(s))
+            case .SUBMITTED, .EXCELLENT, .LATE:
+                streak = 0
+                let counts = s != .LATE || sb.lateCounts
+                run = counts ? run + 1 : 0
+                let bonus = sb.enabled && counts && run > sb.after ? sb.bonus : 0
+                out[a.id] = rules.pt(rules.of(s)) + rules.pt(bonus)
+            default: out[a.id] = rules.pt(rules.of(s))
             }
         }
         return out
@@ -597,7 +630,7 @@ extension SchoolClass {
     func stats(_ rules: Rules) -> [Stat] {
         let last = latestRecharges()
         var manual: [String: Double] = [:]
-        for e in scores where last[e.studentId].map({ $0.counts(e.time) }) ?? true { manual[e.studentId, default: 0] += e.delta }
+        for e in scores where last[e.studentId].map({ $0.counts(e.time) }) ?? true { manual[e.studentId, default: 0] += rules.pt(e.delta) }
         return students.map { st in
             let r = last[st.id]
             var auto = 0.0, sub = 0, late = 0, miss = 0
@@ -610,7 +643,7 @@ extension SchoolClass {
                 if s == .MISSING { miss += 1 }
             }
             var examPts = 0.0
-            for e in exams where r.map({ $0.counts(e.date) }) ?? true { examPts += rules.exam.delta(e, st.id) }
+            for e in exams where r.map({ $0.counts(e.date) }) ?? true { examPts += rules.pt(rules.exam.delta(e, st.id)) }
             return Stat(student: st, score: (r?.target ?? rules.initial) + auto + (manual[st.id] ?? 0) + examPts, submitted: sub, late: late, missing: miss)
         }
     }

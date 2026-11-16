@@ -84,7 +84,7 @@ object PdfReport {
 
     // ---------------- 分页与基础绘制 ----------------
 
-    private class Pager(val c: SchoolClass, val now: Long, val newPage: () -> Canvas, val endPage: () -> Unit) {
+    private class Pager(val c: SchoolClass, val now: Long, val newPage: () -> Canvas, val endPage: () -> Unit, val header: String = "${c.name} · 作业与成绩分析报告") {
         lateinit var cv: Canvas
         var y = M
         var pages = 0
@@ -96,7 +96,7 @@ object PdfReport {
             cv.drawColor(Color.WHITE)
             y = M
             if (pages > 1) {
-                text("${c.name} · 作业与成绩分析报告", 9f, MUTED, x = M, maxW = W - 2 * M)
+                text(header, 9f, MUTED, x = M, maxW = W - 2 * M)
                 cv.drawLine(M, y + 2f, W - M, y + 2f, paint(LINE, 0.8f)); y += 12f
             }
         }
@@ -462,5 +462,119 @@ object PdfReport {
         }
         if (e.top.isNotEmpty()) p.text("平均得分率最高：" + e.top.joinToString("、") { "${it.student.name} ${pct(it.avgPct ?: 0.0)}" }, 9.5f, GOOD)
         if (e.struggling.isNotEmpty()) p.text("平均得分率不足 60%：" + e.struggling.joinToString("、") { "${it.student.name} ${pct(it.avgPct ?: 0.0)}" }, 9.5f, BAD)
+    }
+
+    // ---------------- 其他文档：积分流水、结算、计分规则通知 ----------------
+
+    /** 测试用：不写 PDF，而是画到给定的画布上（截图检查排版） */
+    var testPages: Pair<() -> Canvas, () -> Unit>? = null
+
+    private fun doc(out: OutputStream, c: SchoolClass, header: String, now: Long, block: (Pager) -> Unit) {
+        testPages?.let { (np, ep) -> val p = Pager(c, now, np, ep, header); p.start(); block(p); p.finish(); return }
+        val d = PdfDocument(); var page: PdfDocument.Page? = null; var n = 0
+        val p = Pager(c, now, {
+            n++; page = d.startPage(PdfDocument.PageInfo.Builder(W.toInt(), H.toInt(), n).create()); page!!.canvas
+        }, { page?.let { d.finishPage(it) }; page = null }, header)
+        p.start(); block(p); p.finish()
+        d.writeTo(out); d.close()
+    }
+
+    /** 蓝色标题块 */
+    private fun banner(p: Pager, title: String, sub1: String, sub2: String = "") {
+        val top = p.y
+        p.cv.drawRoundRect(RectF(M, top, W - M, top + 80f), 14f, 14f, p.paint(PRIMARY))
+        p.cell(title, M + 18f, top + 14f, W - 2 * M - 36f, 18f, Color.WHITE, true)
+        p.cell(sub1, M + 18f, top + 42f, W - 2 * M - 36f, 10f, Color.argb(230, 255, 255, 255))
+        if (sub2.isNotBlank()) p.cell(sub2, M + 18f, top + 58f, W - 2 * M - 36f, 9.5f, Color.argb(220, 255, 255, 255))
+        p.y = top + 94f
+    }
+
+    private fun stamp(t: Long) = SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(t))
+    private fun day(t: Long) = SimpleDateFormat("yyyy/M/d", Locale.CHINA).format(Date(t))
+
+    /** 积分流水 PDF：rows 为（学生名，流水行），已按需筛选 */
+    fun writeLedger(c: SchoolClass, title: String, scope: String, rows: List<Pair<String, com.deepshawn.hwcounter.data.LedgerRow>>, out: OutputStream, now: Long = System.currentTimeMillis()) {
+        doc(out, c, "${c.name} · $title", now) { p ->
+            val counted = rows.filter { it.second.counted }
+            val plus = counted.filter { it.second.delta > 0 }.sumOf { it.second.delta }; val minus = counted.filter { it.second.delta < 0 }.sumOf { it.second.delta }
+            banner(p, "${c.name} $title", scope, "共 ${rows.size} 条 · 计入的加分 +${plus.fmt()} · 扣分 ${minus.fmt()} · 净变化 ${(plus + minus).signed()} · 导出于 ${stamp(now)}")
+            val kinds = mapOf(
+                com.deepshawn.hwcounter.data.LedgerRow.Kind.MANUAL to "手动", com.deepshawn.hwcounter.data.LedgerRow.Kind.AUTO to "作业",
+                com.deepshawn.hwcounter.data.LedgerRow.Kind.EXAM to "考试", com.deepshawn.hwcounter.data.LedgerRow.Kind.SETTLE to "结算",
+                com.deepshawn.hwcounter.data.LedgerRow.Kind.RECHARGE to "重置",
+            )
+            table(
+                p, listOf("日期", "学生", "类型", "内容", "分值", "计入"), listOf(0.9f, 0.8f, 0.5f, 3.6f, 0.6f, 0.5f),
+                rows.map { (name, r) -> listOf(day(r.time), name, kinds[r.kind] ?: "", r.title, if (r.kind == com.deepshawn.hwcounter.data.LedgerRow.Kind.RECHARGE) "→" else r.delta.signed(), if (r.counted) "是" else "否") },
+                rows.map { (_, r) -> listOf(null, null, null, null, if (r.delta > 0) GOOD else if (r.delta < 0) BAD else null, if (r.counted) null else MUTED) },
+                rowH = 15f,
+            )
+            p.note("“计入”为否的记录在积分重置之前，保留可查，但不计入当前积分。")
+        }
+    }
+
+    /** 结算单 PDF */
+    fun writeSettlement(c: SchoolClass, s: com.deepshawn.hwcounter.data.Settlement, out: OutputStream, now: Long = System.currentTimeMillis()) {
+        val names = c.students.associate { it.id to it }
+        doc(out, c, "${c.name} · ${s.title}", now) { p ->
+            val done = s.lines.filter { !it.skipped }
+            banner(p, "${c.name} ${s.title}", "范围：" + (s.roundStart?.let { "${day(it)} 起" } ?: "有记录以来") + " 至 ${day(s.roundEnd - 1)} · 结算于 ${stamp(s.time)}",
+                "结算 ${done.size} 人 · 加分 ${done.count { it.delta > 0 }} 人 · 扣分 ${done.count { it.delta < 0 }} 人 · 合计 ${done.sumOf { it.delta }.signed()}" + if (s.resetId != null) " · 结算后开始新一轮" else "")
+            val list = s.lines.sortedWith(compareByDescending<com.deepshawn.hwcounter.data.SettlementLine> { it.delta }.thenBy { names[it.studentId]?.no ?: "" })
+            table(
+                p, listOf("学号", "姓名", "应交", "交齐度", "迟交", "缺交", "最长连缺", "结算分", "原因"), listOf(0.9f, 0.8f, 0.5f, 0.6f, 0.5f, 0.5f, 0.7f, 0.6f, 3f),
+                list.map { l -> val st = names[l.studentId]; listOf(st?.no ?: "", st?.name ?: "已删除", "${l.expected}", pct(l.rate), "${l.late}", "${l.missing}", "${l.longestMissing}", if (l.skipped) "不结算" else l.delta.signed(), l.reasons.joinToString("；")) },
+                list.map { l -> listOf(null, null, null, if (l.rate < 0.7) BAD else if (l.rate >= 0.95) GOOD else null, null, if (l.missing > 0) BAD else null, null, if (l.delta > 0) GOOD else if (l.delta < 0) BAD else MUTED, MUTED) },
+            )
+        }
+    }
+
+    /** 计分规则通知 PDF（按当前设置生成） */
+    fun writeRules(c: SchoolClass, rules: com.deepshawn.hwcounter.data.ScoreRules, out: OutputStream, now: Long = System.currentTimeMillis()) {
+        val e = rules.escalation; val b = rules.streakBonus; val st = rules.settlement
+        doc(out, c, "${c.name} · 积分计分标准", now) { p ->
+            banner(p, "关于实行新积分计分标准的通知", "${c.name} · 自 ${SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(Date(now))} 起执行", "以前的积分已按新标准重新计算，历史记录全部保留可查")
+            p.text("为鼓励同学们按时、完整地完成作业，班级积分采用以下计分标准。每位同学初始 ${rules.initial.fmt()} 分，以下各项自动计入；每一笔积分变化都记录在积分流水中，可随时向老师查询。请同学们按时完成作业，积极争取连续交作业奖励和结算加分。", 10.5f); p.gap(6f)
+            p.heading("一、每次作业")
+            table(p, listOf("情况", "计分", "说明"), listOf(1f, 0.8f, 3f), listOf(
+                listOf("按时交", rules.submitted.signed().let { if (rules.submitted == 0.0) "0" else it }, "正常完成"),
+                listOf("优秀", rules.excellent.signed(), "作业被评为优秀"),
+                listOf("迟交", rules.late.signed(), "交了但晚于要求时间"),
+                listOf("请假", rules.leave.signed().let { if (rules.leave == 0.0) "0" else it }, "不计次，不影响连续记录"),
+                listOf("未交", if (e.enabled) "见第二条" else rules.missing.signed(), if (e.enabled) "连续未交加倍扣分" else "每次固定扣分"),
+            ))
+            if (e.enabled) {
+                p.heading("二、未交连续加倍扣分")
+                p.text("连续未交时，第 1 次扣 ${e.base.fmt()} 分，第 2 次扣 ${(e.base * e.base).fmt()} 分，第 3 次扣 ${(e.base * e.base * e.base).fmt()} 分，以此类推（每次翻倍）。", 10.5f)
+                p.text("· 中间请假、未登记的不打断连续，也不计次；只要交过一次，就打断，下次未交重新从第 1 次算。", 10f)
+                p.text("· 同一轮内累计未交超过 ${e.heavyAfter} 次后，改为第 1 次扣 ${e.heavyBase.fmt()} 分、第 2 次 ${(e.heavyBase * e.heavyBase).fmt()} 分、第 3 次 ${(e.heavyBase * e.heavyBase * e.heavyBase).fmt()} 分……", 10f)
+                if (e.cap > 0) p.text("· 单次最多扣 ${e.cap.fmt()} 分。", 10f)
+                p.text("· 每次积分重置后进入新一轮，连续次数和累计次数清零，重新从 ${e.base.fmt()} 分开始。", 10f)
+                p.gap(4f)
+                val ex = (1..6).map { k -> val v = minOf(Math.pow(e.base, k.toDouble()), if (e.cap > 0) e.cap else Double.MAX_VALUE); "第 $k 次 −${v.fmt()}" }
+                p.text("举例：连续未交 " + ex.joinToString("，") + "。", 10f, MUTED)
+                p.text("举例：未交、请假、未交 → 按连续两次计，分别扣 ${e.base.fmt()}、${(e.base * e.base).fmt()} 分；未交、交、未交 → 各扣 ${e.base.fmt()} 分。", 10f, MUTED)
+            }
+            if (b.enabled) {
+                p.heading("三、连续交作业奖励")
+                p.text("同一轮内连续按时交（已交或优秀）满 ${b.after} 次后，之后每连续交一次，额外加 ${b.bonus.fmt()} 分。", 10.5f)
+                p.text("· 请假、未登记不打断也不计次；未交" + (if (b.lateCounts) "打断（迟交也算连续交）" else "、迟交都会打断") + "，之后重新计数。每次积分重置后重新计。", 10f)
+                p.text("举例：连续交第 1–${b.after} 次不额外加分，第 ${b.after + 1} 次起每次 +${b.bonus.fmt()}。", 10f, MUTED)
+            }
+            p.heading("四、取整与其他加减分")
+            p.text(if (rules.roundPoints) "所有加减分都取整数：加分向上取整（如 +0.5 记 +1），扣分向下取整（如 −0.5 记 −1）。" else "加减分保留小数。", 10.5f)
+            p.text("老师可根据课堂表现等手动加减分，原因会记录在积分流水中。", 10f)
+            if (rules.exam.enabled) {
+                p.text("考试按得分率自动加减分：" + rules.exam.bands.sortedByDescending { it.minPct }.joinToString("；") { "${it.minPct.fmt()}%–${it.maxPct.fmt()}% ${it.delta.signed()}" } + if (rules.exam.absent != 0.0) "；缺考 ${rules.exam.absent.signed()}" else "。", 10f)
+            }
+            p.heading("五、积分重置与结算")
+            p.text("积分重置：把积分重新设为指定分数，开始新的一轮；之前的加减分记录全部保留，可随时查看。" + (c.autoReset?.takeIf { it.enabled }?.let { " 本班每月 ${it.day} 号自动重置为 ${it.target.fmt()} 分。" } ?: ""), 10.5f)
+            p.text("每轮结束时进行结算，按本轮交齐度（已交 + 优秀 + 迟交 ÷ 应交，请假不算应交）加减分，结算分计入下一轮：", 10.5f)
+            table(p, listOf("本轮交齐度", "结算分"), listOf(2f, 1f), listOf(
+                listOf("100% 且无迟交（全勤）", st.perfect.signed()), listOf("95% 及以上", st.r95.signed()), listOf("90%–95%", st.r90.signed()),
+                listOf("80%–90%", if (st.r80 == 0.0) "0" else st.r80.signed()), listOf("70%–80%", st.r70.signed()), listOf("70% 以下", st.below.signed()),
+            ))
+            p.text("另外：本轮缺交 ${st.manyMissing} 次及以上 ${st.manyMissingDelta.signed()}；最长连续缺交 ${st.streakMissing} 次及以上 ${st.streakMissingDelta.signed()}；交齐度比上一轮提高 ${(st.progressPts * 100).toInt()} 个百分点以上（进步奖）${st.progressDelta.signed()}；本轮平均交齐度第一的小组每人 ${st.groupDelta.signed()}。本轮应交少于 ${st.minExpected} 次的同学不参加结算。", 10f)
+        }
     }
 }

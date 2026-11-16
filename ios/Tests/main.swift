@@ -150,7 +150,7 @@ do {
 // 积分：重置保留历史，修改基准保留手动加减分及未交次数。
 do {
     func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
-    var rules = Rules(); rules.escalation.enabled = false // 旧用例沿用“未交固定扣分”
+    var rules = Rules(); rules.escalation.enabled = false; rules.streakBonus.enabled = false; rules.roundPoints = false // 旧用例沿用“未交固定扣分”
     var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三"), Student(id: "s2", no: "02", name: "李四")])
     for _ in 1...3 {
         var a = Assignment(title: "作业", subject: "数学")
@@ -176,7 +176,7 @@ do {
 do {
     print("== 积分重置")
     func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
-    var rules = Rules(); rules.escalation.enabled = false
+    var rules = Rules(); rules.escalation.enabled = false; rules.streakBonus.enabled = false; rules.roundPoints = false
     var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三"), Student(id: "s2", no: "02", name: "李四")])
     for i in 1...3 {
         var a = Assignment(title: "作业\(i)", subject: "数学")
@@ -227,7 +227,7 @@ do {
     var e = Exam(title: "期中", scores: ["s1": 95, "s2": 50])
     e.date = 5000
     c.exams = [e]
-    var rules = Rules(); rules.escalation.enabled = false
+    var rules = Rules(); rules.escalation.enabled = false; rules.streakBonus.enabled = false; rules.roundPoints = false
     check(c.stats(rules).map(\.score) == [102, 99], "考试加减分计入积分")
     let reset = c.recharging(rules, ids: ["s1", "s2"], target: 100, time: 9000)
     check(reset.stats(rules).map(\.score) == [100, 100], "重置后之前的考试不再计分")
@@ -365,6 +365,26 @@ do {
     check(rp["a13"] == -9 && rp["a14"] == -2 && rp["a15"] == -4 && reset.stats(rules)[0].score == 94, "重置后新一轮从 2 开始")
     var capped = Rules(); capped.escalation.cap = 5
     check(pts(mk(["MISSING", "MISSING", "MISSING"]), capped) == [-2, -4, -5], "单次最多扣分上限")
+}
+// 连续交奖励与取整：与安卓 StreakBonusAndRoundingTest、网页同一组用例
+do {
+    print("== 连续交奖励与取整")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    let rules = Rules()
+    func mk(_ m: [String]) -> SchoolClass {
+        var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三")])
+        for (i, x) in m.enumerated() { var a = Assignment(title: "作业\(i)", subject: "数学"); a.id = "a\(i)"; a.createdAt = Int64((i + 1) * 1000); a.statuses = ["s1": x]; c.assignments.append(a) }
+        return c
+    }
+    func pts(_ c: SchoolClass, _ r: Rules = Rules()) -> [Double] { let p = c.autoPoints(r, "s1"); return c.assignments.map { p[$0.id] ?? 0 } }
+    let S = "SUBMITTED"
+    check(pts(mk([S, S, S, S, S, S, S, "EXCELLENT"])) == [0, 0, 0, 0, 0, 1, 1, 2], "连续交满 5 次后每次 +1")
+    check(pts(mk([S, S, "LEAVE", S, S, S, S])) == [0, 0, 0, 0, 0, 0, 1], "请假不打断、不计次")
+    check(pts(mk([S, S, S, S, S, "MISSING", S]))[6] == 0 && pts(mk([S, S, S, S, S, "LATE", S]))[6] == 0, "未交、迟交打断")
+    let c0 = mk([S, S, S, S, S, S, S, S])
+    let p = c0.recharging(rules, ids: ["s1"], target: 100, time: 99000, assignmentId: "a6").autoPoints(rules, "s1")
+    check(p["a5"] == 1 && p["a6"] == 0 && p["a7"] == 0, "每轮重置重新计")
+    check(roundAway(0.5) == 1 && roundAway(-0.5) == -1 && roundAway(-2.1) == -3 && roundAway(0) == 0, "正分向上、负分向下取整")
 }
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

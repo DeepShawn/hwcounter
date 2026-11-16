@@ -140,6 +140,9 @@ class ShotsTest {
             save("${prefix}_15_batch_pick"); scroll(); save("${prefix}_16_batch_list"); back()
         }
 
+        safe { rule.onAllNodes(hasContentDescription("更多")).onFirst().performClick(); click("结算本轮"); save("${prefix}_17_settle"); scroll(); save("${prefix}_18_settle"); back() }
+        safe { rule.onAllNodes(hasContentDescription("更多")).onFirst().performClick(); click("积分流水"); save("${prefix}_19_ledger"); click("结算"); save("${prefix}_19b_ledger_kind"); back() }
+
         tab("统计"); save("${prefix}_20_stats")
         for (i in 1..14) { scroll(); save("${prefix}_2${"%02d".format(i)}_stats") }
         safe {
@@ -170,7 +173,28 @@ class ShotsTest {
         }
     }
 
-    @Test fun light() { run("light", 1, UiPrefs()); pdfPages("report") }
+    @Test fun light() { run("light", 1, UiPrefs()); pdfPages("report"); otherPdfs() }
+
+    /** 积分流水、结算单、计分规则通知的 PDF 排版 */
+    private fun otherPdfs() {
+        val c0 = sample().classes.first()
+        val rules = ScoreRules()
+        val s = Settle.preview(c0, rules)
+        val c = Settle.apply(c0, s)
+        fun pages(prefix: String, block: () -> Unit) {
+            val pages = ArrayList<android.graphics.Bitmap>(); var cur: android.graphics.Bitmap? = null
+            com.deepshawn.hwcounter.export.PdfReport.testPages = Pair({
+                val b = android.graphics.Bitmap.createBitmap(595 * 2, 842 * 2, android.graphics.Bitmap.Config.ARGB_8888); cur = b
+                android.graphics.Canvas(b).apply { scale(2f, 2f) }
+            }, { cur?.let { pages += it } })
+            try { block() } finally { com.deepshawn.hwcounter.export.PdfReport.testPages = null }
+            pages.take(3).forEachIndexed { i, b -> File(out, "${prefix}_${i + 1}.png").outputStream().use { b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) } }
+        }
+        val sink = java.io.ByteArrayOutputStream()
+        pages("notice") { com.deepshawn.hwcounter.export.PdfReport.writeRules(c, rules, sink) }
+        pages("settle") { com.deepshawn.hwcounter.export.PdfReport.writeSettlement(c, s, sink) }
+        pages("ledger") { com.deepshawn.hwcounter.export.PdfReport.writeLedger(c, "积分流水", "全班 · 全部时间", com.deepshawn.hwcounter.export.Ledger.all(c, rules).map { it.first.name to it.second }, sink) }
+    }
     @Test fun dark() = run("dark", 2, UiPrefs())
     @Test fun plain() = run("plain", 1, UiPrefs(glass = false))
 
