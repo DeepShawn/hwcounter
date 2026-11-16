@@ -223,7 +223,27 @@ fun SchoolClass.resetStudentScores(rules: ScoreRules, studentIds: Collection<Str
     return if (entries.isEmpty()) this else copy(scores = scores + entries)
 }
 
-fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
+/**
+ * 按“对象本身”缓存最近几次的计算结果：班级和规则都是不可变的，数据一改就是新对象，
+ * 所以同一班级、同一规则重复计算时直接复用（各页面、各区块都会调用积分计算）。
+ */
+internal class IdentityCache<T>(private val size: Int = 8) {
+    private val entries = ArrayList<Triple<Any, Any, T>>()
+    @Synchronized fun get(a: Any, b: Any, compute: () -> T): T {
+        val i = entries.indexOfFirst { it.first === a && it.second === b }
+        if (i >= 0) { val e = entries.removeAt(i); entries.add(0, e); return e.third }
+        val v = compute()
+        entries.add(0, Triple(a, b, v))
+        while (entries.size > size) entries.removeAt(entries.lastIndex)
+        return v
+    }
+}
+
+private val statsCache = IdentityCache<List<StudentStat>>()
+
+fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> = statsCache.get(this, rules) { computeStudentStats(rules) }
+
+private fun SchoolClass.computeStudentStats(rules: ScoreRules): List<StudentStat> {
     val last = latestRecharges()
     val manual = HashMap<String, Double>()
     for (e in scores) if (e.countsAfter(last[e.studentId])) manual[e.studentId] = (manual[e.studentId] ?: 0.0) + rules.pt(e.delta)

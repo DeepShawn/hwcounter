@@ -132,7 +132,17 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
         2 -> Analytics.Spec(Analytics.Range.RECENT10)
         else -> calRanges[calIdx].let { r -> if (r == Analytics.Range.CUSTOM) Analytics.Spec(r, from = customFrom ?: (System.currentTimeMillis() - 29 * 86_400_000L), to = customTo ?: System.currentTimeMillis()) else Analytics.Spec(r, offset) }
     }
-    val report = remember(c, rules, spec) { Analytics.report(c, rules, spec) }
+    // 分析报告在后台计算，不卡页面切换；换范围时先显示上一次的结果，算好再替换
+    var reportState by remember { mutableStateOf<Analytics.Report?>(null) }
+    androidx.compose.runtime.LaunchedEffect(c, rules, spec) {
+        reportState = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Analytics.report(c, rules, spec) }
+    }
+    val report = reportState ?: run {
+        MiuixPage(title = "统计", largeTitle = "数据分析") {
+            item(key = "loading") { Text("正在分析…", Modifier.fillMaxWidth().padding(40.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = colors.onSurfaceVariantSummary) }
+        }
+        return
+    }
     var scoreFor by remember { mutableStateOf<Pair<List<String>, String>?>(null) }
     // 关注度：数据一变就重算（实时追踪）
     val attention = remember(c, rules) { com.deepshawn.hwcounter.data.Attention.all(c, rules) }

@@ -93,7 +93,15 @@ fun SchoolClass.autoPointDetails(rules: ScoreRules, studentId: String): Map<Stri
 }
 
 /** 某位同学每次作业的自动计分（作业 id → 分） */
-fun SchoolClass.autoPoints(rules: ScoreRules, studentId: String): Map<String, Double> = autoPointDetails(rules, studentId).mapValues { it.value.points }
+private val autoCache = IdentityCache<HashMap<String, Map<String, Double>>>(4)
+
+fun SchoolClass.autoPoints(rules: ScoreRules, studentId: String): Map<String, Double> {
+    val m = autoCache.get(this, rules) { HashMap() }
+    synchronized(m) { m[studentId]?.let { return it } }
+    val v = autoPointDetails(rules, studentId).mapValues { it.value.points }
+    synchronized(m) { m[studentId] = v }
+    return v
+}
 
 /** 全班每位同学的作业自动计分 */
 fun SchoolClass.autoPointsAll(rules: ScoreRules): Map<String, Map<String, Double>> = students.associate { it.id to autoPoints(rules, it.id) }

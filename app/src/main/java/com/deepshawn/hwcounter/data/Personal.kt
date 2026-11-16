@@ -205,7 +205,7 @@ object Personal {
 
         // —— 积分 ——
         val points = (sorted.map { it.createdAt } + c.scores.filter { it.studentId == sid }.map { it.time } + c.exams.map { it.date } + c.recharges.map { it.start }).distinct().sorted()
-        val sample = if (points.size <= 24) points else points.filterIndexed { i, _ -> i % ((points.size + 23) / 24) == 0 } + points.last()
+        val sample = if (points.size <= 12) points else points.filterIndexed { i, _ -> i % ((points.size + 11) / 12) == 0 } + points.last()
         val scoreTrend = sample.distinct().map { t ->
             val s = Analytics.scoresAt(c, rules, t)
             val ordered = s.entries.sortedByDescending { it.value }

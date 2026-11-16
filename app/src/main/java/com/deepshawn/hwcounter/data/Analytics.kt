@@ -385,7 +385,9 @@ object Analytics {
         val rateBins = listOf("<60%" to (0f to 0.6f), "60–70%" to (0.6f to 0.7f), "70–80%" to (0.7f to 0.8f), "80–90%" to (0.8f to 0.9f), "90–99%" to (0.9f to 1f), "100%" to (1f to 1.01f))
             .map { (label, r) -> label to students.count { it.expected > 0 && it.rate >= r.first && it.rate < r.second } }
 
-        val scoreTrend = if (points.size < 2) emptyList() else points.map { p -> p.assignment to scoresAt(c, rules, p.assignment.createdAt).values.average() }
+        // 每个点都要重算一次全班积分，最多取 10 个点（均匀抽取，保留首尾）
+        val trendPts = if (points.size <= 10) points else (0 until 10).map { k -> points[k * (points.size - 1) / 9] }.distinct()
+        val scoreTrend = if (trendPts.size < 2) emptyList() else trendPts.map { p -> p.assignment to scoresAt(c, rules, p.assignment.createdAt).values.average() }
         val movers = students.filter { abs(it.scoreDelta) > 1e-9 }
         val risers = movers.filter { it.scoreDelta > 0 }.sortedByDescending { it.scoreDelta }.take(5)
         val fallers = movers.filter { it.scoreDelta < 0 }.sortedBy { it.scoreDelta }.take(5)

@@ -271,13 +271,15 @@ fun App(vm: AppViewModel, data: AppData) {
                                 transitionSpec = {
                                     val forward = targetState.second > initialState.second
                                     val back = targetState.second < initialState.second
-                                    // 弹簧曲线：进入页面从右侧滑入，返回时向右滑出；切换底栏页面淡入并轻微放大
-                                    val slide = androidx.compose.animation.core.spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = 0.92f, stiffness = 420f)
-                                    val fadeSpec = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = 500f)
+                                    // 固定时长的缓动曲线（约 0.3 秒，没有弹簧的长尾）；旧页面完全淡出，不留重影
+                                    val ease = androidx.compose.animation.core.FastOutSlowInEasing
+                                    val slide = tween<androidx.compose.ui.unit.IntOffset>(300, easing = ease)
                                     val transition = when {
-                                        forward -> (slideInHorizontally(slide) { it } + fadeIn(fadeSpec, 0.85f)) togetherWith (slideOutHorizontally(slide) { -it / 4 } + fadeOut(fadeSpec, 0.5f) + androidx.compose.animation.scaleOut(fadeSpec, 0.96f))
-                                        back -> (slideInHorizontally(slide) { -it / 4 } + fadeIn(fadeSpec, 0.5f) + androidx.compose.animation.scaleIn(fadeSpec, 0.96f)) togetherWith (slideOutHorizontally(slide) { it } + fadeOut(fadeSpec, 0.85f))
-                                        else -> (fadeIn(tween(220)) + androidx.compose.animation.scaleIn(androidx.compose.animation.core.spring(dampingRatio = 0.85f, stiffness = 500f), 0.97f)) togetherWith fadeOut(tween(140))
+                                        forward -> (slideInHorizontally(slide) { it } + fadeIn(tween(220, easing = ease))) togetherWith
+                                            (slideOutHorizontally(slide) { -it / 3 } + fadeOut(tween(200)))
+                                        back -> (slideInHorizontally(slide) { -it / 3 } + fadeIn(tween(240, easing = ease))) togetherWith
+                                            (slideOutHorizontally(slide) { it } + fadeOut(tween(220)))
+                                        else -> fadeIn(tween(200, delayMillis = 60, easing = ease)) togetherWith fadeOut(tween(110))
                                     }
                                     transition.apply { targetContentZIndex = if (back) -1f else 1f }.using(null)
                                 },
