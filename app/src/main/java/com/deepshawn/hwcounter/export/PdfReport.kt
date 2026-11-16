@@ -575,11 +575,11 @@ object PdfReport {
                 listOf("80%–90%", if (st.r80 == 0.0) "0" else st.r80.signed()), listOf("70%–80%", st.r70.signed()), listOf("70% 以下", st.below.signed()),
             ))
             p.text("另外：本轮缺交 ${st.manyMissing} 次及以上 ${st.manyMissingDelta.signed()}；最长连续缺交 ${st.streakMissing} 次及以上 ${st.streakMissingDelta.signed()}；交齐度比上一轮提高 ${(st.progressPts * 100).toInt()} 个百分点以上（进步奖）${st.progressDelta.signed()}；本轮平均交齐度第一的小组每人 ${st.groupDelta.signed()}。本轮应交少于 ${st.minExpected} 次的同学不参加结算。", 10f)
-            p.gap(8f)
+            p.gap(3f)
             // 结语和落款放在一起，不让落款单独掉到下一页
-            p.ensure(46f)
-            p.text("请同学们按时完成作业，积极争取连续交作业奖励和结算加分。积分明细可随时向老师查询。", 10.5f)
-            p.gap(6f)
+            p.ensure(34f)
+            p.text("请同学们按时完成作业，积极争取连续交作业奖励和结算加分。积分明细可随时向老师查询。", 10f)
+            p.gap(2f)
             p.cell("${c.name}    ${SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(Date(now))}", M, p.y, W - 2 * M, 10.5f, INK, align = Layout.Alignment.ALIGN_OPPOSITE)
             p.gap(16f)
         }
