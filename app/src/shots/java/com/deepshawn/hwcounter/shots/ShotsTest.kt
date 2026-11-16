@@ -123,7 +123,7 @@ class ShotsTest {
         safe {
             top(); rule.onAllNodes(hasText("练习18", substring = true) and hasClickAction()).onFirst().performClick()
             save("${prefix}_07a_assignment"); scroll(); save("${prefix}_07b_assignment")
-            back()
+            top(); back()
         }
 
         tab("名单"); save("${prefix}_03_roster")
