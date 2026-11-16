@@ -140,7 +140,8 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
     val attentionWeekly = remember(c, rules, mode == 2 && !stockMode) { if (mode == 2 && !stockMode) com.deepshawn.hwcounter.data.Attention.weekly(c, rules) else emptyMap() }
     // 股票模式：关注度按美股行情显示
     val stockUi = rememberStockUi()
-    val stockBoard = if (mode == 2 && stockMode) rememberBoard(c, rules, stockUi.span) else null
+    val stockBoard = if (mode == 2 && stockMode && stockUi.kind == 0) rememberBoard(c, rules, stockUi.span) else null
+    val groupStockBoard = if (mode == 2 && stockMode && stockUi.kind == 1) rememberGroupBoard(c, rules, stockUi.span) else null
     val groupReport = remember(c, rules, mode == 3) { if (mode == 3) com.deepshawn.hwcounter.data.GroupAnalysis.report(c, rules) else null }
     val subjectsWithExams = remember(c.exams) { c.exams.map { it.subject }.filter { it.isNotBlank() }.distinct() }
     var examSubject by rememberSaveable { mutableIntStateOf(0) }
@@ -182,7 +183,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                     Modifier.padding(horizontal = 12.dp, vertical = 6.dp), height = 36.dp,
                 )
             }
-            if (stockMode) stockSections(c, stockBoard, stockUi, attention) { kit.nav.push(Route.Stock(it)) }
+            if (stockMode) stockSections(c, stockBoard, stockUi, attention, groupStockBoard, { kit.nav.push(Route.GroupStock(it)) }) { kit.nav.push(Route.Stock(it)) }
             else attentionSections(c, rules, attention, attentionWeekly) { kit.nav.push(Route.Personal(it)) }
         }
         else examSections(
