@@ -8,7 +8,8 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from PIL import Image as PImage
-import sys, os
+import sys, os, tempfile
+TMP = tempfile.mkdtemp()
 
 pdfmetrics.registerFont(TTFont('Hei', '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc', subfontIndex=0))
 BLUE = colors.HexColor('#2F6BFF'); INK = colors.HexColor('#1C1D22'); MUTED = colors.HexColor('#6B7280'); SOFT = colors.HexColor('#F2F5FB'); LINE = colors.HexColor('#DDE3EC')
@@ -21,7 +22,11 @@ shots, web, out = sys.argv[1], sys.argv[2], sys.argv[3]
 def shot(name, w=50):
     p = os.path.join(shots, f'light_{name}.png') if not name.startswith('web:') else os.path.join(web, name[4:] + '.png')
     if not os.path.exists(p): return None
-    im = PImage.open(p); ratio = im.height / im.width
+    im = PImage.open(p).convert('RGB'); ratio = im.height / im.width
+    # 缩小并转成 JPEG，控制文件大小
+    small = os.path.join(TMP, os.path.basename(p) + '.jpg')
+    im.resize((520, int(520 * ratio))).save(small, quality=82)
+    p = small
     h = w * ratio
     if h > 118: h = 118; w = h / ratio
     return Image(p, width=w * mm, height=h * mm)
@@ -67,7 +72,7 @@ E += [Paragraph('二、第一次打开', h1),
                 '如果两台设备都改过数据，会提示选择“合并 / 用云端 / 用本机”，推荐合并。']),
       Spacer(1, 2*mm),
       row([('00a_onboarding', '新手引导（可跳过）'), ('00b_onboarding', '左右滑动查看各项功能'), ('59_settings_account', '设置 → 账号与云同步')]),
-      PageBreak()]
+      Spacer(1, 4*mm)]
 
 # ---------- 三 ----------
 E += [Paragraph('三、班级与名单', h1),
@@ -87,7 +92,7 @@ E += [Paragraph('四、登记作业', h1),
                 '也可以用拍照识别、实时扫描、侧面学号、数本数、语音登记、首字母登记，或先在“草稿”里登记再上传。',
                 '作业页可以切换卡片、列表、座位、分组四种排版。']),
       row([('01_home', '首页：最近作业与快捷登记'), ('07a_assignment', '作业页：复审不合格显示为紫红色'), ('07b_assignment', '下滑查看全部同学')]),
-      PageBreak()]
+      Spacer(1, 4*mm)]
 
 # ---------- 五 ----------
 E += [Paragraph('五、积分', h1),
@@ -107,7 +112,7 @@ E += [Paragraph('五、积分', h1),
                 '<b>结算</b>：按本轮交齐度、缺交、进步、小组和综合表现加减分，结算后按学号列出每人结算分，方便登记。',
                 '<b>积分流水</b>记录每一笔变化（作业、复审、组长、小组排名、考试、结算、重置），可导出 Excel / PDF。']),
       row([('10_scores', '积分榜'), ('19_ledger', '积分流水'), ('17_settle', '结算本轮')]),
-      PageBreak()]
+      Spacer(1, 4*mm)]
 
 # ---------- 六 ----------
 E += [Paragraph('六、考试', h1),
@@ -124,7 +129,7 @@ E += [Paragraph('七、统计与报告', h1),
                 '<b>小组</b>：综合分对抗排名、本期 / 历次排名、每周对抗、进步与退步、两组对决、组长奖惩汇总。',
                 '右上角分享：一键导出 PDF 分析报告、Excel；学生档案里有个人分析报告。']),
       row([('20_stats', '作业分析'), ('34a_groups', '小组对抗排名'), ('39a_group_stock', '股票模式 · 小组板块')]),
-      PageBreak()]
+      Spacer(1, 4*mm)]
 
 # ---------- 八 ----------
 E += [Paragraph('八、设置', h1),
@@ -142,7 +147,7 @@ E += [Paragraph('八、设置', h1),
       Spacer(1, 2*mm),
       Paragraph('<b>组长奖惩、小组对抗排名</b>都可以单独关闭，也可以把“加减方式”改成“仅加分”或“仅扣分”。修改计分规则后，历史积分会自动按新规则重算。', body),
       row([('50_settings', '设置首页'), ('53_settings_scoring', '作业计分'), ('55_settings_scoring', '组长奖惩与小组排名')]),
-      PageBreak()]
+      Spacer(1, 4*mm)]
 
 # ---------- 九 ----------
 E += [Paragraph('九、iPad 与网页版', h1),
@@ -162,6 +167,16 @@ E += [Paragraph('十、常见问题', h1),
              ['数据怎么备份？', '登录后会自动同步到云端，云端保留最近 30 个历史版本；也可以 设置 → 数据与备份 导出 JSON 文件。'],
              ['安装更新失败？', '第一次需要允许“安装未知应用”；网络不好时可以到发布页手动下载 APK。']], [42, 128]),
       Spacer(1, 6*mm), Paragraph('祝使用愉快！', S(12, BLUE, 18, 1))]
+
+# 每一章（从标题到下一章标题前）尽量排在同一页
+cover_end = next(i for i, x in enumerate(E) if isinstance(x, PageBreak)) + 1
+grouped, cur = E[:cover_end], []
+for x in E[cover_end:]:
+    if isinstance(x, Paragraph) and x.style is h1 and cur:
+        grouped.append(KeepTogether(cur)); cur = []
+    cur.append(x)
+if cur: grouped.append(KeepTogether(cur))
+E = grouped
 
 def footer(canvas, d):
     if d.page == 1: return
