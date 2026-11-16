@@ -530,7 +530,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsIndex(vm: App
                 Column(Modifier.weight(1f)) {
                     Text(st.email ?: "未登录 · 预览模式", fontWeight = FontWeight.SemiBold, fontSize = 17.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     Text(
-                        if (st.email == null) "登录后才能修改，数据在安卓、iPad、网页之间同步" else "云端版本 v${st.version} · 改动自动同步",
+                        if (st.email == null) "登录后才能修改 · 三端自动同步" else "云端版本 v${st.version} · 改动自动同步",
                         fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 2,
                     )
                 }
