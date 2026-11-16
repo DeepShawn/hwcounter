@@ -89,7 +89,7 @@ fun LazyListScope.groupSections(c: SchoolClass, rules: ScoreRules, r: GroupAnaly
                     Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                         r.teams.sortedBy { it.name }.forEach { t ->
                             val v = w.rates[t.name]
-                            Box(Modifier.weight(1f).height(18.dp).clip(RoundedCornerShape(5.dp)).background(colorOf.getValue(t.name).copy(alpha = if (v == null) 0.08f else 0.18f + 0.82f * v.toFloat())), contentAlignment = Alignment.Center) {
+                            Box(Modifier.weight(1f).height(18.dp).clip(RoundedCornerShape(5.dp)).background(colorOf.getValue(t.name).copy(alpha = if (v == null) 0.06f else 0.12f + 0.88f * ((v.toFloat() - 0.5f) / 0.5f).coerceIn(0f, 1f))), contentAlignment = Alignment.Center) {
                                 if (t.name in w.winners) Text("★", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
                             }
                         }
@@ -104,7 +104,7 @@ fun LazyListScope.groupSections(c: SchoolClass, rules: ScoreRules, r: GroupAnaly
                         Text(t.name, fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
                     }
                 }
-                Text("颜色越深交齐率越高 · ★ 本周第一", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
+                Text("颜色越深交齐率越高（50% 以下最浅）· ★ 本周第一", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
             }
         }
     }

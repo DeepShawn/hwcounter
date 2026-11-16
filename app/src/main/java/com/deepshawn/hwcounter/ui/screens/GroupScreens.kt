@@ -50,6 +50,7 @@ import com.deepshawn.hwcounter.data.fmt
 import com.deepshawn.hwcounter.data.leaderOf
 import com.deepshawn.hwcounter.data.signed
 import com.deepshawn.hwcounter.data.leaderPeriods
+import com.deepshawn.hwcounter.data.latestRecharges
 import androidx.compose.foundation.clickable
 import kotlin.math.roundToInt
 import com.deepshawn.hwcounter.data.studentStats
@@ -307,14 +308,16 @@ fun GroupDetailScreen(vm: AppViewModel, data: AppData, name: String) {
                     }
                 }
                 if (info.leader != null && rules.leader.enabled) {
-                    top.yukonga.miuix.kmp.basic.SmallTitle("组长奖惩 · ${rules.leader.periodLabel} · 合计 ${lps.sumOf { it.points }.signed()}")
+                    val lastR = remember(c) { c.latestRecharges()[info.leader.id] }
+                    fun counted(t: Long) = lastR?.counts(t) ?: true
+                    top.yukonga.miuix.kmp.basic.SmallTitle("组长奖惩 · ${rules.leader.periodLabel} · 计入当前积分 ${lps.filter { counted(it.time) }.sumOf { it.points }.signed()}")
                     HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
                         Column(Modifier.padding(vertical = 6.dp)) {
                             if (lps.isEmpty()) Text("还没有可计算的记录", fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(16.dp))
                             lps.asReversed().take(12).forEach { lp ->
                                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(lp.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                        Text(lp.label + if (counted(lp.time)) "" else "（重置前，不计入）", fontWeight = FontWeight.Medium, fontSize = 14.sp, color = if (counted(lp.time)) colors.onSurface else colors.onSurfaceVariantSummary)
                                         Text(lp.parts.joinToString("；") { "${it.first} ${it.second.signed()}" }, fontSize = 11.5.sp, color = colors.onSurfaceVariantSummary, maxLines = 3)
                                     }
                                     Text(lp.points.signed(), fontWeight = FontWeight.Bold, color = if (lp.points > 0) Color(0xFF16A34A) else if (lp.points < 0) Color(0xFFE5384D) else colors.onSurfaceVariantSummary)
