@@ -574,7 +574,7 @@ object PdfReport {
                 listOf("100% 且无迟交（全勤）", st.perfect.signed()), listOf("95% 及以上", st.r95.signed()), listOf("90%–95%", st.r90.signed()),
                 listOf("80%–90%", if (st.r80 == 0.0) "0" else st.r80.signed()), listOf("70%–80%", st.r70.signed()), listOf("70% 以下", st.below.signed()),
             ))
-            if (st.spreadEnabled) p.text("区分度：按综合表现指数加减分。交齐率 ${(st.wHand * 100).toInt()}%、按时率 ${(st.wOnTime * 100).toInt()}%、优秀率 ${(st.wExcellent * 100).toInt()}%、缺交度 ${(st.wMissing * 100).toInt()}%、考试 ${(st.wExam * 100).toInt()}%、进步 ${(st.wProgress * 100).toInt()}% 各自换算成全班标准分后加权，指数高于平均的加分、低于平均的扣分，每人 = ${st.spreadK.fmt()} × 指数，最多 ±${st.spreadCap.fmt()} 分，全班合计约为 0。", 10f)
+            if (st.spreadEnabled) p.text("区分度：按综合表现指数加减分。交齐率 ${(st.wHand * 100).toInt()}%、按时率 ${(st.wOnTime * 100).toInt()}%、优秀率 ${(st.wExcellent * 100).toInt()}%、缺交度 ${(st.wMissing * 100).toInt()}%、考试 ${(st.wExam * 100).toInt()}%、进步 ${(st.wProgress * 100).toInt()}% 各自换算成全班标准分后加权，指数高于平均的加分、低于平均的扣分，每人 = ${st.spreadK.fmt()} × 指数（四舍五入到整数），最多 ±${st.spreadCap.fmt()} 分，全班合计约为 0。", 10f)
             p.text("另外：本轮缺交 ${st.manyMissing} 次及以上 ${st.manyMissingDelta.signed()}；最长连续缺交 ${st.streakMissing} 次及以上 ${st.streakMissingDelta.signed()}；交齐度比上一轮提高 ${(st.progressPts * 100).toInt()} 个百分点以上（进步奖）${st.progressDelta.signed()}；本轮平均交齐度第一的小组每人 ${st.groupDelta.signed()}。本轮应交少于 ${st.minExpected} 次的同学不参加结算。", 10f)
         }
     }

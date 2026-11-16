@@ -153,7 +153,7 @@ object Settle {
      *    考试 = 每场（得分率 − 全班平均）÷ 全班标准差 的平均；进步 = 本轮交齐率 − 上一轮交齐率。
      * 2. 每项换成全班标准分 z（限制在 ±2.5），缺交度取负号。
      * 3. C = Σ 权重 × z（没有考试成绩时按比例分给其他项），再减去全班平均使总和为 0。
-     * 4. 区分度分 D = spreadK × C，正分向上、负分向下取整，单人最多 ±spreadCap。
+     * 4. 区分度分 D = spreadK × C，四舍五入到整数（0.5 进位），单人最多 ±spreadCap；接近平均的同学得 0 分。
      */
     fun spread(c: SchoolClass, sr: SettlementRules, base: Map<String, SettlementLine>, prevRate: Map<String, Double>, exams: List<Exam>): Map<String, Spread> {
         val elig = c.students.filter { (base[it.id]?.expected ?: 0) >= sr.minExpected }
@@ -205,7 +205,8 @@ object Settle {
         ranked.forEachIndexed { i, e -> rankOf[e.key] = if (i > 0 && kotlin.math.abs(ranked[i - 1].value - e.value) < 1e-9) rankOf.getValue(ranked[i - 1].key) else i + 1 }
         return elig.associate { s ->
             val ci = c0.getValue(s.id) - mean
-            val pts = roundAway(sr.spreadK * ci).coerceIn(-sr.spreadCap, sr.spreadCap)
+            val raw = sr.spreadK * ci
+            val pts = (Math.signum(raw) * kotlin.math.floor(kotlin.math.abs(raw) + 0.5 + 1e-9)).coerceIn(-sr.spreadCap, sr.spreadCap)
             s.id to Spread(ci, rankOf.getValue(s.id), pts, z[s.id].orEmpty())
         }
     }

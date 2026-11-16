@@ -110,6 +110,8 @@ class SettlementTest {
         assertTrue(kotlin.math.abs(sp.sumOf { it.spread }) <= sp.size)
         assertTrue(sp.all { it.spread == kotlin.math.round(it.spread) && kotlin.math.abs(it.spread) <= 10.0 })
         assertTrue(line(p, "best").spread > 0 && line(p, "worst").spread < 0)
+        // 四舍五入：接近平均（|4C| < 0.5）的同学区分度为 0
+        assertTrue(sp.filter { kotlin.math.abs(4 * it.index!!) < 0.5 }.all { it.spread == 0.0 })
         // 应交太少不参加
         assertNull(line(p, "few").index)
         // 原因里写明区分度
