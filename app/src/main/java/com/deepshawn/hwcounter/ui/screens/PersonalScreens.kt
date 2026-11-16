@@ -200,7 +200,7 @@ fun PersonalReportScreen(vm: AppViewModel, data: AppData, studentId: String) {
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(listOf(s.no, s.group, s.gender).filter { it.isNotBlank() }.joinToString(" · "), fontSize = 13.sp, color = colors.onSurfaceSecondary)
-                        Text("积分第 ${r.rank}/${r.of} 名 · 超过 ${pct(r.percentile)} 的同学", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                        Text("积分第 ${r.rank}/${r.of} 名" + if (r.percentile >= 0.01 && r.rank > 1) " · 超过 ${pct(r.percentile)} 的同学" else if (r.rank == 1) " · 全班第一" else "", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
                         Text(animatedText(r.score.fmt()), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = colors.primary)
                     }
                     ProgressRing((r.attention.index / 100).toFloat(), size = 74.dp, stroke = 7.dp, track = colors.secondaryContainer, colors = listOf(levelColor(r.attention.level), levelColor(r.attention.level))) {
@@ -328,7 +328,7 @@ fun PersonalReportScreen(vm: AppViewModel, data: AppData, studentId: String) {
                     Row(Modifier.fillMaxWidth().clickable { kit.nav.push(Route.Exam(e.exam.id)) }.padding(horizontal = 16.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("${e.exam.subject} ${e.exam.title}".trim(), fontSize = 14.sp)
-                            Text(fmtDay(e.exam.date) + " · 全班平均 ${pct(e.classAvgPct)}" + (e.z?.let { " · ${if (it >= 0) "高于" else "低于"}平均 ${"%.1f".format(kotlin.math.abs(it))} 个标准差" } ?: ""), fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
+                            Text(df.format(Date(e.exam.date)) + " · 全班平均 ${pct(e.classAvgPct)}" + (e.z?.let { " · ${if (it >= 0) "高" else "低"}于平均 ${"%.1f".format(kotlin.math.abs(it))}σ" } ?: ""), fontSize = 11.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         Text(if (e.absent) "缺考" else e.score?.let { "${it.fmt()}" } ?: "—", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = if (e.pct != null && e.pct < 0.6) BAD else colors.onSurface)
                         Text(e.rank?.let { "  第$it" } ?: "", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
