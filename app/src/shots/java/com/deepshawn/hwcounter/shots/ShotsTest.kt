@@ -162,7 +162,7 @@ class ShotsTest {
                 top(); click("K线"); save("${prefix}_37e_stock_k")
                 click("3月"); waitStock(); save("${prefix}_37f_stock_3m")
                 click("1周"); waitStock(); save("${prefix}_37g_stock_1w")
-                rule.onAllNodes(hasText("No.202406")).onFirst().performClick(); waitStock(); save("${prefix}_38a_stock_detail"); scroll(); save("${prefix}_38b_stock_detail"); scroll(); save("${prefix}_38c_stock_detail"); back()
+                rule.onAllNodes(hasText("No.202406") and hasClickAction()).onFirst().performClick(); waitStock(); save("${prefix}_38a_stock_detail"); scroll(); save("${prefix}_38b_stock_detail"); scroll(); save("${prefix}_38c_stock_detail"); back()
                 top(); click("榜单")
             }
             top(); click("周杰"); save("${prefix}_36a_personal"); for (k in 1..5) { scroll(); save("${prefix}_36${('a' + k)}_personal") }; back()

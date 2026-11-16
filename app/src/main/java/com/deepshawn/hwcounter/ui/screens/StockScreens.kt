@@ -324,7 +324,7 @@ private fun Pill(q: AttentionStock.Quote, level: Attention.Level?, ui: StockUi, 
 /** 滚动行情条 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TickerTape(c: SchoolClass, b: AttentionStock.Board, sc: StockColors) {
+private fun TickerTape(c: SchoolClass, b: AttentionStock.Board, sc: StockColors, onOpen: (String) -> Unit) {
     val colors = MiuixTheme.colorScheme
     val items = c.students.mapNotNull { s -> b.stocks[s.id]?.let { s to it } }.sortedByDescending { abs(it.second.change) }.take(20)
     if (items.isEmpty()) return
@@ -332,6 +332,7 @@ private fun TickerTape(c: SchoolClass, b: AttentionStock.Board, sc: StockColors)
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(10.dp)).background(colors.secondaryContainer.copy(alpha = 0.6f)).padding(vertical = 7.dp).then(mod)) {
         (listOf(Triple("ATTN", b.market, null as Student?)) + items.map { Triple(ticker(it.first), it.second, it.first) }).forEach { (t, q, s) ->
             Spacer(Modifier.width(14.dp))
+            Row(if (s != null) Modifier.clickable { onOpen(s.id) } else Modifier, verticalAlignment = Alignment.CenterVertically) {
             Text(t, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             if (s != null) { Spacer(Modifier.width(3.dp)); Text(s.name, fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1) }
             Spacer(Modifier.width(5.dp))
@@ -339,6 +340,7 @@ private fun TickerTape(c: SchoolClass, b: AttentionStock.Board, sc: StockColors)
             Spacer(Modifier.width(4.dp))
             val ch = q.change
             Text((if (ch > 0.005) "▲" else if (ch < -0.005) "▼" else "■") + p2(abs(ch)), fontSize = 12.sp, color = sc.of(ch), fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
         }
         Spacer(Modifier.width(14.dp))
     }
@@ -357,7 +359,7 @@ fun LazyListScope.stockSections(
     if (c.students.isEmpty()) { item { EmptyState("📈", "还没有学生", "") }; return }
     item(key = "stk-span") { HTabs(spans.map { it.label }, spans.indexOf(ui.span), { ui.span = spans[it] }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), height = 36.dp) }
     if (board == null) { item(key = "stk-loading") { Text("正在计算行情…", Modifier.fillMaxWidth().padding(32.dp), textAlign = TextAlign.Center, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }; return }
-    item(key = "stk-tape") { Column(Modifier.padding(vertical = 6.dp)) { TickerTape(c, board, stockColors()) } }
+    item(key = "stk-tape") { Column(Modifier.padding(vertical = 6.dp)) { TickerTape(c, board, stockColors(), onOpen) } }
     item(key = "stk-market") {
         val sc = stockColors()
         val colors = MiuixTheme.colorScheme
