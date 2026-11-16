@@ -171,6 +171,8 @@ struct ScoreEntry: Codable, Identifiable, Equatable {
     var delta: Double
     var reason: String
     var time: Int64 = nowMillis()
+    /// 来自哪次结算（安卓结算写入，三端保留）
+    var settlementId: String? = nil
 
     init(studentId: String, delta: Double, reason: String) {
         self.studentId = studentId; self.delta = delta; self.reason = reason
@@ -182,6 +184,7 @@ struct ScoreEntry: Codable, Identifiable, Equatable {
         delta = try c.decodeIfPresent(Double.self, forKey: .delta) ?? 0
         reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
         time = try c.decodeIfPresent(Int64.self, forKey: .time) ?? nowMillis()
+        settlementId = try c.decodeIfPresent(String.self, forKey: .settlementId)
     }
 }
 
@@ -290,6 +293,8 @@ struct SchoolClass: Codable, Identifiable, Equatable {
     var groupLeaders: [String: String] = [:]
     /// 每月定期重置（与安卓 AutoReset.kt 同格式同算法）
     var autoReset: AutoReset? = nil
+    /// 结算记录（安卓生成；iPad 原样保留并同步）
+    var settlements: [JSONValue] = []
 
     init(name: String, emoji: String = "🎒", students: [Student] = []) {
         self.name = name; self.emoji = emoji; self.students = students
@@ -307,6 +312,7 @@ struct SchoolClass: Codable, Identifiable, Equatable {
         exams = (try? c.decodeIfPresent([Exam].self, forKey: .exams)) ?? []
         groupLeaders = (try? c.decodeIfPresent([String: String].self, forKey: .groupLeaders)) ?? [:]
         autoReset = try? c.decodeIfPresent(AutoReset.self, forKey: .autoReset)
+        settlements = (try? c.decodeIfPresent([JSONValue].self, forKey: .settlements)) ?? []
     }
 }
 

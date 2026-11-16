@@ -69,6 +69,8 @@ data class ScoreEntry(
     val delta: Double,
     val reason: String,
     val time: Long = System.currentTimeMillis(),
+    /** 来自哪次结算（撤销结算时一起删除） */
+    val settlementId: String? = null,
 )
 
 @Serializable
@@ -89,6 +91,8 @@ data class SchoolClass(
     val groupLeaders: Map<String, String> = emptyMap(),
     /** 每月定期重置（见 AutoReset.kt），null = 未设置 */
     val autoReset: AutoReset? = null,
+    /** 结算记录（见 Settlement.kt） */
+    val settlements: List<Settlement> = emptyList(),
 )
 
 /** 座位表：seats 为 学生id → 下标(行*cols+列)；frontAtTop 讲台是否在上方。三端同一格式 */
@@ -116,6 +120,8 @@ data class ScoreRules(
     val streakBonus: StreakBonus = StreakBonus(),
     /** 每次加减分取整：正分向上、负分向下 */
     val roundPoints: Boolean = true,
+    /** 结算规则 */
+    val settlement: SettlementRules = SettlementRules(),
 ) {
     fun of(s: HwStatus): Double = when (s) {
         HwStatus.NONE -> 0.0

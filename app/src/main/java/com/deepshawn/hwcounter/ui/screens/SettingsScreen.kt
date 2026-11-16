@@ -228,6 +228,34 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
             )
             Text("每次积分重置后重新开始计连续次数。修改后历史积分自动重算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
         }
+        group("结算规则", key = "settlement") {
+            val st = s.rules.settlement
+            fun sr(f: (com.deepshawn.hwcounter.data.SettlementRules) -> com.deepshawn.hwcounter.data.SettlementRules) = rules { it.copy(settlement = f(it.settlement)) }
+            Column(Modifier.padding(16.dp)) {
+                Text("按本轮交齐度（已交 + 优秀 + 迟交 ÷ 应交，请假不算应交）结算", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                RuleRow("全勤（100% 无迟交）", st.perfect, 1.0) { v -> sr { it.copy(perfect = v) } }
+                RuleRow("≥95%", st.r95, 1.0) { v -> sr { it.copy(r95 = v) } }
+                RuleRow("90%–95%", st.r90, 1.0) { v -> sr { it.copy(r90 = v) } }
+                RuleRow("80%–90%", st.r80, 1.0) { v -> sr { it.copy(r80 = v) } }
+                RuleRow("70%–80%", st.r70, 1.0) { v -> sr { it.copy(r70 = v) } }
+                RuleRow("<70%", st.below, 1.0) { v -> sr { it.copy(below = v) } }
+                RuleRow("缺交满几次", st.manyMissing.toDouble(), 1.0) { v -> if (v >= 0) sr { it.copy(manyMissing = v.toInt()) } }
+                RuleRow("  再加减", st.manyMissingDelta, 1.0) { v -> sr { it.copy(manyMissingDelta = v) } }
+                RuleRow("连续缺交满几次", st.streakMissing.toDouble(), 1.0) { v -> if (v >= 0) sr { it.copy(streakMissing = v.toInt()) } }
+                RuleRow("  再加减", st.streakMissingDelta, 1.0) { v -> sr { it.copy(streakMissingDelta = v) } }
+                RuleRow("进步奖（提高百分点）", st.progressPts * 100, 5.0) { v -> if (v >= 0) sr { it.copy(progressPts = v / 100) } }
+                RuleRow("  进步奖分数", st.progressDelta, 1.0) { v -> sr { it.copy(progressDelta = v) } }
+                RuleRow("小组第一每人", st.groupDelta, 1.0) { v -> sr { it.copy(groupDelta = v) } }
+                RuleRow("应交少于几次不结算", st.minExpected.toDouble(), 1.0) { v -> if (v >= 0) sr { it.copy(minExpected = v.toInt()) } }
+            }
+            SuperSwitch(checked = st.withMonthlyReset, onCheckedChange = { v -> sr { it.copy(withMonthlyReset = v) } }, title = "每月定期重置前自动结算", summary = "开启了“每月定期重置”的班级，每次重置前先结算上一轮，结算分计入新一轮")
+        }
+        group("计分规则通知", key = "notice") {
+            val ctx2 = androidx.compose.ui.platform.LocalContext.current
+            top.yukonga.miuix.kmp.extra.SuperArrow(title = "导出计分规则通知 PDF", summary = "按当前全部计分规则生成一份通知，可发给学生和家长", onClick = {
+                vm.currentClass(data)?.let { c -> runCatching { com.deepshawn.hwcounter.ui.screens.shareRulesNotice(ctx2, c, s.rules) } }
+            })
+        }
         group("未交连续递增扣分", key = "escalation") {
             val e = s.rules.escalation
             fun esc(f: (com.deepshawn.hwcounter.data.MissingEscalation) -> com.deepshawn.hwcounter.data.MissingEscalation) = rules { it.copy(escalation = f(it.escalation)) }

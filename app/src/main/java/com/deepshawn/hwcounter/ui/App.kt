@@ -128,6 +128,8 @@ sealed interface Route {
     data class Exam(val id: String) : Route
     data class ExamImport(val examId: String?) : Route
     data class BatchScore(val ids: List<String> = emptyList(), val reason: String = "") : Route
+    data class Ledger(val studentId: String? = null) : Route
+    data object Settlement : Route
 }
 
 class Nav(private val stack: MutableList<Route>, private val canOpen: (Route) -> Boolean = { true }) {
@@ -376,6 +378,8 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         is Route.Exam -> com.deepshawn.hwcounter.ui.screens.ExamDetailScreen(vm, data, route.id)
         is Route.ExamImport -> com.deepshawn.hwcounter.ui.screens.ExamImportScreen(vm, data, route.examId)
         is Route.BatchScore -> com.deepshawn.hwcounter.ui.screens.BatchScoreScreen(vm, data, route.ids, route.reason)
+        is Route.Ledger -> com.deepshawn.hwcounter.ui.screens.LedgerScreen(vm, data, route.studentId)
+        Route.Settlement -> com.deepshawn.hwcounter.ui.screens.SettlementScreen(vm, data)
     }
 }
 

@@ -96,7 +96,7 @@ data class LedgerRow(
     val assignmentId: String? = null,
     val rechargeId: String? = null,
 ) {
-    enum class Kind { MANUAL, AUTO, RECHARGE, EXAM }
+    enum class Kind { MANUAL, AUTO, RECHARGE, EXAM, SETTLE }
 }
 
 /** 某位学生的完整积分流水（新 → 旧） */
@@ -105,7 +105,7 @@ fun SchoolClass.ledger(rules: ScoreRules, studentId: String): List<LedgerRow> {
     val rows = ArrayList<LedgerRow>()
     val pts = autoPointDetails(rules, studentId)
     for (e in scores) if (e.studentId == studentId) {
-        rows += LedgerRow("m" + e.id, LedgerRow.Kind.MANUAL, e.time, rules.pt(e.delta), e.reason, e.countsAfter(last), entryId = e.id)
+        rows += LedgerRow("m" + e.id, if (e.settlementId != null) LedgerRow.Kind.SETTLE else LedgerRow.Kind.MANUAL, e.time, rules.pt(e.delta), e.reason, e.countsAfter(last), entryId = e.id)
     }
     for (a in assignments) {
         val st = a.statuses[studentId] ?: HwStatus.NONE
