@@ -25,6 +25,8 @@ data class GroupRankRules(
     val wDeduct: Double = 0.25,
     val wExcellent: Double = 0.15,
     val wExam: Double = 0.10,
+    /** both 加分和扣分 / plus 仅加分 / minus 仅扣分 */
+    val mode: String = "both",
 ) {
     val periodLabel: String get() = periodLabelOf(period)
 }
@@ -40,14 +42,14 @@ data class RankPeriod(val key: String, val label: String, val time: Long, val st
 
 private val HANDED_SET = setOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE)
 
-/** 名次 → 每人加减分 */
-fun GroupRankRules.pointsFor(rank: Int, worst: Int, n: Int): Double = when {
+/** 名次 → 每人加减分（按加减方式只留加分或扣分） */
+fun GroupRankRules.pointsFor(rank: Int, worst: Int, n: Int): Double = applyMode(mode, when {
     n >= 3 && rank == worst && rank > 1 -> last
     rank == 1 -> first
     rank == 2 -> second
     rank == 3 -> third
     else -> 0.0
-}
+})
 
 /** 全班每一段的小组排名（旧 → 新） */
 fun SchoolClass.groupRankPeriods(rules: ScoreRules): List<RankPeriod> {

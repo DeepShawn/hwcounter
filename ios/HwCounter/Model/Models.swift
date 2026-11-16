@@ -440,15 +440,20 @@ struct LeaderRules: Equatable {
     var enabled = true, period = "week"
     var clean = 3.0, low = 2.0, below = 1.0, above = -1.0, high = -2.0, veryHigh = -3.0
     var top = 1.0, bottom = -1.0, progress = 1.0, regress = -1.0, streakStep = 1.0, streakMax = 3, cap = 5.0
+    /// both 加分和扣分 / plus 仅加分 / minus 仅扣分
+    var mode = "both"
 }
+/// 加减方式：只留加分或扣分
+func applyMode(_ mode: String, _ x: Double) -> Double { mode == "plus" ? max(0, x) : mode == "minus" ? min(0, x) : x }
 /// 小组对抗排名（与安卓 GroupRank.kt、网页 model.js 同算法）：按周期给小组综合排名，按名次给整组每人加减分
 struct GroupRankRules: Equatable {
     var enabled = true, period = "week"
     var first = 2.0, second = 1.0, third = 0.0, last = -1.0
     var wRate = 0.5, wDeduct = 0.25, wExcellent = 0.15, wExam = 0.1
+    var mode = "both"
     func points(rank: Int, worst: Int, n: Int) -> Double {
-        if n >= 3 && rank == worst && rank > 1 { return last }
-        return rank == 1 ? first : rank == 2 ? second : rank == 3 ? third : 0
+        if n >= 3 && rank == worst && rank > 1 { return applyMode(mode, last) }
+        return applyMode(mode, rank == 1 ? first : rank == 2 ? second : rank == 3 ? third : 0)
     }
 }
 struct GroupStanding { var group: String; var rank: Int; var score: Double; var points: Double }
@@ -537,6 +542,7 @@ struct AppData: Codable, Equatable {
                 x.leader.streakStep = v["streakStep"]?.double ?? x.leader.streakStep
                 x.leader.streakMax = v["streakMax"]?.int ?? x.leader.streakMax
                 x.leader.cap = v["cap"]?.double ?? x.leader.cap
+                x.leader.mode = v["mode"]?.string ?? x.leader.mode
             }
             if let v = r?["groupRank"] {
                 x.groupRank.enabled = v["enabled"]?.bool ?? x.groupRank.enabled
@@ -549,6 +555,7 @@ struct AppData: Codable, Equatable {
                 x.groupRank.wDeduct = v["wDeduct"]?.double ?? x.groupRank.wDeduct
                 x.groupRank.wExcellent = v["wExcellent"]?.double ?? x.groupRank.wExcellent
                 x.groupRank.wExam = v["wExam"]?.double ?? x.groupRank.wExam
+                x.groupRank.mode = v["mode"]?.string ?? x.groupRank.mode
             }
             if let v = r?["review"] {
                 x.review.enabled = v["enabled"]?.bool ?? x.review.enabled
@@ -787,6 +794,8 @@ extension SchoolClass {
                 run[g] = k > 0 ? k + 1 : 1; lastSub[g] = sub; prevD[g] = d
                 let total = parts.reduce(0) { $0 + $1.1 }
                 if lr.cap > 0 && abs(total) > lr.cap { parts.append(("每段最多 ±\(f1(lr.cap))", (total > 0 ? lr.cap : -lr.cap) - total)) }
+                let capped = parts.reduce(0) { $0 + $1.1 }
+                if applyMode(lr.mode, capped) != capped { parts.append((lr.mode == "plus" ? "仅加分，不扣分" : "仅扣分，不加分", -capped)) }
                 out[leader.id, default: []].append(LeaderPeriod(group: g, key: key, label: label, time: last, perCapita: d, parts: parts))
             }
         }

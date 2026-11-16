@@ -34,9 +34,15 @@ data class LeaderRules(
     val streakStep: Double = 1.0,
     val streakMax: Int = 3,
     val cap: Double = 5.0,
+    /** both 加分和扣分 / plus 仅加分 / minus 仅扣分 */
+    val mode: String = "both",
 ) {
     val periodLabel: String get() = periodLabelOf(period)
 }
+
+/** 加减方式：both / plus（仅加分）/ minus（仅扣分） */
+fun modeLabelOf(mode: String) = when (mode) { "plus" -> "仅加分"; "minus" -> "仅扣分"; else -> "加分和扣分" }
+fun applyMode(mode: String, x: Double) = when (mode) { "plus" -> maxOf(0.0, x); "minus" -> minOf(0.0, x); else -> x }
 
 /** 组长某一段的奖惩 */
 data class LeaderPeriod(
@@ -135,6 +141,8 @@ fun SchoolClass.leaderPeriods(rules: ScoreRules): Map<String, List<LeaderPeriod>
             prevD[g] = d
             val total = parts.sumOf { it.second }
             if (lr.cap > 0 && kotlin.math.abs(total) > lr.cap) parts += "每段最多 ±${fmt2(lr.cap)}" to ((if (total > 0) lr.cap else -lr.cap) - total)
+            val capped = parts.sumOf { it.second }
+            if (applyMode(lr.mode, capped) != capped) parts += (if (lr.mode == "plus") "仅加分，不扣分" else "仅扣分，不加分") to -capped
             out.getOrPut(leader.id) { ArrayList() } += LeaderPeriod(leader.id, g, key, label, last, d, avg, parts)
         }
         // 没参加这一段的组：连续不中断，上一段保持
