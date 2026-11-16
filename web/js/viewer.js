@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from '../vendor
 import htm from '../vendor/htm.module.js';
 import {
   STATUS, normalizeData, summary, studentStats, compareStudentNumbers, autoPoints, ruleOf, fmtNum, signed, fmtDate,
-  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, leaderPeriods, leaderOf,
+  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, leaderPeriods, leaderOf, groupRankPeriods, groupRankPoints, defaultGroupRank,
 } from './model.js';
 import { api } from './cloud.js';
 
@@ -126,6 +126,7 @@ function ledger(c, rules, sid) {
     const d = examDelta(rules, e, sid);
     if (d) rows.push({ key: 'e' + e.id, t: e.date, d, title: `考试「${e.title}」${(e.absent || []).includes(sid) ? '缺考' : fmtNum(e.scores?.[sid] ?? 0) + ' 分'}`, kind: '考试', counts: !last || rechargeCounts(last, e.date) });
   }
+  for (const x of groupRankPoints(c, rules)[sid] || []) rows.push({ key: 'g' + x.period.key, t: x.period.time, d: x.points, title: `小组排名（${x.standing.group}）${x.period.label}第 ${x.standing.rank} 名（综合 ${Math.round(x.standing.score * 100)}）`, kind: '小组排名', counts: !last || rechargeCounts(last, x.period.time) });
   for (const p of leaderPeriods(c, rules)[sid] || []) if (p.points) rows.push({ key: 'l' + p.key, t: p.time, d: p.points, title: `组长（${p.group}）${p.label}：${p.parts.map(([t, v]) => `${t} ${signed(v)}`).join('；')}`, kind: '组长', counts: !last || rechargeCounts(last, p.time) });
   for (const r of c.recharges || []) if ((r.studentIds || []).includes(sid)) rows.push({ key: 'r' + r.id, t: r.effectiveAt ?? r.time, d: null, title: `积分重置为 ${fmtNum(r.target)}${r.note ? ' · ' + r.note : ''}`, kind: '重置', counts: true });
   return rows.sort((x, y) => y.t - x.t);
@@ -153,9 +154,17 @@ function groupBattle(c, rules) {
   }
   const st = studentStats(c, rules); const by = new Map(st.map((x) => [x.student.id, x.score]));
   const lead = leaderPeriods(c, rules); const last = latestRecharges(c);
+  const gr = { ...defaultGroupRank(), ...(rules.groupRank || {}) };
+  const auto = {}; for (const g of names) for (const m of groups[g]) auto[m.id] = autoPoints(c, rules, m.id);
+  const ded = Object.fromEntries(names.map((g) => [g, groups[g].reduce((n, m) => n + Object.values(auto[m.id]).filter((v) => v < 0).reduce((a, v) => a - v, 0), 0) / groups[g].length]));
+  const exc = Object.fromEntries(names.map((g) => { let e = 0; let n = 0; for (const a of sorted) for (const m of groups[g]) { const k = a.statuses[m.id] || 'NONE'; if (k !== 'NONE' && k !== 'LEAVE') { n++; if (k === 'EXCELLENT') e++; } } return [g, n ? e / n : 0]; }));
+  const exm = Object.fromEntries(names.map((g) => { const v = []; for (const e of c.exams || []) for (const m of groups[g]) { const s = e.scores?.[m.id]; if (s != null && Number.isFinite(s)) v.push(s / (e.fullScore || 100)); } return [g, v.length ? v.reduce((a, b) => a + b, 0) / v.length : null]; }));
+  const maxD = Math.max(0, ...Object.values(ded)); const allExam = names.every((g) => exm[g] != null);
+  const scoreOf = (g) => { const x = t[g]; const dn = maxD <= 1e-9 ? 1 : 1 - ded[g] / maxD; let num = gr.wRate * (x.exp ? x.got / x.exp : 1) + gr.wDeduct * dn + gr.wExcellent * exc[g]; let den = gr.wRate + gr.wDeduct + gr.wExcellent; if (allExam) { num += gr.wExam * exm[g]; den += gr.wExam; } return Math.round((den <= 0 ? 0 : num / den) * 10000) / 10000; };
+  const scores = Object.fromEntries(names.map((g) => [g, scoreOf(g)]));
   return names.map((g) => { const x = t[g]; const l = leaderOf(c, g); const lps = l ? (lead[l.id] || []).filter((p) => !last[l.id] || rechargeCounts(last[l.id], p.time)) : [];
-    return { ...x, leader: l, rate: x.exp ? x.got / x.exp : null, avg: x.members.reduce((n, m) => n + (by.get(m.id) ?? 0), 0) / x.members.length, leaderPoints: lps.reduce((n, p) => n + p.points, 0), leaderPeriods: lps }; })
-    .sort((a, b) => (b.wins + b.ties / 2) - (a.wins + a.ties / 2) || (b.rate ?? 0) - (a.rate ?? 0) || b.avg - a.avg);
+    return { ...x, leader: l, score: scores[g], rank: 1 + names.filter((h) => scores[h] > scores[g]).length, deduct: ded[g], rate: x.exp ? x.got / x.exp : null, avg: x.members.reduce((n, m) => n + (by.get(m.id) ?? 0), 0) / x.members.length, leaderPoints: lps.reduce((n, p) => n + p.points, 0), leaderPeriods: lps }; })
+    .sort((a, b) => a.rank - b.rank || (b.wins + b.ties / 2) - (a.wins + a.ties / 2) || (a.name < b.name ? -1 : 1));
 }
 function examStats(c, e) {
   const vals = c.students.map((s) => e.scores?.[s.id]).filter((x) => x != null && Number.isFinite(x));
@@ -401,11 +410,14 @@ function Stats({ c, rules, open }) {
     <div class="meta">${c.name} · ${c.students.length} 人 · ${c.assignments.length} 次作业 · ${exams.length} 场考试</div>
     <div class="pad"><${Seg} items=${[['hw', '作业'], ['exam', '考试'], ['group', '小组'], ['heat', '热力图']]} value=${mode} onChange=${setMode} /></div>
     ${mode === 'group' && (() => { const teams = groupBattle(c, rules); return teams.length ? html`
-      <${Group} title="小组对抗榜 · 每次作业比交齐率">${teams.map((x, i) => html`<${Cell} key=${x.name}
-        left=${html`<span class=${'rank' + (i < 3 ? ' top' : '')}>${['🥇', '🥈', '🥉'][i] || i + 1}</span>`}
+      <${Group} title="小组对抗排名 · 综合分">${teams.map((x) => html`<${Cell} key=${x.name}
+        left=${html`<span class=${'rank' + (x.rank <= 3 ? ' top' : '')}>${['🥇', '🥈', '🥉'][x.rank - 1] || x.rank}</span>`}
         title=${x.name + (x.leader ? ` · 组长 ${x.leader.name}` : '')}
-        sub=${`胜 ${x.wins}${x.ties ? ` · 并列 ${x.ties}` : ''} · 全组交齐 ${x.complete}/${x.played}${x.cur >= 2 ? ` · 连续 ${x.cur}` : ''} · 均分 ${fmtNum(x.avg)}`}
-        right=${html`<b style=${{ color: rateColor(x.rate) }}>${pct(x.rate)}</b>`} onClick=${() => open({ view: 'group', id: x.name })} />`)}</${Group}>
+        sub=${`交齐 ${pct(x.rate)} · 人均扣分 ${fmtNum(x.deduct)} · 胜 ${x.wins}${x.ties ? ` · 并列 ${x.ties}` : ''} · 全组交齐 ${x.complete}/${x.played} · 均分 ${fmtNum(x.avg)}`}
+        right=${html`<b style=${{ color: 'var(--accent)', fontSize: '18px' }}>${Math.round(x.score * 100)}</b>`} onClick=${() => open({ view: 'group', id: x.name })} />`)}</${Group}>
+      ${(() => { const ps = groupRankPeriods(c, rules); if (!ps.length) return ''; const p = ps[ps.length - 1]; return html`<${Group} title=${`本期排名 · ${p.label}`}>${p.standings.map((st) => html`<${Cell} key=${'p' + st.group}
+        left=${html`<span class="rank">${st.rank}</span>`} title=${st.group} sub=${`综合 ${Math.round(st.score * 100)} · 交齐 ${pct(st.rate)} · 人均扣分 ${fmtNum(st.deduct)}`}
+        right=${html`<b style=${{ color: st.points > 0 ? '#16a34a' : st.points < 0 ? '#e5384d' : 'var(--sub)' }}>${st.points ? '每人 ' + signed(st.points) : '0'}</b>`} />`)}</${Group}>`; })()}
       ${teams.some((x) => x.leader) && html`<${Group} title="组长奖惩（计入当前积分）">${teams.filter((x) => x.leader).sort((a, b) => b.leaderPoints - a.leaderPoints).map((x) => html`<${Cell} key=${'l' + x.name}
         title=${`${x.leader.name} · ${x.name}`} sub=${`${x.leaderPeriods.length} 段`} right=${html`<b style=${{ color: x.leaderPoints > 0 ? '#16a34a' : x.leaderPoints < 0 ? '#e5384d' : 'var(--sub)' }}>${signed(x.leaderPoints)}</b>`} onClick=${() => open({ view: 'student', id: x.leader.id })} />`)}</${Group}>`}`
       : html`<${Empty} emoji="👥" text="还没有小组（每组至少 2 人）" />`; })()}

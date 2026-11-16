@@ -58,23 +58,63 @@ fun LazyListScope.groupSections(c: SchoolClass, rules: ScoreRules, r: GroupAnaly
     val colorOf = r.teams.map { it.name }.sorted().withIndex().associate { (i, g) -> g to teamColor(i) }
 
     // ---- 对抗榜 ----
-    item(key = "grp-board-title") { SmallTitle("小组对抗榜 · 每次作业比交齐率") }
+    item(key = "grp-board-title") { SmallTitle("小组对抗排名 · 综合分（交齐 50% · 少扣分 25% · 优秀 15% · 考试 10%）") }
     itemsIndexed(r.teams, key = { _, t -> "grp-" + t.name }) { i, t ->
         val colors = MiuixTheme.colorScheme
         Row(Modifier.listCell(i, r.teams.size).clickable { onGroup(t.name) }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(listOf("🥇", "🥈", "🥉").getOrElse(i) { "${i + 1}" }, Modifier.width(30.dp), fontSize = if (i < 3) 20.sp else 15.sp, fontWeight = FontWeight.Bold, color = colors.onSurfaceVariantSummary)
+            Text(listOf("🥇", "🥈", "🥉").getOrElse(t.rank - 1) { "${t.rank}" }, Modifier.width(30.dp), fontSize = if (t.rank <= 3) 20.sp else 15.sp, fontWeight = FontWeight.Bold, color = colors.onSurfaceVariantSummary)
             Box(Modifier.size(10.dp).clip(CircleShape).background(colorOf.getValue(t.name)))
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(t.name + (t.leader?.let { " · 组长 ${it.name}" } ?: ""), fontWeight = FontWeight.Medium, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "胜 ${t.wins}" + (if (t.ties > 0) " · 并列 ${t.ties}" else "") + " · 周冠军 ${t.weekWins} · 全组交齐 ${t.complete}/${t.played}" + (if (t.completeStreak >= 2) " · 连续 ${t.completeStreak}" else ""),
+                    "交齐 ${pc(t.rate)} · 人均扣分 ${t.deductPerCapita.fmt()} · 优秀 ${pc(t.excellentRate)}" + (t.examPct?.let { " · 考试 ${pc(it)}" } ?: "") +
+                        "\n胜 ${t.wins}" + (if (t.ties > 0) " · 并列 ${t.ties}" else "") + " · 周冠军 ${t.weekWins} · 全组交齐 ${t.complete}/${t.played}" + (if (rules.groupRank.enabled && t.rankPoints != 0.0) " · 排名奖惩每人 ${t.rankPoints.signed()}" else ""),
                     fontSize = 11.5.sp, color = colors.onSurfaceVariantSummary, maxLines = 2,
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(pc(t.rate), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = colorOf.getValue(t.name))
-                Text("均分 ${t.avgScore.fmt()}", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
+                Text("${(t.score * 100).roundToInt()}", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = colorOf.getValue(t.name))
+                Text("综合 · 均分 ${t.avgScore.fmt()}", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
+            }
+        }
+    }
+
+    // ---- 本期排名、历次排名（整组加减分） ----
+    if (rules.groupRank.enabled && r.periods.isNotEmpty()) group("本期排名 · ${rules.groupRank.periodLabel} · ${r.periods.last().label}", key = "grp-now") {
+        val colors = MiuixTheme.colorScheme
+        Column(Modifier.padding(vertical = 6.dp)) {
+            r.periods.last().standings.forEach { st ->
+                Row(Modifier.fillMaxWidth().clickable { onGroup(st.group) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("第 ${st.rank} 名", Modifier.width(60.dp), fontWeight = FontWeight.SemiBold, color = colors.onSurfaceVariantSummary, fontSize = 13.sp)
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(colorOf[st.group] ?: colors.primary)); Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(st.group, fontWeight = FontWeight.Medium)
+                        Text("综合 ${(st.score * 100).roundToInt()} · 交齐 ${pc(st.rate)} · 人均扣分 ${st.deduct.fmt()} · 优秀 ${pc(st.excellent)}" + (st.exam?.let { " · 考试 ${pc(it)}" } ?: ""), fontSize = 11.5.sp, color = colors.onSurfaceVariantSummary, maxLines = 2)
+                    }
+                    Text(if (st.points == 0.0) "0" else "每人 ${st.points.signed()}", fontWeight = FontWeight.Bold, color = if (st.points > 0) UP else if (st.points < 0) DOWN else colors.onSurfaceVariantSummary)
+                }
+            }
+            Text("第 1 名全组每人 ${rules.groupRank.first.signed()}、第 2 名 ${rules.groupRank.second.signed()}、第 3 名 ${rules.groupRank.third.signed()}；3 组以上时最后一名 ${rules.groupRank.last.signed()}。实时计入积分（设置 → 作业计分 → 小组对抗排名）", fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+        }
+    }
+    if (rules.groupRank.enabled && r.periods.size >= 2) group("历次排名", key = "grp-history") {
+        val colors = MiuixTheme.colorScheme
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            r.periods.asReversed().take(12).forEach { p ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(p.label, Modifier.width(96.dp), fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        p.standings.forEach { st ->
+                            val col = colorOf[st.group] ?: colors.primary
+                            Text(
+                                "${st.rank}. ${st.group}" + if (st.points != 0.0) " ${st.points.signed()}" else "",
+                                fontSize = 12.sp, fontWeight = if (st.rank == 1) FontWeight.Bold else FontWeight.Normal, color = col,
+                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(col.copy(alpha = if (st.rank == 1) 0.18f else 0.08f)).padding(horizontal = 8.dp, vertical = 3.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
     }

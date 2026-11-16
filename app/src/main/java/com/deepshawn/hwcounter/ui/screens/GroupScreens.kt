@@ -290,6 +290,25 @@ fun GroupDetailScreen(vm: AppViewModel, data: AppData, name: String) {
                         }
                     }
                 }
+                val mine = rep.periods.mapNotNull { p -> p.standings.firstOrNull { it.group == name }?.let { p to it } }
+                if (rules.groupRank.enabled && mine.isNotEmpty()) {
+                    val memberReset = remember(c) { info.members.firstOrNull()?.let { c.latestRecharges()[it.id] } }
+                    val total = mine.filter { (p, _) -> memberReset?.counts(p.time) ?: true }.sumOf { it.second.points }
+                    top.yukonga.miuix.kmp.basic.SmallTitle("小组排名 · ${rules.groupRank.periodLabel} · 每人计入 ${total.signed()}")
+                    HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                        Column(Modifier.padding(vertical = 6.dp)) {
+                            mine.asReversed().take(12).forEach { (p, st) ->
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(p.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                        Text("第 ${st.rank} / ${p.standings.size} 名 · 综合 ${(st.score * 100).roundToInt()} · 交齐 ${pctText(st.rate.toFloat())} · 人均扣分 ${st.deduct.fmt()}", fontSize = 11.5.sp, color = colors.onSurfaceVariantSummary)
+                                    }
+                                    Text(if (st.points == 0.0) "0" else st.points.signed(), fontWeight = FontWeight.Bold, color = if (st.points > 0) Color(0xFF16A34A) else if (st.points < 0) Color(0xFFE5384D) else colors.onSurfaceVariantSummary)
+                                }
+                            }
+                        }
+                    }
+                }
                 if (up.isNotEmpty() || down.isNotEmpty()) {
                     top.yukonga.miuix.kmp.basic.SmallTitle("组内进步与退步")
                     HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {

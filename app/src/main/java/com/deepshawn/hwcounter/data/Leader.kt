@@ -35,7 +35,7 @@ data class LeaderRules(
     val streakMax: Int = 3,
     val cap: Double = 5.0,
 ) {
-    val periodLabel: String get() = when (period) { "assignment" -> "每次作业"; "day" -> "每天"; "month" -> "每月"; else -> "每周" }
+    val periodLabel: String get() = periodLabelOf(period)
 }
 
 /** 组长某一段的奖惩 */
@@ -49,9 +49,15 @@ data class LeaderPeriod(
 }
 
 /** 某次作业所在的段 */
-fun LeaderRules.periodKey(a: Assignment): Pair<String, String> {
-    if (period == "assignment") return a.id to "「${a.title}」"
-    val cal = Calendar.getInstance().apply { timeInMillis = a.createdAt; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
+fun LeaderRules.periodKey(a: Assignment): Pair<String, String> = periodKeyOf(period, a)
+
+/** 某次作业所在的段：单次作业以作业为段，其余按日 / 周（周一起）/ 月 */
+fun periodKeyOf(period: String, a: Assignment): Pair<String, String> =
+    if (period == "assignment") a.id to "「${a.title}」" else periodKeyAt(period, a.createdAt)
+
+/** 某个时间所在的日 / 周 / 月 */
+fun periodKeyAt(period: String, t: Long): Pair<String, String> {
+    val cal = Calendar.getInstance().apply { timeInMillis = t; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }
     return when (period) {
         "day" -> "${cal.get(Calendar.YEAR)}-${cal.get(Calendar.MONTH) + 1}-${cal.get(Calendar.DAY_OF_MONTH)}" to "${cal.get(Calendar.MONTH) + 1}月${cal.get(Calendar.DAY_OF_MONTH)}日"
         "month" -> "${cal.get(Calendar.YEAR)}-${cal.get(Calendar.MONTH) + 1}" to "${cal.get(Calendar.YEAR)}年${cal.get(Calendar.MONTH) + 1}月"
@@ -64,6 +70,8 @@ fun LeaderRules.periodKey(a: Assignment): Pair<String, String> {
         }
     }
 }
+
+fun periodLabelOf(period: String) = when (period) { "assignment" -> "每次作业"; "day" -> "每天"; "month" -> "每月"; else -> "每周" }
 
 private fun fmt2(x: Double): String { val r = Math.round(x * 10) / 10.0; return if (r == Math.floor(r)) r.toLong().toString() else r.toString() }
 

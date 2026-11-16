@@ -233,6 +233,35 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                         }
                     }
                 }
+                group("小组对抗排名（整组加减分）", key = "groupRank") {
+                    val gr = s.rules.groupRank
+                    fun gk(f: (com.deepshawn.hwcounter.data.GroupRankRules) -> com.deepshawn.hwcounter.data.GroupRankRules) = rules { it.copy(groupRank = f(it.groupRank)) }
+                    SuperSwitch(
+                        checked = gr.enabled, onCheckedChange = { v -> gk { it.copy(enabled = v) } }, title = "按小组综合排名整组加减分",
+                        summary = "${gr.periodLabel}给小组排一次名：第 1 名全组每人 ${gr.first.signed()}，第 2 名 ${gr.second.signed()}，最后一名 ${gr.last.signed()}",
+                    )
+                    if (gr.enabled) {
+                        val periods = listOf("assignment", "day", "week", "month")
+                        SuperDropdown(
+                            items = listOf("每次作业", "每天", "每周", "每月"), selectedIndex = periods.indexOf(gr.period).coerceAtLeast(2), title = "排名周期",
+                            onSelectedIndexChange = { i -> gk { it.copy(period = periods[i]) } },
+                        )
+                        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                            RuleRow("第 1 名每人", gr.first, 1.0) { v -> gk { it.copy(first = v) } }
+                            RuleRow("第 2 名每人", gr.second, 1.0) { v -> gk { it.copy(second = v) } }
+                            RuleRow("第 3 名每人", gr.third, 1.0) { v -> gk { it.copy(third = v) } }
+                            RuleRow("最后一名每人", gr.last, 1.0) { v -> gk { it.copy(last = v) } }
+                            RuleRow("交齐率权重 %", gr.wRate * 100, 5.0) { v -> if (v >= 0) gk { it.copy(wRate = v / 100) } }
+                            RuleRow("少扣分权重 %", gr.wDeduct * 100, 5.0) { v -> if (v >= 0) gk { it.copy(wDeduct = v / 100) } }
+                            RuleRow("优秀率权重 %", gr.wExcellent * 100, 5.0) { v -> if (v >= 0) gk { it.copy(wExcellent = v / 100) } }
+                            RuleRow("考试权重 %", gr.wExam * 100, 5.0) { v -> if (v >= 0) gk { it.copy(wExam = v / 100) } }
+                            Text(
+                                "· 综合分 = 交齐率 + 少扣分（人均作业扣分，扣分最多的组为 0、零扣分为 1）+ 优秀率 + 考试得分率，按权重加权；这一段没有考试或按每次作业排名时，考试权重按比例分给其他项\n· 综合分相同名次并列；最后一名只在 3 组以上时才有\n· 整组每位同学都加减（包括请假的同学）；每人积分重置后只算重置之后的段\n· 修改后历史积分自动重算",
+                                fontSize = 11.sp, lineHeight = 17.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp),
+                            )
+                        }
+                    }
+                }
                 group("连续交作业奖励", key = "streakBonus") {
                     val b = s.rules.streakBonus
                     fun sb(f: (com.deepshawn.hwcounter.data.StreakBonus) -> com.deepshawn.hwcounter.data.StreakBonus) = rules { it.copy(streakBonus = f(it.streakBonus)) }
@@ -583,7 +612,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsIndex(vm: App
         SuperArrow(
             title = "作业计分",
             summary = "初始 ${r.initial.fmt()} 分 · " + (if (r.escalation.enabled) "未交递增扣分" else "未交 ${r.missing.signed()}") +
-                " · 复审" + (if (r.review.enabled) "不合格 ×${r.review.multiplier.fmt()}" else "已关闭") + (if (r.leader.enabled) " · 组长${r.leader.periodLabel}奖惩" else "") + if (r.streakBonus.enabled) " · 连续交奖励" else "",
+                " · 复审" + (if (r.review.enabled) "不合格 ×${r.review.multiplier.fmt()}" else "已关闭") + (if (r.leader.enabled) " · 组长${r.leader.periodLabel}奖惩" else "") + (if (r.groupRank.enabled) " · 小组${r.groupRank.periodLabel}排名" else "") + if (r.streakBonus.enabled) " · 连续交奖励" else "",
             onClick = { open("scoring") },
         )
         SuperArrow(title = "考试计分", summary = if (r.exam.enabled) "按得分率分 ${r.exam.bands.size} 档自动加减积分" else "已关闭", onClick = { open("exam") })

@@ -17,7 +17,9 @@ export const defaultStreakBonus = () => ({ enabled: true, after: 5, bonus: 1, la
 export const defaultReview = () => ({ enabled: true, multiplier: 2 });
 /** 组长奖惩（与安卓 Leader.kt 同算法）：按周期（assignment / day / week / month）看小组人均作业扣分 */
 export const defaultLeader = () => ({ enabled: true, period: 'week', clean: 3, low: 2, below: 1, above: -1, high: -2, veryHigh: -3, top: 1, bottom: -1, progress: 1, regress: -1, streakStep: 1, streakMax: 3, cap: 5 });
-export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true, review: defaultReview(), leader: defaultLeader() });
+/** 小组对抗排名（与安卓 GroupRank.kt 同算法）：按周期给小组综合排名，按名次给整组每人加减分 */
+export const defaultGroupRank = () => ({ enabled: true, period: 'week', first: 2, second: 1, third: 0, last: -1, wRate: 0.5, wDeduct: 0.25, wExcellent: 0.15, wExam: 0.1 });
+export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true, review: defaultReview(), leader: defaultLeader(), groupRank: defaultGroupRank() });
 /** 这位同学这次作业是否复审不合格（只有状态仍是未交时才算） */
 export const failedReview = (a, sid) => (a.reviewFailed || []).includes(sid) && a.statuses[sid] === 'MISSING';
 /** 正分向上取整、负分向下取整（与安卓 roundAway 一致） */
@@ -45,6 +47,7 @@ export function normalizeData(d) {
   out.settings.rules.streakBonus = { ...defaultStreakBonus(), ...(out.settings.rules.streakBonus || {}) };
   out.settings.rules.review = { ...defaultReview(), ...(out.settings.rules.review || {}) };
   out.settings.rules.leader = { ...defaultLeader(), ...(out.settings.rules.leader || {}) };
+  out.settings.rules.groupRank = { ...defaultGroupRank(), ...(out.settings.rules.groupRank || {}) };
   out.settings.ai = { ...base.settings.ai, ...(out.settings.ai || {}) };
   out.classes = (out.classes || []).map((c) => ({
     id: newId(), emoji: '🎒', students: [], assignments: [], scores: [], ...c,
@@ -167,7 +170,12 @@ const f1 = (x) => { const r = Math.round(x * 10) / 10; return Number.isInteger(r
 /** 某次作业所在的段：[key, 显示名] */
 export function periodKey(lr, a) {
   if (lr.period === 'assignment') return [a.id, `「${a.title}」`];
-  const d = new Date(a.createdAt); d.setHours(0, 0, 0, 0);
+  return periodKeyAt(lr.period, a.createdAt);
+}
+/** 某个时间所在的日 / 周 / 月 */
+export function periodKeyAt(period, t) {
+  const lr = { period };
+  const d = new Date(t); d.setHours(0, 0, 0, 0);
   if (lr.period === 'day') return [`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`, `${d.getMonth() + 1}月${d.getDate()}日`];
   if (lr.period === 'month') return [`${d.getFullYear()}-${d.getMonth() + 1}`, `${d.getFullYear()}年${d.getMonth() + 1}月`];
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
@@ -234,6 +242,58 @@ export function leaderPeriods(c, rules) {
   return out;
 }
 
+const HANDED_K = new Set(['SUBMITTED', 'EXCELLENT', 'LATE']);
+/** 名次 → 每人加减分 */
+export const rankPoints = (gr, rank, worst, n) => (n >= 3 && rank === worst && rank > 1 ? gr.last : rank === 1 ? gr.first : rank === 2 ? gr.second : rank === 3 ? gr.third : 0);
+/** 全班每一段的小组排名（旧 → 新）：[{ key, label, time, standings: [{ group, rank, score, points, rate, deduct, excellent, exam }] }] */
+export function groupRankPeriods(c, rules) {
+  const gr = { ...defaultGroupRank(), ...(rules.groupRank || {}) };
+  if (!gr.enabled) return [];
+  const groups = {};
+  for (const s of c.students) if (s.group) (groups[s.group] = groups[s.group] || []).push(s);
+  for (const g of Object.keys(groups)) if (groups[g].length < 2) delete groups[g];
+  if (Object.keys(groups).length < 2) return [];
+  const auto = {}; for (const ms of Object.values(groups)) for (const m of ms) auto[m.id] = autoPoints(c, rules, m.id);
+  const sorted = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const buckets = new Map();
+  for (const a of sorted) { const [k, l] = periodKey(gr, a); if (!buckets.has(k)) buckets.set(k, { label: l, list: [] }); buckets.get(k).list.push(a); }
+  const examsBy = {};
+  if (gr.period !== 'assignment') for (const e of c.exams || []) { const k = periodKeyAt(gr.period, e.date)[0]; (examsBy[k] = examsBy[k] || []).push(e); }
+  const out = [];
+  for (const [key, { label, list }] of buckets) {
+    const raws = [];
+    for (const [g, ms] of Object.entries(groups)) {
+      const st = []; for (const a of list) for (const m of ms) { const k = a.statuses[m.id] || 'NONE'; if (k !== 'NONE' && k !== 'LEAVE') st.push(k); }
+      if (!st.length) continue;
+      let ded = 0; for (const m of ms) for (const a of list) { const p = auto[m.id][a.id] ?? 0; if (p < 0) ded -= p; }
+      const ex = []; for (const e of examsBy[key] || []) for (const m of ms) { const v = e.scores?.[m.id]; if (v != null && Number.isFinite(v)) ex.push(v / (e.fullScore || 100)); }
+      raws.push({ g, rate: st.filter((k) => HANDED_K.has(k)).length / st.length, deduct: ded / ms.length, exc: st.filter((k) => k === 'EXCELLENT').length / st.length, exam: ex.length ? ex.reduce((x, y) => x + y, 0) / ex.length : null });
+    }
+    if (raws.length < 2) continue;
+    const maxD = Math.max(...raws.map((r) => r.deduct));
+    const allExam = raws.every((r) => r.exam != null);
+    const scored = raws.map((r) => {
+      const dn = maxD <= 1e-9 ? 1 : 1 - r.deduct / maxD;
+      let num = gr.wRate * r.rate + gr.wDeduct * dn + gr.wExcellent * r.exc; let den = gr.wRate + gr.wDeduct + gr.wExcellent;
+      if (allExam) { num += gr.wExam * r.exam; den += gr.wExam; }
+      return { r, score: Math.round((den <= 0 ? 0 : num / den) * 10000) / 10000 };
+    });
+    const rankOf = (sc) => 1 + scored.filter((x) => x.score > sc).length;
+    const worst = Math.max(...scored.map((x) => rankOf(x.score)));
+    const standings = scored.map(({ r, score }) => { const rank = rankOf(score); return { group: r.g, rank, score, points: rankPoints(gr, rank, worst, scored.length), rate: r.rate, deduct: r.deduct, excellent: r.exc, exam: r.exam }; })
+      .sort((a, b) => a.rank - b.rank || (a.group < b.group ? -1 : a.group > b.group ? 1 : 0));
+    out.push({ key, label, time: list[list.length - 1].createdAt, standings });
+  }
+  return out;
+}
+/** 每位同学的小组排名加减分：学生 id → [{ period, standing, points }] */
+export function groupRankPoints(c, rules, periods = groupRankPeriods(c, rules)) {
+  const byGroup = {}; for (const s of c.students) if (s.group) (byGroup[s.group] = byGroup[s.group] || []).push(s);
+  const out = {};
+  for (const p of periods) for (const st of p.standings) if (st.points) for (const m of byGroup[st.group] || []) (out[m.id] = out[m.id] || []).push({ period: p, standing: st, points: st.points });
+  return out;
+}
+
 export function studentStats(c, rules) {
   let byRules = statsCache.get(c);
   if (!byRules) { byRules = new WeakMap(); statsCache.set(c, byRules); }
@@ -242,6 +302,7 @@ export function studentStats(c, rules) {
   const manual = {};
   for (const e of c.scores) if (entryCounts(e, last[e.studentId])) manual[e.studentId] = (manual[e.studentId] || 0) + pt(rules, e.delta);
   const lead = leaderPeriods(c, rules);
+  const rank = groupRankPoints(c, rules);
   const result = c.students.map((st) => {
     const r = last[st.id];
     const counts = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
@@ -250,7 +311,8 @@ export function studentStats(c, rules) {
     for (const a of c.assignments) { const s = a.statuses[st.id] || 'NONE'; counts[s]++; if (assignmentCounts(a, r)) auto += pts[a.id] ?? ruleOf(rules, s); }
     let examPts = 0;
     for (const e of c.exams || []) if (!r || rechargeCounts(r, e.date)) examPts += pt(rules, examDelta(rules, e, st.id));
-    const leaderPts = (lead[st.id] || []).filter((p) => !r || rechargeCounts(r, p.time)).reduce((n, p) => n + pt(rules, p.points), 0);
+    const leaderPts = (lead[st.id] || []).filter((p) => !r || rechargeCounts(r, p.time)).reduce((n, p) => n + pt(rules, p.points), 0)
+      + (rank[st.id] || []).filter((x) => !r || rechargeCounts(r, x.period.time)).reduce((n, x) => n + pt(rules, x.points), 0);
     return { student: st, score: shown(rules, (r ? r.target : rules.initial) + auto + (manual[st.id] || 0) + examPts + leaderPts), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };
   });
   byRules.set(rules, result);

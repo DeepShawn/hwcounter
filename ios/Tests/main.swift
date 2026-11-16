@@ -426,7 +426,7 @@ do {
         a.statuses = m; c.assignments.append(a)
     }
     c.groupLeaders = ["一组": "a1", "二组": "b1", "三组": "c1"]
-    var each = Rules(); each.leader.period = "assignment"
+    var each = Rules(); each.leader.period = "assignment"; each.groupRank.enabled = false
     let lp = c.leaderPeriods(each)
     check(lp["a1"]!.map(\.points) == [4, 4, 5, 5, 5, 5], "零扣分、最少、连续、每段上限")
     check(lp["b1"]![0].points == 1 && lp["b1"]![1].points == 5, "不高于平均；比上一段少")
@@ -434,13 +434,37 @@ do {
     check(lp["a2"] == nil && lp["x"] == nil, "组员、未分组没有组长奖惩")
     var off = each; off.leader.enabled = false
     check(c.stats(each).first { $0.id == "a1" }!.score - c.stats(off).first { $0.id == "a1" }!.score == 28, "计入积分")
-    var month = Rules(); month.leader.period = "month"
+    var month = Rules(); month.leader.period = "month"; month.groupRank.enabled = false
     let lm = c.leaderPeriods(month)
     check(lm["a1"]!.count == 1 && lm["a1"]![0].points == 4 && lm["c1"]![0].points == -4, "按月")
     let rc = c.recharging(each, ids: ["a1"], target: 100, time: 3 * 86_400_000 + 1, assignmentId: "a3")
     check(rc.leaderPeriods(each)["a1"]!.map(\.points) == [4, 4, 5, 3, 4, 5] && rc.stats(each).first { $0.id == "a1" }!.score == 112, "组长重置后重新算")
     let back = try! JSONDecoder().decode(SchoolClass.self, from: JSONEncoder().encode({ var x = c; x.reps = ["a1"]; return x }()))
     check(back.reps == ["a1"], "课代表可编码/解码")
+}
+// 小组对抗排名与整组加减分：与安卓 GroupRankTest、网页 grouprank.test.mjs 同一组用例
+do {
+    print("== 小组对抗排名")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    let ids = ["a1", "a2", "b1", "b2", "c1", "c2", "x"]
+    var c = SchoolClass(name: "一班", students: ids.map { id in var s = Student(id: id, no: id, name: id); s.group = ["a": "一组", "b": "二组", "c": "三组"][String(id.prefix(1))] ?? ""; return s })
+    for k in 0..<2 {
+        var a = Assignment(title: "作业\(k)", subject: ""); a.id = "a\(k)"; a.createdAt = Int64((k + 1) * 86_400_000)
+        var m: [String: String] = [:]; for id in ids { m[id] = "SUBMITTED" }
+        m["a1"] = "EXCELLENT"; m["c2"] = "MISSING"; if k == 1 { m["b2"] = "LATE" }
+        a.statuses = m; c.assignments.append(a)
+    }
+    var each = Rules(); each.leader.enabled = false; each.groupRank.period = "assignment"
+    let ps = c.groupRankPeriods(each)
+    check(ps.count == 2 && ps[0].standings.map(\.group) == ["一组", "二组", "三组"] && ps[0].standings.map(\.rank) == [1, 2, 3], "排名")
+    check(ps[0].standings.map(\.points) == [2, 1, -1], "第 1 +2、第 2 +1、最后 −1")
+    check(ps[0].standings[0].score == ((0.5 + 0.25 + 0.075) / 0.9 * 10000).rounded() / 10000, "综合分")
+    var off = each; off.groupRank.enabled = false
+    let on = c.stats(each), of = c.stats(off)
+    func d(_ id: String) -> Double { on.first { $0.id == id }!.score - of.first { $0.id == id }!.score }
+    check(d("a2") == 4 && d("c1") == -2 && d("x") == 0, "整组每人计入积分")
+    var month = each; month.groupRank.period = "month"
+    check(c.groupRankPeriods(month).count == 1, "按月")
 }
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

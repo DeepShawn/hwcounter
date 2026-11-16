@@ -119,6 +119,9 @@ fun SchoolClass.ledger(rules: ScoreRules, studentId: String): List<LedgerRow> {
         }
         if (d != 0.0) rows += LedgerRow("a" + a.id, LedgerRow.Kind.AUTO, a.createdAt, d, "${a.subject}「${a.title}」${st.label}$extra", a.countsAfter(last), assignmentId = a.id)
     }
+    for ((p, st, d) in groupRankPoints(rules)[studentId].orEmpty()) {
+        rows += LedgerRow("g" + p.key, LedgerRow.Kind.AUTO, p.time, rules.pt(d), "小组排名（${st.group}）${p.label}第 ${st.rank} 名（综合 ${Math.round(st.score * 100)}）", last?.counts(p.time) ?: true)
+    }
     for (lp in leaderPeriods(rules)[studentId].orEmpty()) {
         if (lp.points == 0.0) continue
         rows += LedgerRow("l" + lp.key, LedgerRow.Kind.AUTO, lp.time, rules.pt(lp.points), "组长（${lp.group}）${lp.label}：" + lp.parts.joinToString("；") { "${it.first} ${it.second.signed()}" }, last?.counts(lp.time) ?: true)
