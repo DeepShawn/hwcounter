@@ -42,7 +42,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, colorScheme: 'light' });
   await ctx.route('https://beasxxexggnjcocdbtdl.supabase.co/**', mock);
   const page = await ctx.newPage();
-  const errors = []; page.on('pageerror', (e) => errors.push(e.message)); page.on('console', (m) => { if (m.type() === 'error' && !m.text().startsWith('Failed to load resource')) errors.push(m.text()); });
+  const errors = []; globalThis.pageErrors = errors; page.on('pageerror', (e) => errors.push(e.message)); page.on('console', (m) => { if (m.type() === 'error' && !m.text().startsWith('Failed to load resource')) errors.push(m.text()); });
   const shot = async (n) => { await page.waitForTimeout(700); await page.screenshot({ path: `${OUT}/${n}.png`, fullPage: true }); };
   await page.goto(base);
 
@@ -89,17 +89,46 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await shot('6-scores');
   await page.click('.seg button:has-text("加减分记录")'); check(await page.isVisible('text=课堂表现好'), '加减分记录');
   await page.click('.tabbar button:has-text("统计")'); await page.waitForSelector('text=数据分析');
-  check(await page.isVisible('text=复审不合格'), '统计里有复审不合格人次');
+  // 作业：与手机端同样的分析项
+  await page.waitForSelector('text=主要发现');
+  for (const t of ['交齐率趋势', '每次作业构成', '状态分布', '学生分层', '交齐率分布（人数）', '需要关注', '进步之星 · 退步关注', '积分来源（本范围，全班合计）', '各科对比', '分析报告'])
+    check(await page.isVisible(`.st:has-text("${t}")`), `作业分析：${t}`);
+  check((await page.locator('.heat .hc').count()) === 12 * 12, '作业热力图');
+  check(await page.isVisible('text=有记录以来全部 12 次作业'), '范围：全部');
   await shot('7-stats');
-  await page.click('.seg button:has-text("小组")'); await page.waitForSelector('text=小组对抗排名');
-  check(await page.isVisible('text=组长奖惩（计入当前积分）') && await page.isVisible('text=本期排名'), '小组对抗排名、本期排名与组长奖惩');
-  await shot('7b-groups');
-  await page.click('.seg button:has-text("考试")'); await page.click('text=第一次月考'); await page.waitForSelector('text=成绩排名');
+  await page.click('.seg button:has-text("近 10 次")'); await page.waitForSelector('text=最近 10 次作业');
+  check((await page.locator('.heat .hc').count()) === 12 * 10 && await page.isVisible('text=对比再往前 10 次'), '范围：近 10 次，与上一时段对比');
+  await page.click('.seg button:has-text("按时间")'); await page.waitForSelector('.an-range');
+  check(await page.isVisible('.an-range b:has-text("本月")'), '范围：按月，可前后翻');
+  await page.click('.seg button:has-text("全部") >> nth=0');
+  await page.click('button:has-text("生成分析报告")'); await page.waitForSelector('.sheet');
+  check((await page.textContent('.sheet-txt')).includes('作业与成绩分析报告') && (await page.textContent('.sheet-txt')).includes('五、考试'), '一键生成文字分析报告（含考试）');
+  await shot('7a-report'); await page.click('.sheet-bg', { position: { x: 10, y: 10 } });
+  // 考试
+  await page.click('.seg button:has-text("考试")'); await page.waitForSelector('text=各场考试');
+  check(await page.isVisible('text=最近平均得分率') && await page.isVisible('text=学生考试明细（平均得分率从高到低）'), '考试分析');
+  await shot('7c-exam-stats');
+  await page.click('.cell:has-text("第一次月考")'); await page.waitForSelector('text=成绩排名');
   check(await page.isVisible('text=缺考 · 1 人'), '考试详情：排名与缺考');
   await shot('8-exam');
-  await page.goBack(); await page.click('.seg button:has-text("热力图")'); await page.waitForSelector('.heat');
-  check((await page.locator('.heat .hc').count()) === 12 * 12, '热力图');
-  await shot('9-heat');
+  await page.goBack(); await page.waitForSelector('text=各场考试');
+  // 关注：榜单与股票
+  await page.click('.seg button:has-text("关注")'); await page.waitForSelector('text=关注度指数（0–100，越高越需要关注）');
+  check((await page.locator('.an-att').count()) === 12, '关注榜：每位同学一行');
+  await shot('7d-attention');
+  await page.click('.an-tabs button:has-text("股票")'); await page.waitForSelector('text=ATTN', { timeout: 15000 });
+  check(await page.isVisible('text=关注指数 · 全班平均') && (await page.locator('.an-pill').count()) === 12, '股票模式：大盘与个股');
+  await page.click('.an-tabs button:has-text("K 线")'); check((await page.locator('.an-stock rect').count()) > 30, '股票模式：K 线');
+  await shot('7e-stock');
+  await page.click('.an-tabs button:has-text("小组 · 综合分")'); await page.waitForSelector('text=GRP', { timeout: 15000 });
+  check((await page.locator('.an-pill').count()) === 3, '股票模式：小组板块');
+  await page.click('.an-tabs button:has-text("个人 · 关注度")'); await page.click('.an-tabs button:has-text("走势")'); await page.click('.an-tabs button:has-text("榜单")');
+  // 小组
+  await page.click('.seg button:has-text("小组")'); await page.waitForSelector('text=小组对抗排名');
+  for (const t of ['本期排名', '历次排名', '每周对抗 · 交齐率最高的组胜出', '两组对决', '组长奖惩'])
+    check(await page.isVisible(`.st:has-text("${t}")`), `小组分析：${t}`);
+  await shot('7b-groups');
+  await page.click('.seg button:has-text("作业")');
   await page.click('.tabbar button:has-text("设置")'); await page.waitForSelector('text=主题配色');
   check((await page.locator('input:not([type=checkbox])').count()) === 0, '设置里没有任何输入框（只有个性化开关）');
   await page.click('.cell:has-text("新手提示")'); await page.waitForSelector('.guide');
@@ -121,4 +150,4 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await browser.close(); server.close();
   console.log(failures ? `\n${failures} 项失败` : '\n全部通过');
   process.exit(failures ? 1 : 0);
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch((e) => { console.error(e); if (globalThis.pageErrors?.length) console.error('页面错误：', globalThis.pageErrors.join(' | ')); process.exit(1); });

@@ -5,9 +5,10 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from '../vendor
 import htm from '../vendor/htm.module.js';
 import {
   STATUS, normalizeData, summary, studentStats, compareStudentNumbers, autoPoints, ruleOf, fmtNum, signed, fmtDate,
-  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, leaderPeriods, leaderOf, groupRankPeriods, groupRankPoints, defaultGroupRank,
+  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, leaderPeriods, leaderOf, groupRankPoints,
 } from './model.js';
 import { api } from './cloud.js';
+import { StatsPage } from './statspage.js';
 
 const html = htm.bind(h);
 
@@ -130,41 +131,6 @@ function ledger(c, rules, sid) {
   for (const p of leaderPeriods(c, rules)[sid] || []) if (p.points) rows.push({ key: 'l' + p.key, t: p.time, d: p.points, title: `组长（${p.group}）${p.label}：${p.parts.map(([t, v]) => `${t} ${signed(v)}`).join('；')}`, kind: '组长', counts: !last || rechargeCounts(last, p.time) });
   for (const r of c.recharges || []) if ((r.studentIds || []).includes(sid)) rows.push({ key: 'r' + r.id, t: r.effectiveAt ?? r.time, d: null, title: `积分重置为 ${fmtNum(r.target)}${r.note ? ' · ' + r.note : ''}`, kind: '重置', counts: true });
   return rows.sort((x, y) => y.t - x.t);
-}
-/** 小组对抗：每次作业比交齐率（与安卓 GroupAnalysis 一致的口径） */
-function groupBattle(c, rules) {
-  const groups = {};
-  for (const s of c.students) if (s.group) (groups[s.group] = groups[s.group] || []).push(s);
-  for (const g of Object.keys(groups)) if (groups[g].length < 2) delete groups[g];
-  const names = Object.keys(groups);
-  const rateOf = (ms, a) => { const st = ms.map((m) => a.statuses[m.id] || 'NONE').filter((k) => k !== 'NONE' && k !== 'LEAVE'); return st.length ? st.filter((k) => HANDED.has(k)).length / st.length : null; };
-  const sorted = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt);
-  const t = Object.fromEntries(names.map((g) => [g, { name: g, members: groups[g], wins: 0, ties: 0, exp: 0, got: 0, complete: 0, played: 0, cur: 0, longest: 0 }]));
-  for (const a of sorted) {
-    const rs = names.map((g) => [g, rateOf(groups[g], a)]).filter(([, r]) => r != null);
-    for (const g of names) {
-      const st = groups[g].map((m) => a.statuses[m.id] || 'NONE').filter((k) => k !== 'NONE' && k !== 'LEAVE');
-      if (!st.length) continue;
-      const x = t[g]; x.played++; x.exp += st.length; const got = st.filter((k) => HANDED.has(k)).length; x.got += got;
-      if (got === st.length) { x.complete++; x.cur++; x.longest = Math.max(x.longest, x.cur); } else x.cur = 0;
-    }
-    if (rs.length < 2) continue;
-    const best = Math.max(...rs.map(([, r]) => r)); const top = rs.filter(([, r]) => Math.abs(r - best) < 1e-9);
-    if (top.length === 1) t[top[0][0]].wins++; else top.forEach(([g]) => t[g].ties++);
-  }
-  const st = studentStats(c, rules); const by = new Map(st.map((x) => [x.student.id, x.score]));
-  const lead = leaderPeriods(c, rules); const last = latestRecharges(c);
-  const gr = { ...defaultGroupRank(), ...(rules.groupRank || {}) };
-  const auto = {}; for (const g of names) for (const m of groups[g]) auto[m.id] = autoPoints(c, rules, m.id);
-  const ded = Object.fromEntries(names.map((g) => [g, groups[g].reduce((n, m) => n + Object.values(auto[m.id]).filter((v) => v < 0).reduce((a, v) => a - v, 0), 0) / groups[g].length]));
-  const exc = Object.fromEntries(names.map((g) => { let e = 0; let n = 0; for (const a of sorted) for (const m of groups[g]) { const k = a.statuses[m.id] || 'NONE'; if (k !== 'NONE' && k !== 'LEAVE') { n++; if (k === 'EXCELLENT') e++; } } return [g, n ? e / n : 0]; }));
-  const exm = Object.fromEntries(names.map((g) => { const v = []; for (const e of c.exams || []) for (const m of groups[g]) { const s = e.scores?.[m.id]; if (s != null && Number.isFinite(s)) v.push(s / (e.fullScore || 100)); } return [g, v.length ? v.reduce((a, b) => a + b, 0) / v.length : null]; }));
-  const maxD = Math.max(0, ...Object.values(ded)); const allExam = names.every((g) => exm[g] != null);
-  const scoreOf = (g) => { const x = t[g]; const dn = maxD <= 1e-9 ? 1 : 1 - ded[g] / maxD; let num = gr.wRate * (x.exp ? x.got / x.exp : 1) + gr.wDeduct * dn + gr.wExcellent * exc[g]; let den = gr.wRate + gr.wDeduct + gr.wExcellent; if (allExam) { num += gr.wExam * exm[g]; den += gr.wExam; } return Math.round((den <= 0 ? 0 : num / den) * 10000) / 10000; };
-  const scores = Object.fromEntries(names.map((g) => [g, scoreOf(g)]));
-  return names.map((g) => { const x = t[g]; const l = leaderOf(c, g); const lps = l ? (lead[l.id] || []).filter((p) => !last[l.id] || rechargeCounts(last[l.id], p.time)) : [];
-    return { ...x, leader: l, score: scores[g], rank: 1 + names.filter((h) => scores[h] > scores[g]).length, deduct: ded[g], rate: x.exp ? x.got / x.exp : null, avg: x.members.reduce((n, m) => n + (by.get(m.id) ?? 0), 0) / x.members.length, leaderPoints: lps.reduce((n, p) => n + p.points, 0), leaderPeriods: lps }; })
-    .sort((a, b) => a.rank - b.rank || (b.wins + b.ties / 2) - (a.wins + a.ties / 2) || (a.name < b.name ? -1 : 1));
 }
 function examStats(c, e) {
   const vals = c.students.map((s) => e.scores?.[s.id]).filter((x) => x != null && Number.isFinite(x));
@@ -374,81 +340,9 @@ function Scores({ c, rules, open }) {
   </${Page}>`;
 }
 
-// ---------------- 统计 ----------------
-function Trend({ points }) {
-  if (points.length < 2) return null;
-  const W = 320; const H = 120; const P = 8;
-  const x = (i) => P + (W - 2 * P) * i / (points.length - 1);
-  const y = (v) => P + (H - 2 * P) * (1 - v);
-  const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
-  const avg = points.reduce((n, p) => n + p.v, 0) / points.length;
-  return html`<svg class="trend" viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label=${`交齐率走势，平均 ${pct(avg)}`}>
-    ${[0, 0.5, 1].map((g) => html`<line x1=${P} x2=${W - P} y1=${y(g)} y2=${y(g)} stroke="var(--line2)" stroke-width="1" />`)}
-    <line x1=${P} x2=${W - P} y1=${y(avg)} y2=${y(avg)} stroke="var(--sub)" stroke-dasharray="4 4" stroke-width="1" />
-    <path d=${`${d} L${x(points.length - 1)},${H - P} L${x(0)},${H - P} Z`} fill="var(--accent)" opacity="0.12" />
-    <path d=${d} fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
-  </svg>`;
-}
-function Stats({ c, rules, open }) {
-  const [mode, setMode] = useState('hw');
-  const st = useStats(c, rules);
-  const list = useMemo(() => [...c.assignments].sort((a, b) => a.createdAt - b.createdAt), [c]);
-  const sums = list.map((a) => summary(c, a));
-  const avg = sums.length ? sums.reduce((n, s) => n + s.rate, 0) / sums.length : null;
-  const tot = (k) => sums.reduce((n, s) => n + s.counts[k], 0);
-  const review = list.reduce((n, a) => n + (a.reviewFailed || []).filter((id) => failedReview(a, id)).length, 0);
-  const subjects = useMemo(() => {
-    const m = new Map();
-    list.forEach((a, i) => { const k = a.subject || '未分科'; if (!m.has(k)) m.set(k, []); m.get(k).push(sums[i].rate); });
-    return [...m.entries()].map(([k, v]) => [k, v.reduce((a, b) => a + b, 0) / v.length, v.length]).sort((a, b) => b[1] - a[1]);
-  }, [c]);
-  const most = [...st.list].filter((x) => x.missing > 0).sort((a, b) => b.missing - a.missing).slice(0, 10);
-  const best = [...st.list].map((x) => ({ x, r: handRate(c, x.student.id) })).filter((o) => o.r != null).sort((a, b) => b.r - a.r || b.x.counts.EXCELLENT - a.x.counts.EXCELLENT).slice(0, 10);
-  const exams = [...(c.exams || [])].sort((a, b) => b.date - a.date);
-  const recent = list.slice(-30);
-  return html`<${Page} title="统计" large="数据分析">
-    <div class="meta">${c.name} · ${c.students.length} 人 · ${c.assignments.length} 次作业 · ${exams.length} 场考试</div>
-    <div class="pad"><${Seg} items=${[['hw', '作业'], ['exam', '考试'], ['group', '小组'], ['heat', '热力图']]} value=${mode} onChange=${setMode} /></div>
-    ${mode === 'group' && (() => { const teams = groupBattle(c, rules); return teams.length ? html`
-      <${Group} title="小组对抗排名 · 综合分">${teams.map((x) => html`<${Cell} key=${x.name}
-        left=${html`<span class=${'rank' + (x.rank <= 3 ? ' top' : '')}>${['🥇', '🥈', '🥉'][x.rank - 1] || x.rank}</span>`}
-        title=${x.name + (x.leader ? ` · 组长 ${x.leader.name}` : '')}
-        sub=${`交齐 ${pct(x.rate)} · 人均扣分 ${fmtNum(x.deduct)} · 胜 ${x.wins}${x.ties ? ` · 并列 ${x.ties}` : ''} · 全组交齐 ${x.complete}/${x.played} · 均分 ${fmtNum(x.avg)}`}
-        right=${html`<b style=${{ color: 'var(--accent)', fontSize: '18px' }}>${Math.round(x.score * 100)}</b>`} onClick=${() => open({ view: 'group', id: x.name })} />`)}</${Group}>
-      ${(() => { const ps = groupRankPeriods(c, rules); if (!ps.length) return ''; const p = ps[ps.length - 1]; return html`<${Group} title=${`本期排名 · ${p.label}`}>${p.standings.map((st) => html`<${Cell} key=${'p' + st.group}
-        left=${html`<span class="rank">${st.rank}</span>`} title=${st.group} sub=${`综合 ${Math.round(st.score * 100)} · 交齐 ${pct(st.rate)} · 人均扣分 ${fmtNum(st.deduct)}`}
-        right=${html`<b style=${{ color: st.points > 0 ? '#16a34a' : st.points < 0 ? '#e5384d' : 'var(--sub)' }}>${st.points ? '每人 ' + signed(st.points) : '0'}</b>`} />`)}</${Group}>`; })()}
-      ${teams.some((x) => x.leader) && html`<${Group} title="组长奖惩（计入当前积分）">${teams.filter((x) => x.leader).sort((a, b) => b.leaderPoints - a.leaderPoints).map((x) => html`<${Cell} key=${'l' + x.name}
-        title=${`${x.leader.name} · ${x.name}`} sub=${`${x.leaderPeriods.length} 段`} right=${html`<b style=${{ color: x.leaderPoints > 0 ? '#16a34a' : x.leaderPoints < 0 ? '#e5384d' : 'var(--sub)' }}>${signed(x.leaderPoints)}</b>`} onClick=${() => open({ view: 'student', id: x.leader.id })} />`)}</${Group}>`}`
-      : html`<${Empty} emoji="👥" text="还没有小组（每组至少 2 人）" />`; })()}
-    ${mode === 'hw' && (list.length ? html`
-      <div class="tiles">
-        <${Tile} label="平均交齐率" value=${pct(avg)} color=${rateColor(avg)} />
-        <${Tile} label="未交人次" value=${tot('MISSING')} color="#e5384d" />
-        <${Tile} label="迟交人次" value=${tot('LATE')} color=${STATUS.LATE.color} />
-        <${Tile} label="优秀人次" value=${tot('EXCELLENT')} color=${STATUS.EXCELLENT.color} />
-        <${Tile} label="复审不合格" value=${review} color=${REVIEW.color} />
-        <${Tile} label="请假人次" value=${tot('LEAVE')} color=${STATUS.LEAVE.color} />
-      </div>
-      <${Group} title=${`交齐率走势 · 最近 ${Math.min(20, list.length)} 次`}><div class="chart"><${Trend} points=${list.slice(-20).map((a, i) => ({ v: summary(c, a).rate }))} />
-        <div class="axis"><span>${md(list.slice(-20)[0].createdAt)}</span><span>虚线为平均 ${pct(avg)}</span><span>${md(list[list.length - 1].createdAt)}</span></div></div></${Group}>
-      <${Group} title="各科交齐率">${subjects.map(([k, r, n]) => html`<div class="bar-row"><span class="bar-l">${k}</span><i><em style=${{ width: pct(r), background: rateColor(r) }}></em></i><b>${pct(r)}</b><small>${n} 次</small></div>`)}</${Group}>
-      ${most.length > 0 && html`<${Group} title="未交次数最多">${most.map((x) => html`<${Cell} key=${x.student.id} left=${html`<${Avatar} name=${x.student.name} size=${34} />`} title=${x.student.name} sub=${`交齐率 ${pct(handRate(c, x.student.id))}`} right=${html`<b style=${{ color: '#e5384d' }}>${x.missing} 次</b>`} onClick=${() => open({ view: 'student', id: x.student.id })} />`)}</${Group}>`}
-      <${Group} title="交齐率最高">${best.map(({ x, r }) => html`<${Cell} key=${x.student.id} left=${html`<${Avatar} name=${x.student.name} size=${34} />`} title=${x.student.name} sub=${`优秀 ${x.counts.EXCELLENT} 次`} right=${html`<b style=${{ color: rateColor(r) }}>${pct(r)}</b>`} onClick=${() => open({ view: 'student', id: x.student.id })} />`)}</${Group}>
-    ` : html`<${Empty} emoji="📈" text="登记几次作业后，这里会出现分析" />`)}
-    ${mode === 'exam' && (exams.length ? html`<${Group}>${exams.map((e) => { const x = examStats(c, e); return html`<${Cell} key=${e.id}
-        left=${html`<div class="subj" style=${{ background: avatarColor(e.subject || e.title) }}>${(e.subject || e.title).slice(0, 1)}</div>`}
-        title=${e.title} sub=${`${md(e.date)}${e.subject ? ' · ' + e.subject : ''} · ${x.n} 人参加${x.absent ? ` · 缺考 ${x.absent}` : ''} · 及格率 ${pct(x.pass)}`}
-        right=${html`<div class="rate"><b>${x.avg == null ? '—' : fmtNum(x.avg)}</b><small class="muted">平均 / ${fmtNum(x.full)}</small></div>`} onClick=${() => open({ view: 'exam', id: e.id })} />`; })}</${Group}>` : html`<${Empty} emoji="📝" text="还没有考试" />`)}
-    ${mode === 'heat' && (recent.length && c.students.length ? html`
-      <div class="legend">${['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'REVIEW', 'LEAVE', 'NONE'].map((k) => html`<span><i style=${{ background: SV(k).color, opacity: k === 'NONE' ? 0.3 : 1 }}></i>${SV(k).label}</span>`)}</div>
-      <section class="grp heat-wrap"><table class="heat">
-        <thead><tr><th class="hn"></th>${recent.map((a) => html`<th><button onClick=${() => open({ view: 'assign', id: a.id })} title=${a.title}>${md(a.createdAt)}</button></th>`)}<th>交齐率</th></tr></thead>
-        <tbody>${sortStudents(c.students).map((s) => { const r = handRate(c, s.id, recent); return html`<tr key=${s.id}><td class="hn"><button onClick=${() => open({ view: 'student', id: s.id })}>${s.name}</button></td>
-          ${recent.map((a) => { const k = view(a, s.id); return html`<td><i class="hc" title=${`${s.name} · ${a.title}：${SV(k).label}`} style=${{ background: SV(k).color, opacity: k === 'NONE' ? 0.25 : 0.92 }}></i></td>`; })}
-          <td class="hr" style=${{ color: rateColor(r) }}>${pct(r)}</td></tr>`; })}</tbody>
-      </table></section>` : html`<${Empty} emoji="🔥" text="登记几次作业后，这里会出现热力图" />`)}
-  </${Page}>`;
+// ---------------- 统计（与手机端同样的四个栏目和分析，见 statspage.js） ----------------
+function Stats(props) {
+  return h(StatsPage, { ...props, kit: { Page, Group, Cell, Seg, Tile, Empty, Avatar } });
 }
 function ExamList({ c, back, open }) {
   const exams = [...(c.exams || [])].sort((a, b) => b.date - a.date);
@@ -490,6 +384,7 @@ function Settings({ prefs, setPrefs, updatedAt, status, reload, showGuide }) {
       <div class="cell-pad"><${Seg} items=${[[0, '跟随系统'], [1, '浅色'], [2, '深色']]} value=${prefs.dark} onChange=${(v) => setPrefs({ dark: v })} /></div>
       <${Cell} title="界面动效" sub="页面滑入、卡片浮现、选项滑块动画" right=${html`<${Switch} label="界面动效" on=${prefs.animations} onChange=${(v) => setPrefs({ animations: v })} />`} />
       <${Cell} title="毛玻璃效果" sub="顶栏和底栏半透明模糊" right=${html`<${Switch} label="毛玻璃效果" on=${prefs.glass} onChange=${(v) => setPrefs({ glass: v })} />`} />
+      <${Cell} title="美股配色" sub=${prefs.usColors !== false ? '股票模式：绿涨红跌' : '股票模式：红涨绿跌'} right=${html`<${Switch} label="美股配色" on=${prefs.usColors !== false} onChange=${(v) => setPrefs({ usColors: v })} />`} />
       <div class="cell lbl"><div class="cell-main"><div class="cell-title">作业页布局</div></div></div>
       <div class="cell-pad"><${Seg} items=${[['grid', '网格'], ['list', '列表']]} value=${prefs.layout} onChange=${(v) => setPrefs({ layout: v })} /></div>
     </${Group}>
