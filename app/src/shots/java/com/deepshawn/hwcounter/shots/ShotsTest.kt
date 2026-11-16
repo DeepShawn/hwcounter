@@ -123,9 +123,8 @@ class ShotsTest {
         safe {
             top(); rule.onAllNodes(hasText("练习18", substring = true) and hasClickAction()).onFirst().performClick()
             save("${prefix}_07a_assignment"); scroll(); save("${prefix}_07b_assignment")
-            rule.onAllNodes(hasText("周杰") and hasClickAction()).onFirst().performTouchInput { longClick() }; save("${prefix}_07c_assignment_sheet")
+            back()
         }
-        home()
 
         tab("名单"); save("${prefix}_03_roster")
         safe { click("小组"); save("${prefix}_04_groups"); scroll(); save("${prefix}_05_groups_scrolled") }
