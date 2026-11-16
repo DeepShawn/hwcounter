@@ -131,6 +131,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.click('.seg button:has-text("作业")');
   await page.click('.tabbar button:has-text("设置")'); await page.waitForSelector('text=主题配色');
   check((await page.locator('input:not([type=checkbox])').count()) === 0, '设置里没有任何输入框（只有个性化开关）');
+  check(!(await page.content()).includes('更新于') && !(await page.content()).includes('设备'), '不显示数据更新时间和设备来源');
   await page.click('.cell:has-text("新手提示")'); await page.waitForSelector('.guide');
   check(true, '设置里可以重新打开新手提示'); await page.click('.guide-skip');
   await shot('10-settings');
