@@ -65,6 +65,7 @@ import com.deepshawn.hwcounter.data.Student
 import com.deepshawn.hwcounter.data.fmt
 import com.deepshawn.hwcounter.data.shown
 import com.deepshawn.hwcounter.data.studentStats
+import com.deepshawn.hwcounter.data.leaderOf
 import com.deepshawn.hwcounter.ui.LocalKit
 import com.deepshawn.hwcounter.ui.Route
 import com.deepshawn.hwcounter.ui.components.Chip2
@@ -101,6 +102,8 @@ class StockUi {
     /** 排序：0 关注度，1 涨幅，2 跌幅，3 学号 */
     var sort by mutableIntStateOf(0)
     var kline by mutableStateOf(false)
+    /** 0 个人（关注度），1 小组（综合分） */
+    var kind by mutableIntStateOf(0)
 }
 
 @Composable
@@ -112,6 +115,16 @@ fun rememberBoard(c: SchoolClass, rules: ScoreRules, span: AttentionStock.Span):
     var board by remember { mutableStateOf<AttentionStock.Board?>(null) }
     LaunchedEffect(c, rules, span) {
         board = withContext(Dispatchers.Default) { runCatching { AttentionStock.board(c, rules, span) }.getOrNull() }
+    }
+    return board
+}
+
+/** 后台计算小组板块行情 */
+@Composable
+fun rememberGroupBoard(c: SchoolClass, rules: ScoreRules, span: AttentionStock.Span): AttentionStock.Board? {
+    var board by remember { mutableStateOf<AttentionStock.Board?>(null) }
+    LaunchedEffect(c, rules, span) {
+        board = withContext(Dispatchers.Default) { runCatching { com.deepshawn.hwcounter.data.GroupStock.board(c, rules, span) }.getOrNull() }
     }
     return board
 }
@@ -355,9 +368,13 @@ fun LazyListScope.stockSections(
     board: AttentionStock.Board?,
     ui: StockUi,
     attention: List<Attention.Result>,
+    groupBoard: AttentionStock.Board? = null,
+    onOpenGroup: (String) -> Unit = {},
     onOpen: (String) -> Unit,
 ) {
     if (c.students.isEmpty()) { item { EmptyState("📈", "还没有学生", "") }; return }
+    item(key = "stk-kind") { HTabs(listOf("个人 · 关注度", "小组 · 综合分"), ui.kind, { ui.kind = it }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), height = 36.dp) }
+    if (ui.kind == 1) { groupStockSections(c, groupBoard, ui, onOpenGroup); return }
     item(key = "stk-span") { HTabs(spans.map { it.label }, spans.indexOf(ui.span), { ui.span = spans[it] }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), height = 36.dp) }
     if (board == null) { item(key = "stk-loading") { Text("正在计算行情…", Modifier.fillMaxWidth().padding(32.dp), textAlign = TextAlign.Center, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }; return }
     item(key = "stk-tape") { Column(Modifier.padding(vertical = 6.dp)) { TickerTape(c, board, stockColors(), onOpen) } }
@@ -550,6 +567,162 @@ fun StockDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
         item(key = "full") {
             TextButton(
                 "查看完整个人分析", onClick = { kit.nav.push(Route.Personal(studentId)) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+            )
+        }
+    }
+}
+
+
+// ---------------- 小组板块：小组综合分行情 ----------------
+
+private fun groupsOf(c: SchoolClass) = c.students.filter { it.group.isNotBlank() }.groupBy { it.group }.filterValues { it.size >= 2 }
+
+/** 小组名次（按最新综合分） */
+private fun ranksOf(b: AttentionStock.Board): Map<String, Int> = b.stocks.mapValues { (_, q) -> 1 + b.stocks.values.count { it.last > q.last + 1e-9 } }
+
+fun LazyListScope.groupStockSections(c: SchoolClass, board: AttentionStock.Board?, ui: StockUi, onOpenGroup: (String) -> Unit) {
+    if (groupsOf(c).isEmpty()) { item(key = "gst-empty") { EmptyState("👥", "还没有小组", "在名单里给同学填写小组（每组至少 2 人）") }; return }
+    item(key = "gst-span") { HTabs(spans.map { it.label }, spans.indexOf(ui.span), { ui.span = spans[it] }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), height = 36.dp) }
+    if (board == null) { item(key = "gst-loading") { Text("正在计算行情…", Modifier.fillMaxWidth().padding(32.dp), textAlign = TextAlign.Center, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }; return }
+    item(key = "gst-market") {
+        val sc = stockColors()
+        val colors = MiuixTheme.colorScheme
+        var sel by remember(board) { mutableStateOf<Int?>(null) }
+        HCard(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("GRP", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text("小组综合指数 · 各组平均", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                    Spacer(Modifier.weight(1f))
+                    if (board.span != ui.span) Text("计算中…", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
+                }
+                Spacer(Modifier.height(6.dp))
+                QuoteHeader(board.market, sel, board.span, sc)
+                ChartToggles(ui)
+                StockChart(board.market, ui.kline, sc, sel, { sel = it })
+                Spacer(Modifier.height(10.dp))
+                val m = board.market
+                KeyStats(
+                    listOf(
+                        "开盘" to p2(m.base), "最高" to p2(m.high),
+                        "前收" to p2(m.prevClose), "最低" to p2(m.low),
+                        "成交量" to "${m.volume}", "振幅" to if (m.base < 1) "—" else "%.2f%%".format((m.high - m.low) / m.base * 100),
+                        "上涨" to "${board.up} 组", "下跌" to "${board.down} 组",
+                    ),
+                )
+                Text("综合分 = 最近 10 次作业的交齐率、少扣分、优秀率和考试得分率加权（与小组对抗排名同一口径）× 100。综合分越高越好：上涨表示小组在变好。", fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+    }
+    item(key = "gst-title") { SmallTitle("小组 · 点胶囊切换涨跌额 / 涨跌幅 / 名次") }
+    val ranks = ranksOf(board)
+    val rows = board.stocks.entries.sortedWith(compareByDescending<Map.Entry<String, AttentionStock.Quote>> { it.value.last }.thenBy { it.key })
+    itemsIndexed(rows, key = { _, e -> "gst-" + e.key }) { i, (g, q) ->
+        val sc = stockColors()
+        val colors = MiuixTheme.colorScheme
+        val members = groupsOf(c)[g].orEmpty()
+        val leader = c.leaderOf(g)
+        Row(Modifier.listCell(i, rows.size).clickable { onOpenGroup(g) }.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(g, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1)
+                Text("${members.size} 人" + (leader?.let { " · 组长 ${it.name}" } ?: ""), fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            MiniChart(q, sc.of(q.change), Modifier.width(70.dp).height(30.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text(p2(q.last), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Spacer(Modifier.height(3.dp))
+                val rank = ranks[g] ?: 0
+                val (text, bg) = when (ui.pill) {
+                    1 -> pctOf(q) to sc.of(q.change)
+                    2 -> "第 $rank 名" to (if (rank == 1) Color(0xFFE8A400) else colors.primary)
+                    else -> s2(q.change) to sc.of(q.change)
+                }
+                Box(
+                    Modifier.width(78.dp).clip(RoundedCornerShape(7.dp)).background(bg).clickable { ui.pill = (ui.pill + 1) % 3 }.padding(vertical = 5.dp),
+                    contentAlignment = Alignment.Center,
+                ) { Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1) }
+            }
+        }
+    }
+}
+
+@Composable
+fun GroupStockDetailScreen(vm: AppViewModel, data: AppData, group: String) {
+    val kit = LocalKit.current
+    val colors = MiuixTheme.colorScheme
+    val c = vm.currentClass(data) ?: return
+    val rules = data.settings.rules
+    val ui = rememberStockUi()
+    val board = rememberGroupBoard(c, rules, ui.span)
+    val sc = stockColors()
+    var sel by remember(board) { mutableStateOf<Int?>(null) }
+    val q = board?.stocks?.get(group)
+    val members = groupsOf(c)[group].orEmpty()
+    val leader = c.leaderOf(group)
+    val report = remember(c, rules) { com.deepshawn.hwcounter.data.GroupAnalysis.report(c, rules) }
+    val team = report.teams.firstOrNull { it.name == group }
+    MiuixPage(title = group, largeTitle = "$group · 行情", onBack = { kit.nav.pop() }) {
+        item(key = "quote") {
+            HCard(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("小组综合分 · ${members.size} 人" + (leader?.let { " · 组长 ${it.name}" } ?: ""), fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                        Spacer(Modifier.weight(1f))
+                        if (board != null && board.span != ui.span) Text("计算中…", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    if (q == null || board == null) Text("正在计算行情…", Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center, color = colors.onSurfaceVariantSummary)
+                    else {
+                        QuoteHeader(q, sel, board.span, sc)
+                        Spacer(Modifier.height(8.dp))
+                        HTabs(spans.map { it.label }, spans.indexOf(ui.span), { ui.span = spans[it] }, height = 34.dp)
+                        ChartToggles(ui)
+                        StockChart(q, ui.kline, sc, sel, { sel = it })
+                    }
+                }
+            }
+        }
+        if (q != null && board != null) group("关键数据", key = "stats") {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                val mk = board.market
+                val rank = ranksOf(board)[group] ?: 0
+                KeyStats(
+                    listOf(
+                        "开盘" to p2(q.base), "最高" to p2(q.high),
+                        "前收" to p2(q.prevClose), "最低" to p2(q.low),
+                        "振幅" to if (q.base < 1) "—" else "%.2f%%".format((q.high - q.low) / q.base * 100), "成交量" to "${q.volume}",
+                        "当前名次" to "$rank / ${board.stocks.size}", "平均积分" to (team?.avgScore?.fmt() ?: "—"),
+                        "同期大盘" to s2(mk.change), "相对大盘" to s2(q.change - mk.change),
+                        "交齐率" to (team?.let { "${Math.round(it.rate * 100)}%" } ?: "—"), "人均作业扣分" to (team?.deductPerCapita?.fmt() ?: "—"),
+                    ),
+                )
+            }
+        }
+        if (q != null) group("历史行情", key = "history") {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    listOf("日期" to 1.6f, "开盘" to 1f, "收盘" to 1f, "涨跌" to 1f, "成交" to 0.8f).forEach { (t, w) ->
+                        Text(t, Modifier.weight(w), fontSize = 11.sp, color = colors.onSurfaceVariantSummary, textAlign = if (t == "日期") TextAlign.Start else TextAlign.End)
+                    }
+                }
+                q.candles.asReversed().take(14).forEach { k ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                        Text(candleLabel(k), Modifier.weight(1.6f), fontSize = 12.sp, maxLines = 1)
+                        Text(p2(k.open), Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.End)
+                        Text(p2(k.close), Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.End, fontWeight = FontWeight.Medium)
+                        Text(s2(k.close - k.open), Modifier.weight(1f), fontSize = 12.sp, textAlign = TextAlign.End, color = sc.of(k.close - k.open))
+                        Text("${k.volume}", Modifier.weight(0.8f), fontSize = 12.sp, textAlign = TextAlign.End)
+                    }
+                }
+            }
+        }
+        item(key = "full") {
+            TextButton(
+                "查看小组详情", onClick = { kit.nav.push(Route.Group(group)) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
                 colors = ButtonDefaults.textButtonColorsPrimary(),
             )
