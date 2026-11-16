@@ -249,6 +249,18 @@ fun SettingsScreen(vm: AppViewModel, data: AppData) {
                 RuleRow("应交少于几次不结算", st.minExpected.toDouble(), 1.0) { v -> if (v >= 0) sr { it.copy(minExpected = v.toInt()) } }
             }
             SuperSwitch(checked = st.withMonthlyReset, onCheckedChange = { v -> sr { it.copy(withMonthlyReset = v) } }, title = "每月定期重置前自动结算", summary = "开启了“每月定期重置”的班级，每次重置前先结算上一轮，结算分计入新一轮")
+            SuperSwitch(checked = st.spreadEnabled, onCheckedChange = { v -> sr { it.copy(spreadEnabled = v) } }, title = "结算时扩大区分度", summary = "按综合表现指数（交齐、按时、优秀、缺交、考试、进步）加减分，全班合计约为 0")
+            if (st.spreadEnabled) Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                RuleRow("力度（每 1 个标准差）", st.spreadK, 1.0) { v -> if (v >= 0) sr { it.copy(spreadK = v) } }
+                RuleRow("单人最多 ±", st.spreadCap, 1.0) { v -> if (v >= 0) sr { it.copy(spreadCap = v) } }
+                RuleRow("交齐率权重 %", st.wHand * 100, 5.0) { v -> if (v >= 0) sr { it.copy(wHand = v / 100) } }
+                RuleRow("按时率权重 %", st.wOnTime * 100, 5.0) { v -> if (v >= 0) sr { it.copy(wOnTime = v / 100) } }
+                RuleRow("优秀率权重 %", st.wExcellent * 100, 5.0) { v -> if (v >= 0) sr { it.copy(wExcellent = v / 100) } }
+                RuleRow("缺交度权重 %", st.wMissing * 100, 5.0) { v -> if (v >= 0) sr { it.copy(wMissing = v / 100) } }
+                RuleRow("考试权重 %", st.wExam * 100, 5.0) { v -> if (v >= 0) sr { it.copy(wExam = v / 100) } }
+                RuleRow("进步权重 %", st.wProgress * 100, 5.0) { v -> if (v >= 0) sr { it.copy(wProgress = v / 100) } }
+                Text("各项先做小样本校正（+${st.prior.fmt()} 次全班平均），再换算成全班标准分（限制在 ±2.5）后加权；没有考试成绩时考试权重按比例分给其他项。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+            }
         }
         group("计分规则通知", key = "notice") {
             val ctx2 = androidx.compose.ui.platform.LocalContext.current

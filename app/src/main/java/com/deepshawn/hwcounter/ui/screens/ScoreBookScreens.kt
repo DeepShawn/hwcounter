@@ -55,6 +55,7 @@ import com.deepshawn.hwcounter.data.fmtDay
 import com.deepshawn.hwcounter.data.signed
 import com.deepshawn.hwcounter.data.pt
 import com.deepshawn.hwcounter.data.startOfDay
+import com.deepshawn.hwcounter.data.studentStats
 import com.deepshawn.hwcounter.export.Exporter
 import com.deepshawn.hwcounter.export.Ledger
 import com.deepshawn.hwcounter.export.PdfReport
@@ -255,7 +256,7 @@ fun SettlementScreen(vm: AppViewModel, data: AppData) {
             HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("本轮：" + (preview.roundStart?.let { "${fmtDay(it)} 起" } ?: "有记录以来") + " · $roundAssignments 次作业", fontWeight = FontWeight.SemiBold)
-                    Text("按交齐度与缺交度结算：全勤 ${rules.settlement.perfect.signed()}，≥95% ${rules.settlement.r95.signed()}，90–95% ${rules.settlement.r90.signed()}，70–80% ${rules.settlement.r70.signed()}，<70% ${rules.settlement.below.signed()}；另有缺交扣分、进步奖、小组奖。规则可在设置中修改。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                    Text("按交齐度与缺交度结算：全勤 ${rules.settlement.perfect.signed()}，≥95% ${rules.settlement.r95.signed()}，90–95% ${rules.settlement.r90.signed()}，70–80% ${rules.settlement.r70.signed()}，<70% ${rules.settlement.below.signed()}；另有缺交扣分、进步奖、小组奖" + (if (rules.settlement.spreadEnabled) "，以及按综合表现指数的区分度加减分（最多 ±${rules.settlement.spreadCap.fmt()}）" else "") + "。规则可在设置中修改。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
                     Row(Modifier.padding(top = 6.dp)) {
                         listOf("加分" to done.count { it.delta > 0 }, "不变" to done.count { it.delta == 0.0 }, "扣分" to done.count { it.delta < 0 }, "不结算" to lines.count { it.skipped }).forEach { (l, n) ->
                             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -289,7 +290,7 @@ fun SettlementScreen(vm: AppViewModel, data: AppData) {
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(s.name, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                    Text("交齐 ${(l.rate * 100).toInt()}% · 应交 ${l.expected} · 缺交 ${l.missing}" + (if (l.longestMissing >= 2) " · 连缺 ${l.longestMissing}" else "") + (if (l.late > 0) " · 迟交 ${l.late}" else ""), fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                    Text("交齐 ${(l.rate * 100).toInt()}% · 应交 ${l.expected} · 缺交 ${l.missing}" + (if (l.longestMissing >= 2) " · 连缺 ${l.longestMissing}" else "") + (if (l.late > 0) " · 迟交 ${l.late}" else "") + (l.index?.let { " · 指数 ${"%+.2f".format(it)}（第 ${l.rank} 名）" } ?: ""), fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
                     Text(l.reasons.joinToString("；"), fontSize = 11.sp, color = colors.onSurfaceSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
                 Text(if (l.skipped) "不结算" else if (l.delta == 0.0) "0" else l.delta.signed(), fontWeight = FontWeight.Bold, fontSize = if (l.skipped) 13.sp else 19.sp,
@@ -329,11 +330,13 @@ fun SettlementScreen(vm: AppViewModel, data: AppData) {
             vm.settle(preview.copy(lines = lines, time = System.currentTimeMillis()), if (newRound) target else null)
             kit.haptic(true); kit.celebrate()
             kit.undoable("已结算 ${done.size} 人" + if (newRound) "，新一轮开始" else "")
-            kit.nav.pop()
+            // 结算后先跳到按学号排列的积分登记表
+            kit.nav.replace(Route.SettleRegister(preview.id))
         },
     )
     exportFor?.let { s ->
         ActionSheet(true, s.title, buildList {
+            add(SheetAction("积分登记表", "按学号列出结算分和当前积分，方便登记") { kit.nav.push(Route.SettleRegister(s.id)) })
             add(SheetAction("导出结算单 PDF") { runCatching { share(ctx, c, s.title, true) { PdfReport.writeSettlement(c, s, it) } }.onFailure { kit.toast("导出失败：${it.message}") } })
             add(SheetAction("导出结算单 Excel") { share(ctx, c, s.title, false) { Ledger.writeSettlementXlsx(c, s, it) } })
             if (!readOnly) add(SheetAction("撤销这次结算", "删除结算加减分" + if (s.resetId != null) "，并撤销随后的重置" else "", danger = true) { undoFor = s })
@@ -343,6 +346,80 @@ fun SettlementScreen(vm: AppViewModel, data: AppData) {
         HyperDialog(true, "撤销「${s.title}」？", { undoFor = null }, summary = "删除这次结算写入的加减分" + (if (s.resetId != null && !s.id.startsWith("auto-")) "，并撤销结算后开始新一轮的那次重置" else "") + "。", confirmText = "撤销", danger = true, onConfirm = {
             vm.undoSettlement(s.id); undoFor = null; kit.undoable("已撤销「${s.title}」")
         })
+    }
+}
+
+/** 结算后的积分登记表：按学号列出结算分与当前积分，可复制或导出 Excel */
+@Composable
+fun SettleRegisterScreen(vm: AppViewModel, data: AppData, settlementId: String) {
+    val kit = LocalKit.current
+    val ctx = LocalContext.current
+    val colors = MiuixTheme.colorScheme
+    val c = vm.currentClass(data) ?: return
+    val s = c.settlements.firstOrNull { it.id == settlementId } ?: run { EmptyState("🧾", "找不到这次结算", "可能已被撤销"); return }
+    val rules = data.settings.rules
+    val scores = remember(c, rules) { c.studentStats(rules).associate { it.student.id to it.score } }
+    val lines = s.lines.associateBy { it.studentId }
+    val students = remember(c.students) { c.students.sortedWith { a, b -> compareStudentNumbers(a.no, b.no) } }
+    fun registerText() = buildString {
+        appendLine("学号\t姓名\t结算分\t当前积分")
+        students.forEach { st -> val l = lines[st.id]; appendLine("${st.no}\t${st.name}\t${if (l == null || l.skipped) "" else l.delta.signed()}\t${(scores[st.id] ?: 0.0).fmt()}") }
+    }.trimEnd()
+    MiuixPage(
+        title = "积分登记表", onBack = { kit.nav.pop() },
+        actions = { IconButton(onClick = {
+            share(ctx, c, "积分登记表", false) { out ->
+                val x = com.deepshawn.hwcounter.export.XlsxWriter()
+                x.sheet("积分登记") {
+                    widths = listOf(14.0, 12.0, 10.0, 12.0)
+                    row(com.deepshawn.hwcounter.export.XlsxWriter.Cell("${c.name} ${s.title} 积分登记表", com.deepshawn.hwcounter.export.XlsxWriter.Style.TITLE))
+                    rowCells(listOf("学号", "姓名", "结算分", "当前积分").map { com.deepshawn.hwcounter.export.XlsxWriter.Cell(it, com.deepshawn.hwcounter.export.XlsxWriter.Style.HEADER) })
+                    students.forEach { st -> val l = lines[st.id]; row(st.no, st.name, if (l == null || l.skipped) "" else l.delta, scores[st.id] ?: 0.0) }
+                }
+                x.write(out)
+            }
+        }, modifier = Modifier.padding(end = 16.dp)) { Icon(Icons.Filled.IosShare, "导出 Excel", tint = colors.onSurface) } },
+    ) {
+        item(key = "head") {
+            HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("${s.title} · ${fmtStamp(s.time)}", fontWeight = FontWeight.SemiBold)
+                    Text("按学号排列，右侧为结算后的当前积分（已取整）。" + if (s.resetId != null) "本次结算后已开始新一轮，积分 = 新一轮起始分 + 结算分。" else "", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TextButton("复制全部", onClick = {
+                            (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("积分登记表", registerText()))
+                            kit.toast("已复制，可直接粘贴到 Excel")
+                        }, modifier = Modifier.weight(1f), colors = ButtonDefaults.textButtonColorsPrimary())
+                        TextButton("完成", onClick = { kit.nav.pop() }, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        item(key = "cols") {
+            Row(Modifier.padding(start = 28.dp, end = 28.dp, top = 14.dp, bottom = 6.dp)) {
+                Text("学号", Modifier.weight(1.2f), fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                Text("姓名", Modifier.weight(1.2f), fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                Text("结算", Modifier.weight(0.8f), fontSize = 12.sp, color = colors.onSurfaceVariantSummary, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                Text("积分", Modifier.weight(0.9f), fontSize = 12.sp, color = colors.onSurfaceVariantSummary, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+            }
+        }
+        itemsIndexed(students, key = { _, st -> "r" + st.id }) { i, st ->
+            val l = lines[st.id]
+            Row(
+                Modifier.listCell(i, students.size).background(if (i % 2 == 1) colors.primary.copy(alpha = 0.04f) else Color.Transparent).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(st.no, Modifier.weight(1.2f), fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                Text(st.name, Modifier.weight(1.2f), fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    if (l == null || l.skipped) "—" else if (l.delta == 0.0) "0" else l.delta.signed(), Modifier.weight(0.8f), fontSize = 15.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                    color = if (l == null || l.skipped) colors.onSurfaceVariantSummary else if (l.delta > 0) GOOD else if (l.delta < 0) BAD else colors.onSurfaceSecondary,
+                )
+                Text((scores[st.id] ?: 0.0).fmt(), Modifier.weight(0.9f), fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+            }
+        }
+        item(key = "pad") { Spacer(Modifier.height(12.dp)) }
     }
 }
 

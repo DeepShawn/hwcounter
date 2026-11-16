@@ -30,6 +30,18 @@ data class SettlementRules(
     val minExpected: Int = 3,
     val withMonthlyReset: Boolean = true,
     val autoSince: Long = 0,
+    /** 区分度：按综合表现指数加减分（D = spreadK × C，单人最多 ±spreadCap） */
+    val spreadEnabled: Boolean = true,
+    val spreadK: Double = 4.0,
+    val spreadCap: Double = 10.0,
+    /** 小样本校正：交齐率等按“+prior 次全班平均”平滑 */
+    val prior: Double = 3.0,
+    val wHand: Double = 0.30,
+    val wOnTime: Double = 0.15,
+    val wExcellent: Double = 0.10,
+    val wMissing: Double = 0.15,
+    val wExam: Double = 0.20,
+    val wProgress: Double = 0.10,
 )
 
 /** 一次结算的记录；每人的加减分另存为带 [ScoreEntry.settlementId] 的普通加减分 */
@@ -59,6 +71,14 @@ data class SettlementLine(
     val reasons: List<String> = emptyList(),
     /** 应交太少，未结算 */
     val skipped: Boolean = false,
+    /** 综合表现指数 C（标准分加权），名次，区分度加减分，各项标准分 */
+    val index: Double? = null,
+    val rank: Int? = null,
+    val spread: Double = 0.0,
+    val z: Map<String, Double> = emptyMap(),
+    /** 本轮按时交（已交 + 优秀）、优秀次数 */
+    val onTime: Int = 0,
+    val excellent: Int = 0,
 )
 
 const val AUTO_SETTLE_PREFIX = "auto-settle-"
@@ -78,7 +98,7 @@ object Settle {
     private fun measure(st: Student, list: List<Assignment>): SettlementLine {
         val ins = Analytics.insight(st, list)
         val exp = ins.expected - ins.unregistered
-        return SettlementLine(st.id, exp, if (exp == 0) 1.0 else ins.handedIn.toDouble() / exp, ins.late, ins.missing, ins.longestMissing, 0.0)
+        return SettlementLine(st.id, exp, if (exp == 0) 1.0 else ins.handedIn.toDouble() / exp, ins.late, ins.missing, ins.longestMissing, 0.0, onTime = ins.onTime, excellent = ins.excellent)
     }
 
     /** 预览结算：每人的交齐度、缺交、结算分与原因 */
@@ -96,6 +116,7 @@ object Settle {
             .groupBy { it.group }.filterValues { it.size >= 2 }.mapValues { (_, m) -> m.map { base.getValue(it.id).rate }.average() }
         val topRate = groupAvg.values.maxOrNull()
         val topGroups = if (topRate == null || groupAvg.size < 2) emptySet() else groupAvg.filterValues { kotlin.math.abs(it - topRate) < 1e-9 }.keys
+        val spread = if (sr.spreadEnabled) spread(c, sr, base, prevRate, c.exams.filter { inRound(cur, end, it.date) }) else emptyMap()
         val lines = c.students.map { st ->
             val m = base.getValue(st.id)
             if (m.expected < sr.minExpected) return@map m.copy(skipped = true, reasons = listOf("本轮应交 ${m.expected} 次，少于 ${sr.minExpected} 次，不结算"))
@@ -112,11 +133,81 @@ object Settle {
             if (sr.streakMissing > 0 && m.longestMissing >= sr.streakMissing) parts += "最长连续缺交 ${m.longestMissing} 次" to sr.streakMissingDelta
             prevRate[st.id]?.let { p -> if (m.rate - p >= sr.progressPts - 1e-9) parts += "进步奖（${pct(p)} → ${pct(m.rate)}）" to sr.progressDelta }
             if (st.group in topGroups) parts += "小组奖（${st.group}平均交齐度第一）" to sr.groupDelta
+            spread[st.id]?.let { sp -> parts += "区分度：综合指数 ${"%+.2f".format(sp.index)}（第 ${sp.rank} 名）" to sp.points }
             val shown = parts.filter { it.second != 0.0 || parts.size == 1 }
-            m.copy(delta = shown.sumOf { rules.pt(it.second) }, reasons = shown.map { (t, d) -> if (d == 0.0) "$t 0" else "$t ${rules.pt(d).signed()}" })
+            val sp = spread[st.id]
+            m.copy(
+                delta = shown.sumOf { rules.pt(it.second) }, reasons = shown.map { (t, d) -> if (d == 0.0) "$t 0" else "$t ${rules.pt(d).signed()}" },
+                index = sp?.index, rank = sp?.rank, spread = sp?.points ?: 0.0, z = sp?.z.orEmpty(),
+            )
         }
         val n = c.settlements.size + 1
         return Settlement(title = "第 $n 次结算", roundStart = cur?.start, roundEnd = end, lines = lines)
+    }
+
+    data class Spread(val index: Double, val rank: Int, val points: Double, val z: Map<String, Double>)
+
+    /**
+     * 区分度：综合表现指数。
+     * 1. 交齐率、按时率、优秀率按“+prior 次全班平均”做小样本校正；缺交度 = 缺交率 + 0.5 × 最长连续缺交 ÷ 应交；
+     *    考试 = 每场（得分率 − 全班平均）÷ 全班标准差 的平均；进步 = 本轮交齐率 − 上一轮交齐率。
+     * 2. 每项换成全班标准分 z（限制在 ±2.5），缺交度取负号。
+     * 3. C = Σ 权重 × z（没有考试成绩时按比例分给其他项），再减去全班平均使总和为 0。
+     * 4. 区分度分 D = spreadK × C，正分向上、负分向下取整，单人最多 ±spreadCap。
+     */
+    fun spread(c: SchoolClass, sr: SettlementRules, base: Map<String, SettlementLine>, prevRate: Map<String, Double>, exams: List<Exam>): Map<String, Spread> {
+        val elig = c.students.filter { (base[it.id]?.expected ?: 0) >= sr.minExpected }
+        if (elig.size < 2) return emptyMap()
+        val raw = HashMap<String, MutableMap<String, Double>>()
+        fun sumOf(f: (SettlementLine) -> Double) = elig.sumOf { f(base.getValue(it.id)) }
+        val n = sumOf { it.expected.toDouble() }.coerceAtLeast(1.0)
+        val handed = sumOf { it.rate * it.expected }
+        val onTimeOf = elig.associate { it.id to base.getValue(it.id).onTime }; val excOf = elig.associate { it.id to base.getValue(it.id).excellent }
+        val pR = handed / n; val pT = elig.sumOf { onTimeOf.getValue(it.id).toDouble() } / n; val pE = elig.sumOf { excOf.getValue(it.id).toDouble() } / n
+        // 考试：每场标准分
+        val examZ = HashMap<String, MutableList<Double>>()
+        for (e in exams) {
+            val v = elig.mapNotNull { s -> e.scores[s.id]?.let { s.id to it / e.fullScore } }
+            if (v.size < 2) continue
+            val mean = v.map { it.second }.average(); val sd = kotlin.math.sqrt(v.sumOf { (it.second - mean) * (it.second - mean) } / v.size)
+            if (sd <= 1e-9) continue
+            v.forEach { (id, p) -> examZ.getOrPut(id) { ArrayList() } += (p - mean) / sd }
+        }
+        for (st in elig) {
+            val l = base.getValue(st.id); val e = l.expected.toDouble(); val k = sr.prior
+            val m = HashMap<String, Double>()
+            m["交齐"] = (l.rate * e + k * pR) / (e + k)
+            m["按时"] = (onTimeOf.getValue(st.id) + k * pT) / (e + k)
+            m["优秀"] = (excOf.getValue(st.id) + k * pE) / (e + k)
+            m["缺交"] = -(l.missing / e + 0.5 * l.longestMissing / e)
+            examZ[st.id]?.let { m["考试"] = it.average() }
+            m["进步"] = prevRate[st.id]?.let { l.rate - it } ?: 0.0
+            raw[st.id] = m
+        }
+        val weights = mapOf("交齐" to sr.wHand, "按时" to sr.wOnTime, "优秀" to sr.wExcellent, "缺交" to sr.wMissing, "考试" to sr.wExam, "进步" to sr.wProgress)
+        // 标准分（考试已是标准分，只做限幅）
+        val z = HashMap<String, MutableMap<String, Double>>()
+        for (key in weights.keys) {
+            val vals = elig.mapNotNull { s -> raw.getValue(s.id)[key]?.let { s.id to it } }
+            if (vals.isEmpty()) continue
+            if (key == "考试") { vals.forEach { (id, v) -> z.getOrPut(id) { HashMap() }[key] = v.coerceIn(-2.5, 2.5) }; continue }
+            val mean = vals.map { it.second }.average(); val sd = kotlin.math.sqrt(vals.sumOf { (it.second - mean) * (it.second - mean) } / vals.size)
+            vals.forEach { (id, v) -> z.getOrPut(id) { HashMap() }[key] = if (sd <= 1e-12) 0.0 else ((v - mean) / sd).coerceIn(-2.5, 2.5) }
+        }
+        val c0 = elig.associate { s ->
+            val zs = z[s.id].orEmpty()
+            val w = weights.filterKeys { it in zs }
+            s.id to (if (w.values.sum() <= 0) 0.0 else w.entries.sumOf { (k, wt) -> wt * zs.getValue(k) } / w.values.sum())
+        }
+        val mean = c0.values.average()
+        val ranked = c0.entries.sortedByDescending { it.value }
+        val rankOf = HashMap<String, Int>()
+        ranked.forEachIndexed { i, e -> rankOf[e.key] = if (i > 0 && kotlin.math.abs(ranked[i - 1].value - e.value) < 1e-9) rankOf.getValue(ranked[i - 1].key) else i + 1 }
+        return elig.associate { s ->
+            val ci = c0.getValue(s.id) - mean
+            val pts = roundAway(sr.spreadK * ci).coerceIn(-sr.spreadCap, sr.spreadCap)
+            s.id to Spread(ci, rankOf.getValue(s.id), pts, z[s.id].orEmpty())
+        }
     }
 
     /** 写入结算：记录 + 每人一条加减分（时间 [entryTime]），返回新班级 */
