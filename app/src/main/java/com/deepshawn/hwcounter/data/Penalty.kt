@@ -39,6 +39,16 @@ data class StreakBonus(
     val lateCounts: Boolean = false,
 )
 
+/**
+ * 作业复审（三端同一算法）：老师复审认定不合格时，这次作业记为“未交”（多算一次未交，参与连续未交和累计次数），
+ * 这一次的扣分 × [multiplier]（默认 2，即翻倍）。关闭后复审不合格按普通未交扣分。
+ */
+@Serializable
+data class ReviewRules(
+    val enabled: Boolean = true,
+    val multiplier: Double = 2.0,
+)
+
 /** 正分向上取整、负分向下取整（远离 0 取整） */
 fun roundAway(x: Double): Double = if (x > 0) kotlin.math.ceil(x - 1e-9) else if (x < 0) kotlin.math.floor(x + 1e-9) else 0.0
 
@@ -50,7 +60,7 @@ inline fun ScoreRules.pt(x: Double): Double = x
 fun ScoreRules.shown(total: Double): Double = if (roundPoints) roundAway(total) else total
 
 /** 某次作业的计分明细 */
-data class AutoPoint(val points: Double, val missStreak: Int = 0, val handStreak: Int = 0, val bonus: Double = 0.0)
+data class AutoPoint(val points: Double, val missStreak: Int = 0, val handStreak: Int = 0, val bonus: Double = 0.0, val reviewFailed: Boolean = false)
 
 /** 某位同学每次作业的自动计分明细（作业 id → 明细）：未交连续递增扣分 + 连续交奖励，每轮重置重新计 */
 fun SchoolClass.autoPointDetails(rules: ScoreRules, studentId: String): Map<String, AutoPoint> {
@@ -65,7 +75,9 @@ fun SchoolClass.autoPointDetails(rules: ScoreRules, studentId: String): Map<Stri
         out[a.id] = when (st) {
             HwStatus.MISSING -> {
                 streak++; total++; run = 0
-                AutoPoint(rules.pt(if (esc.enabled) -esc.penalty(streak, total) else rules.of(st)), missStreak = streak)
+                val base = if (esc.enabled) -esc.penalty(streak, total) else rules.of(st)
+                val failed = rules.review.enabled && a.failedReview(studentId)
+                AutoPoint(rules.pt(if (failed) base * rules.review.multiplier else base), missStreak = streak, reviewFailed = failed)
             }
             HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE -> {
                 streak = 0

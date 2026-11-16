@@ -13,7 +13,11 @@ export const STATUS_KEYS = Object.keys(STATUS);
 
 export const defaultEscalation = () => ({ enabled: true, base: 2, heavyBase: 3, heavyAfter: 6, cap: 30 });
 export const defaultStreakBonus = () => ({ enabled: true, after: 5, bonus: 1, lateCounts: false });
-export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true });
+/** 作业复审：不合格记一次未交（参与连续 / 累计），这一次扣分 × multiplier；没复审的默认合格 */
+export const defaultReview = () => ({ enabled: true, multiplier: 2 });
+export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true, review: defaultReview() });
+/** 这位同学这次作业是否复审不合格（只有状态仍是未交时才算） */
+export const failedReview = (a, sid) => (a.reviewFailed || []).includes(sid) && a.statuses[sid] === 'MISSING';
 /** 正分向上取整、负分向下取整（与安卓 roundAway 一致） */
 export const roundAway = (x) => (x > 0 ? Math.ceil(x - 1e-9) : x < 0 ? Math.floor(x + 1e-9) : 0);
 /** 单笔加减分保留原值；取整只作用在最终显示的总积分上 */
@@ -37,11 +41,12 @@ export function normalizeData(d) {
   out.settings.rules = { ...defaultRules(), ...(out.settings.rules || {}) };
   out.settings.rules.escalation = { ...defaultEscalation(), ...(out.settings.rules.escalation || {}) };
   out.settings.rules.streakBonus = { ...defaultStreakBonus(), ...(out.settings.rules.streakBonus || {}) };
+  out.settings.rules.review = { ...defaultReview(), ...(out.settings.rules.review || {}) };
   out.settings.ai = { ...base.settings.ai, ...(out.settings.ai || {}) };
   out.classes = (out.classes || []).map((c) => ({
     id: newId(), emoji: '🎒', students: [], assignments: [], scores: [], ...c,
     students: (c.students || []).map((s) => ({ id: newId(), group: '', gender: '', note: '', longLeave: false, ...s })),
-    assignments: (c.assignments || []).map((a) => ({ id: newId(), subject: '', createdAt: Date.now(), statuses: {}, comments: {}, countedBooks: null, pinned: false, ...a })),
+    assignments: (c.assignments || []).map((a) => ({ id: newId(), subject: '', createdAt: Date.now(), statuses: {}, comments: {}, countedBooks: null, pinned: false, reviewFailed: [], ...a })),
     scores: (c.scores || []).map((e) => ({ id: newId(), time: Date.now(), ...e })),
     exams: (c.exams || []).map((e) => ({ id: newId(), subject: '', date: Date.now(), fullScore: 100, scores: {}, absent: [], note: '', autoScore: true, ...e })),
     groupLeaders: c.groupLeaders || {},
@@ -123,6 +128,7 @@ export function examDelta(rules, e, sid) {
 export function autoPoints(c, rules, sid) {
   const esc = { ...defaultEscalation(), ...(rules.escalation || {}) };
   const sb = { ...defaultStreakBonus(), ...(rules.streakBonus || {}) };
+  const rv = { ...defaultReview(), ...(rules.review || {}) };
   const out = {};
   const resets = (c.recharges || []).filter((r) => (r.studentIds || []).includes(sid))
     .sort((a, b) => rechargeStart(a) - rechargeStart(b) || a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -134,10 +140,10 @@ export function autoPoints(c, rules, sid) {
     if (r !== round) { round = r; streak = 0; total = 0; run = 0; }
     if (s === 'MISSING') {
       streak++; total++; run = 0;
-      if (!esc.enabled) { out[a.id] = pt(rules, ruleOf(rules, s)); continue; }
-      const b = total > esc.heavyAfter ? esc.heavyBase : esc.base;
-      let p = b ** streak; if (esc.cap > 0) p = Math.min(p, esc.cap);
-      out[a.id] = pt(rules, -p);
+      let base;
+      if (!esc.enabled) base = ruleOf(rules, s);
+      else { const b = total > esc.heavyAfter ? esc.heavyBase : esc.base; let p = b ** streak; if (esc.cap > 0) p = Math.min(p, esc.cap); base = -p; }
+      out[a.id] = pt(rules, rv.enabled && failedReview(a, sid) ? base * rv.multiplier : base);
     } else if (s === 'SUBMITTED' || s === 'EXCELLENT' || s === 'LATE') {
       streak = 0;
       const counts = s !== 'LATE' || sb.lateCounts;

@@ -583,7 +583,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     Box(Modifier.padding(horizontal = if (settings.layout == "list") 16.dp else 4.dp)) {
                         when (settings.layout) {
                             "list" -> StudentListRow(s, a, ptsOf(s), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
-                            "seat" -> SeatCell(s, st, batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
+                            "seat" -> SeatCell(s, st, a.failedReview(s.id), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
                             else -> StudentCard(s, a, ptsOf(s), batch, s.id in selected.value, { tap(s) }, { sheetFor = s })
                         }
                     }
@@ -624,6 +624,13 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                                     kit.undoable("已将 ${selected.value.size} 人标记为「${st.label}」")
                                     selected.value = emptySet()
                                 }
+                            }
+                        }
+                        if (settings.rules.review.enabled) ReviewButton {
+                            if (selected.value.isEmpty()) kit.toast("先选择同学") else {
+                                vm.markReviewFailed(a.id, selected.value)
+                                kit.undoable("已将 ${selected.value.size} 人记为复审不合格（扣分 ×${settings.rules.review.multiplier.fmt()}）")
+                                selected.value = emptySet()
                             }
                         }
                     }
@@ -703,25 +710,37 @@ fun LayoutToggle(layout: String, onChange: (String) -> Unit) {
 }
 
 @Composable
-fun StatusButton(st: HwStatus, selected: Boolean = false, onClick: () -> Unit) {
-    val col = statusColor(st)
+fun StatusButton(st: HwStatus, selected: Boolean = false, onClick: () -> Unit) =
+    ChoiceButton(st.emoji, st.label, statusColor(st), statusContainer(st), selected, onClick)
+
+/** 复审不合格的颜色（紫红） */
+val ReviewColor = Color(0xFFB0306F)
+
+/** 复审不合格按钮：记为未交，扣分翻倍 */
+@Composable
+fun ReviewButton(selected: Boolean = false, onClick: () -> Unit) =
+    ChoiceButton("⛔", "复审不合格", ReviewColor, ReviewColor.copy(alpha = 0.13f), selected, onClick)
+
+@Composable
+private fun ChoiceButton(emoji: String, label: String, col: Color, container: Color, selected: Boolean, onClick: () -> Unit) {
     Column(
         Modifier.clip(MaterialTheme.shapes.medium)
-            .background(if (selected) col else statusContainer(st))
+            .background(if (selected) col else container)
             .clickable { onClick() }
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(st.emoji, fontSize = 18.sp)
-        Text(st.label, fontSize = 12.sp, color = if (selected) Color.White else col, fontWeight = FontWeight.Bold)
+        Text(emoji, fontSize = 18.sp)
+        Text(label, fontSize = 12.sp, color = if (selected) Color.White else col, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
 private fun StudentCard(s: Student, a: Assignment, delta: Double, batch: Boolean, sel: Boolean, onTap: () -> Unit, onLong: () -> Unit) {
     val st = a.statuses[s.id] ?: HwStatus.NONE
-    val col = statusColor(st)
-    val bg by animateColorAsState(if (st == HwStatus.NONE) MaterialTheme.colorScheme.surfaceContainerLowest else statusContainer(st), label = "bg")
+    val failed = a.failedReview(s.id)
+    val col = if (failed) ReviewColor else statusColor(st)
+    val bg by animateColorAsState(if (failed) ReviewColor.copy(alpha = 0.13f) else if (st == HwStatus.NONE) MaterialTheme.colorScheme.surfaceContainerLowest else statusContainer(st), label = "bg")
     val scale by animateFloatAsState(if (sel) 0.94f else 1f, spring(dampingRatio = 0.5f), label = "sc")
     Surface(
         shape = MaterialTheme.shapes.medium,
@@ -733,7 +752,7 @@ private fun StudentCard(s: Student, a: Assignment, delta: Double, batch: Boolean
             Box {
                 Avatar(s.name, size = 42.dp)
                 if (st != HwStatus.NONE) {
-                    Text(st.emoji, fontSize = 13.sp, modifier = Modifier.align(Alignment.BottomEnd))
+                    Text(if (failed) "⛔" else st.emoji, fontSize = 13.sp, modifier = Modifier.align(Alignment.BottomEnd))
                 }
                 if (batch && sel) {
                     Box(Modifier.size(18.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary).align(Alignment.TopEnd), contentAlignment = Alignment.Center) {
@@ -746,7 +765,7 @@ private fun StudentCard(s: Student, a: Assignment, delta: Double, batch: Boolean
             Text(s.no, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace, maxLines = 1)
             Spacer(Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(st.label, color = col, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(if (failed) "复审不合格" else st.label, color = col, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 if (delta != 0.0) Text(" ${delta.signed()}", color = if (delta > 0) statusColor(HwStatus.SUBMITTED) else statusColor(HwStatus.MISSING), fontSize = 11.sp, fontWeight = FontWeight.Black)
             }
             if (a.comments[s.id] != null) Text("💬 " + a.comments[s.id], fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -763,7 +782,8 @@ private fun StudentListRow(s: Student, a: Assignment, delta: Double, batch: Bool
             .combinedClickable(onClick = onTap, onLongClick = onLong).padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(width = 4.dp, height = 36.dp).clip(CircleShape).background(statusColor(st)))
+        val failed = a.failedReview(s.id)
+        Box(Modifier.size(width = 4.dp, height = 36.dp).clip(CircleShape).background(if (failed) ReviewColor else statusColor(st)))
         Spacer(Modifier.width(10.dp))
         Avatar(s.name, size = 38.dp)
         Spacer(Modifier.width(12.dp))
@@ -780,13 +800,17 @@ private fun StudentListRow(s: Student, a: Assignment, delta: Double, batch: Bool
         }
         if (batch) {
             Icon(if (sel) Icons.Filled.Check else Icons.Filled.Close, null, tint = if (sel) MaterialTheme.colorScheme.primary else Color.Transparent)
+        } else if (failed) {
+            Box(Modifier.clip(CircleShape).background(ReviewColor.copy(alpha = 0.13f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
+                Text("复审不合格", color = ReviewColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
         } else StatusPill(st)
     }
 }
 
 @Composable
-private fun SeatCell(s: Student, st: HwStatus, batch: Boolean, sel: Boolean, onTap: () -> Unit, onLong: () -> Unit) {
-    val col = statusColor(st)
+private fun SeatCell(s: Student, st: HwStatus, failed: Boolean, batch: Boolean, sel: Boolean, onTap: () -> Unit, onLong: () -> Unit) {
+    val col = if (failed) ReviewColor else statusColor(st)
     val bg by animateColorAsState(if (st == HwStatus.NONE) MaterialTheme.colorScheme.surfaceContainerLowest else col, label = "bg")
     Box(
         Modifier.aspectRatio(1f).clip(MaterialTheme.shapes.small).background(bg)
@@ -832,12 +856,18 @@ fun StudentSheet(vm: AppViewModel, data: AppData, c: SchoolClass, a: Assignment,
             Text("本次作业状态", style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val failed = a.failedReview(s.id)
                 HwStatus.entries.forEach { h ->
-                    StatusButton(h, h == st) { vm.setStatus(a.id, listOf(s.id), h); kit.haptic() }
+                    StatusButton(h, h == st && !failed) { vm.setStatus(a.id, listOf(s.id), h); kit.haptic() }
+                }
+                if (data.settings.rules.review.enabled) ReviewButton(failed) {
+                    vm.markReviewFailed(a.id, listOf(s.id)); kit.haptic()
+                    kit.undoable("${s.name} 复审不合格：记一次未交，扣分 ×${data.settings.rules.review.multiplier.fmt()}")
                 }
             }
             Text(
-                "计分：${HwStatus.entries.filter { it != HwStatus.NONE && !(it == HwStatus.MISSING && data.settings.rules.escalation.enabled) }.joinToString("  ") { it.label + data.settings.rules.of(it).signed() }}" + if (data.settings.rules.escalation.enabled) "  ${data.settings.rules.missingText()}" else "",
+                "计分：${HwStatus.entries.filter { it != HwStatus.NONE && !(it == HwStatus.MISSING && data.settings.rules.escalation.enabled) }.joinToString("  ") { it.label + data.settings.rules.of(it).signed() }}" + (if (data.settings.rules.escalation.enabled) "  ${data.settings.rules.missingText()}" else "") +
+                    if (data.settings.rules.review.enabled) "  复审不合格：记一次未交，扣分 ×${data.settings.rules.review.multiplier.fmt()}" else "",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
             )
             Spacer(Modifier.height(16.dp))

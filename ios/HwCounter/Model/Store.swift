@@ -207,6 +207,14 @@ final class Store: ObservableObject {
     func setStatus(_ aid: String, _ ids: [String], _ st: HwStatus) {
         editAssignment(aid) { a in
             for id in ids { if st == .NONE { a.statuses.removeValue(forKey: id) } else { a.statuses[id] = st.rawValue } }
+            // 改成其他状态时取消复审不合格
+            a.reviewFailed.removeAll { ids.contains($0) }
+        }
+    }
+    /// 复审不合格：记为未交（多算一次未交），扣分翻倍；没复审的默认合格
+    func markReviewFailed(_ aid: String, _ ids: [String]) {
+        editAssignment(aid) { a in
+            for id in ids { a.statuses[id] = HwStatus.MISSING.rawValue; if !a.reviewFailed.contains(id) { a.reviewFailed.append(id) } }
         }
     }
     func fillRemaining(_ aid: String, _ st: HwStatus) {

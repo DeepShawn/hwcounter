@@ -60,7 +60,12 @@ data class Assignment(
     /** 通过“数本数”得到的实物本数 */
     val countedBooks: Int? = null,
     val pinned: Boolean = false,
-)
+    /** 复审不合格的同学：状态记为未交（多算一次未交），扣分按 [ReviewRules.multiplier] 翻倍 */
+    val reviewFailed: List<String> = emptyList(),
+) {
+    /** 这位同学是否复审不合格（只有状态仍是“未交”时才算） */
+    fun failedReview(studentId: String): Boolean = studentId in reviewFailed && statuses[studentId] == HwStatus.MISSING
+}
 
 @Serializable
 data class ScoreEntry(
@@ -122,6 +127,8 @@ data class ScoreRules(
     val roundPoints: Boolean = true,
     /** 结算规则 */
     val settlement: SettlementRules = SettlementRules(),
+    /** 作业复审：不合格记一次未交，扣分翻倍 */
+    val review: ReviewRules = ReviewRules(),
 ) {
     fun of(s: HwStatus): Double = when (s) {
         HwStatus.NONE -> 0.0

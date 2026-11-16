@@ -146,6 +146,8 @@ struct Assignment: Codable, Identifiable, Equatable {
     var comments: [String: String] = [:]
     var countedBooks: Int? = nil
     var pinned: Bool = false
+    /// 复审不合格的同学：状态记为未交（多算一次未交），扣分按倍数翻倍
+    var reviewFailed: [String] = []
 
     init(title: String, subject: String, statuses: [String: String] = [:]) {
         self.title = title; self.subject = subject; self.statuses = statuses
@@ -160,8 +162,11 @@ struct Assignment: Codable, Identifiable, Equatable {
         comments = try c.decodeIfPresent([String: String].self, forKey: .comments) ?? [:]
         countedBooks = try c.decodeIfPresent(Int.self, forKey: .countedBooks)
         pinned = try c.decodeIfPresent(Bool.self, forKey: .pinned) ?? false
+        reviewFailed = try c.decodeIfPresent([String].self, forKey: .reviewFailed) ?? []
     }
     func status(_ sid: String) -> HwStatus { HwStatus(rawValue: statuses[sid] ?? "") ?? .NONE }
+    /// 复审不合格（只有状态仍是未交时才算）
+    func failedReview(_ sid: String) -> Bool { reviewFailed.contains(sid) && status(sid) == .MISSING }
     var date: Date { Date(timeIntervalSince1970: Double(createdAt) / 1000) }
 }
 
@@ -427,6 +432,9 @@ struct MissingEscalation: Equatable {
 /// 连续交作业奖励：本轮连续按时交满 after 次后，之后每连续交一次额外加 bonus
 struct StreakBonus: Equatable { var enabled = true, after = 5, bonus = 1.0, lateCounts = false }
 
+/// 作业复审：不合格记一次未交，这一次扣分 × multiplier（默认翻倍）
+struct ReviewRules: Equatable { var enabled = true, multiplier = 2.0 }
+
 /// 正分向上取整、负分向下取整
 func roundAway(_ x: Double) -> Double { x > 0 ? (x - 1e-9).rounded(.up) : x < 0 ? (x + 1e-9).rounded(.down) : 0 }
 
@@ -436,6 +444,7 @@ struct Rules: Equatable {
     var escalation = MissingEscalation()
     var streakBonus = StreakBonus()
     var roundPoints = true
+    var review = ReviewRules()
     /// 单笔加减分保留原值；取整只作用在最终显示的总积分上
     func pt(_ x: Double) -> Double { x }
     func shown(_ total: Double) -> Double { roundPoints ? roundAway(total) : total }
@@ -486,6 +495,10 @@ struct AppData: Codable, Equatable {
                 x.streakBonus.lateCounts = b["lateCounts"]?.bool ?? x.streakBonus.lateCounts
             }
             x.roundPoints = r?["roundPoints"]?.bool ?? x.roundPoints
+            if let v = r?["review"] {
+                x.review.enabled = v["enabled"]?.bool ?? x.review.enabled
+                x.review.multiplier = v["multiplier"]?.double ?? x.review.multiplier
+            }
             if let e = r?["escalation"] {
                 x.escalation.enabled = e["enabled"]?.bool ?? x.escalation.enabled
                 x.escalation.base = e["base"]?.double ?? x.escalation.base
@@ -519,6 +532,9 @@ struct AppData: Codable, Equatable {
             b["bonus"] = .number(newValue.streakBonus.bonus); b["lateCounts"] = .bool(newValue.streakBonus.lateCounts)
             r["streakBonus"] = b
             r["roundPoints"] = .bool(newValue.roundPoints)
+            var v = r["review"] ?? .object([:])
+            v["enabled"] = .bool(newValue.review.enabled); v["multiplier"] = .number(newValue.review.multiplier)
+            r["review"] = v
             settings["rules"] = r
         }
     }
@@ -616,7 +632,9 @@ extension SchoolClass {
             switch s {
             case .MISSING:
                 streak += 1; total += 1; run = 0
-                out[a.id] = rules.pt(esc.enabled ? -esc.penalty(streak: streak, total: total) : rules.of(s))
+                let base = esc.enabled ? -esc.penalty(streak: streak, total: total) : rules.of(s)
+                let failed = rules.review.enabled && a.failedReview(sid)
+                out[a.id] = rules.pt(failed ? base * rules.review.multiplier : base)
             case .SUBMITTED, .EXCELLENT, .LATE:
                 streak = 0
                 let counts = s != .LATE || sb.lateCounts

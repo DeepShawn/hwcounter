@@ -112,6 +112,8 @@ sealed interface Route {
     data object Scores : Route
     data object Stats : Route
     data object Settings : Route
+    /** 设置的二级页面 */
+    data class SettingsPage(val key: String) : Route
     data class Assign(val id: String) : Route
     data class Recognize(val assignmentId: String, val uris: List<Uri>) : Route
     data class Live(val assignmentId: String) : Route
@@ -293,7 +295,7 @@ fun App(vm: AppViewModel, data: AppData) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         SnackbarHost(snack) { GlassSnackbar(it) }
-                        if (readOnly) PreviewBanner { nav.tab(Route.Settings) }
+                        if (readOnly) PreviewBanner { nav.tab(Route.Settings); nav.push(Route.SettingsPage("account")) }
                         if (topLevel) GlassTabBar(
                             tabs = tabs.filter { !(readOnly && it.route == Route.Students) },
                             current = current,
@@ -370,6 +372,7 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         Route.Scores -> ScoresScreen(vm, data)
         Route.Stats -> StatsScreen(vm, data)
         Route.Settings -> SettingsScreen(vm, data)
+        is Route.SettingsPage -> SettingsScreen(vm, data, route.key)
         is Route.Assign -> AssignmentScreen(vm, data, route.id)
         is Route.Recognize -> RecognizeScreen(vm, data, route.assignmentId, route.uris)
         is Route.Live -> LiveScanScreen(vm, data, route.assignmentId)

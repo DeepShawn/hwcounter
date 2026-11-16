@@ -123,6 +123,14 @@ struct AssignmentDetailView: View {
                         }
                         .buttonStyle(.bordered).tint(status.color).disabled(targets.isEmpty)
                     }
+                    if store.data.rules.review.enabled {
+                        Button("复审不合格") {
+                            store.markReviewFailed(a.id, targets.map(\.id))
+                            store.say("已将 \(targets.count) 人记为复审不合格（扣分翻倍）")
+                            pick.removeAll()
+                        }
+                        .buttonStyle(.bordered).tint(.purple).disabled(targets.isEmpty)
+                    }
                 }
             }
             Button {
@@ -279,6 +287,9 @@ struct AssignmentDetailView: View {
         ForEach(HwStatus.allCases) { s in
             Button { store.setStatus(a.id, [st.id], s) } label: { Text("\(s.emoji) \(s.label)") }
         }
+        if store.data.rules.review.enabled {
+            Button { store.markReviewFailed(a.id, [st.id]) } label: { Text("⛔ 复审不合格（扣分×\(fmtNum(store.data.rules.review.multiplier))）") }
+        }
     }
 
     /// 点一下：未登记 → 已交 → 未登记；其它状态打开详情
@@ -369,13 +380,25 @@ struct StudentStatusSheet: View {
             Form {
                 Section("状态") {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
+                        let failed = a?.failedReview(student.id) ?? false
                         ForEach(HwStatus.allCases) { s in
                             Button {
                                 store.setStatus(assignmentId, [student.id], s); dismiss()
                             } label: {
                                 VStack { Text(s.emoji).font(.title2); Text(s.label).font(.caption) }
                                     .frame(maxWidth: .infinity).padding(.vertical, 8)
-                                    .background(s == cur ? s.color.opacity(0.25) : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+                                    .background(s == cur && !failed ? s.color.opacity(0.25) : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(store.readOnly)
+                        }
+                        if store.data.rules.review.enabled {
+                            Button {
+                                store.markReviewFailed(assignmentId, [student.id]); dismiss()
+                            } label: {
+                                VStack { Text("⛔").font(.title2); Text("复审不合格").font(.caption) }
+                                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+                                    .background(failed ? Color.purple.opacity(0.25) : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
                             }
                             .buttonStyle(.plain)
                             .disabled(store.readOnly)

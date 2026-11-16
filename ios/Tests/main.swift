@@ -391,5 +391,26 @@ do {
     var neg = halfLate; neg.initial = -2
     check(lc.stats(neg)[0].score == -3, "负分向下取整")
 }
+// 作业复审：与安卓 ReviewTest、网页同一组用例
+do {
+    print("== 作业复审")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    func mk(_ m: [String], failed: Set<Int> = []) -> SchoolClass {
+        var c = SchoolClass(name: "一班", students: [Student(id: "s", no: "1", name: "甲")])
+        for (i, x) in m.enumerated() { var a = Assignment(title: "作业\(i)", subject: ""); a.id = "a\(i)"; a.createdAt = Int64((i + 1) * 1000); a.statuses = ["s": x]; if failed.contains(i) { a.reviewFailed = ["s"] }; c.assignments.append(a) }
+        return c
+    }
+    func pts(_ c: SchoolClass, _ r: Rules = Rules()) -> [Double] { let p = c.autoPoints(r, "s"); return c.assignments.map { p[$0.id] ?? 0 } }
+    let M = "MISSING"
+    check(pts(mk([M, M], failed: [0])) == [-4, -4], "复审不合格翻倍（2×2），并算一次未交")
+    check(pts(mk([M, M, M], failed: [2]))[2] == -16, "连续第 3 次 8 分翻倍为 16")
+    check(pts(mk(Array(repeating: M, count: 6), failed: [5]))[5] == -60, "上限 30 之后再翻倍")
+    var off = Rules(); off.review.enabled = false
+    check(pts(mk([M], failed: [0]), off) == [-2], "关闭复审按普通未交")
+    check(pts(mk(["SUBMITTED"], failed: [0])) == [0], "状态不是未交时标记不生效")
+    check(mk([M], failed: [0]).stats(Rules())[0].score == 96, "积分 100 − 4")
+    let back = try! JSONDecoder().decode(Assignment.self, from: JSONEncoder().encode(mk([M], failed: [0]).assignments[0]))
+    check(back.reviewFailed == ["s"], "复审标记可编码/解码")
+}
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

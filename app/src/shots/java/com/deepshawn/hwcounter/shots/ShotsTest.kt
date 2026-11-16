@@ -57,7 +57,7 @@ class ShotsTest {
                     else -> HwStatus.SUBMITTED
                 }
             }
-            Assignment(id = "a$k", title = "练习${k + 1}", subject = subjects[k % 3], createdAt = now - (18 - k) * day * 2 + 3600_000L * 9, statuses = m)
+            Assignment(id = "a$k", title = "练习${k + 1}", subject = subjects[k % 3], createdAt = now - (18 - k) * day * 2 + 3600_000L * 9, statuses = m, reviewFailed = if (k == 16) listOf("s5") else emptyList())
         }
         fun examScores(seed: Int, base: Double) = st.associate { s -> val i = s.id.drop(1).toInt(); s.id to (base + ((i * 37 + seed * 11) % 41) - 8).coerceIn(28.0, 100.0) }
         val exams = listOf(
@@ -120,6 +120,12 @@ class ShotsTest {
         com.deepshawn.hwcounter.ui.theme.UiPrefsStore.update(app) { ui }
         rule.setContent { HwTheme(data.settings.theme, dark, 1, false, com.deepshawn.hwcounter.ui.theme.UiPrefsStore.prefs) { App(vm, data) } }
         save("${prefix}_01_home"); scroll(); save("${prefix}_02_home_scrolled")
+        safe {
+            top(); rule.onAllNodes(hasText("练习17") and hasClickAction()).onFirst().performClick()
+            save("${prefix}_07a_assignment"); scroll(); save("${prefix}_07b_assignment")
+            rule.onAllNodes(hasText("周杰") and hasClickAction()).onFirst().performTouchInput { longClick() }; save("${prefix}_07c_assignment_sheet")
+        }
+        home()
 
         tab("名单"); save("${prefix}_03_roster")
         safe { click("小组"); save("${prefix}_04_groups"); scroll(); save("${prefix}_05_groups_scrolled") }
@@ -178,7 +184,12 @@ class ShotsTest {
         safe { back(); rule.onAllNodes(hasContentDescription("导入成绩")).onFirst().performClick(); save("${prefix}_44_exam_import") }
         safe { home(); tab("首页"); top(); click("批量加分"); save("${prefix}_45_batch_home"); back() }
         home()
-        tab("设置"); save("${prefix}_50_settings"); scroll(); save("${prefix}_51_settings"); scroll(); save("${prefix}_52_settings")
+        tab("设置"); save("${prefix}_50_settings"); scroll(); save("${prefix}_51_settings")
+        safe { top(); click("作业计分"); save("${prefix}_53_settings_scoring"); scroll(); save("${prefix}_54_settings_scoring"); scroll(); save("${prefix}_55_settings_scoring"); back() }
+        safe { top(); click("主题与显示"); save("${prefix}_56_settings_look"); scroll(); save("${prefix}_57_settings_look"); back() }
+        safe { top(); click("结算规则"); save("${prefix}_58_settings_settle"); back() }
+        safe { top(); click("未登录 · 预览模式"); save("${prefix}_59_settings_account"); back() }
+        safe { top(); click("软件更新"); save("${prefix}_59b_settings_update"); back() }
         safe {
             tab("名单"); top(); click("学生")
             click("张锦宇")
