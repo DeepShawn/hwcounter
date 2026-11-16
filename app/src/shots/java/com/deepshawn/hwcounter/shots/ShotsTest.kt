@@ -154,6 +154,8 @@ class ShotsTest {
             click("本轮"); save("${prefix}_30_stats_period")
             click("考试"); save("${prefix}_31_stats_exam")
             for (i in 2..9) { scroll(); save("${prefix}_3${i}_stats_exam") }
+            top(); click("关注"); save("${prefix}_35a_attention"); scroll(); save("${prefix}_35b_attention")
+            top(); click("周杰"); save("${prefix}_36a_personal"); for (k in 1..5) { scroll(); save("${prefix}_36${('a' + k)}_personal") }; back()
         }
 
         tab("首页")
@@ -194,6 +196,7 @@ class ShotsTest {
         val sink = java.io.ByteArrayOutputStream()
         pages("notice") { com.deepshawn.hwcounter.export.PdfReport.writeRules(c, rules, sink) }
         pages("settle") { com.deepshawn.hwcounter.export.PdfReport.writeSettlement(c, s, sink) }
+        pages("personal") { com.deepshawn.hwcounter.export.PdfReport.writePersonal(c, com.deepshawn.hwcounter.data.Personal.report(c, rules, c.students[5].id)!!, sink) }
         pages("ledger") { com.deepshawn.hwcounter.export.PdfReport.writeLedger(c, "积分流水", "全班 · 全部时间", com.deepshawn.hwcounter.export.Ledger.all(c, rules).map { it.first.name to it.second }, sink) }
     }
     @Test fun dark() = run("dark", 2, UiPrefs())

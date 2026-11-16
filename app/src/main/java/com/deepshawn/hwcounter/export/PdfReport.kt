@@ -578,4 +578,56 @@ object PdfReport {
             p.text("另外：本轮缺交 ${st.manyMissing} 次及以上 ${st.manyMissingDelta.signed()}；最长连续缺交 ${st.streakMissing} 次及以上 ${st.streakMissingDelta.signed()}；交齐度比上一轮提高 ${(st.progressPts * 100).toInt()} 个百分点以上（进步奖）${st.progressDelta.signed()}；本轮平均交齐度第一的小组每人 ${st.groupDelta.signed()}。本轮应交少于 ${st.minExpected} 次的同学不参加结算。", 10f)
         }
     }
+
+    /** 个人分析报告 PDF */
+    fun writePersonal(c: SchoolClass, r: com.deepshawn.hwcounter.data.Personal.Report, out: OutputStream, now: Long = System.currentTimeMillis()) {
+        val s = r.student
+        doc(out, c, "${c.name} · ${s.name} 个人分析报告", now) { p ->
+            banner(p, "${s.name} 个人分析报告", "${c.name} · ${listOf(s.no, s.group).filter { it.isNotBlank() }.joinToString(" · ")} · 生成于 ${stamp(now)}",
+                "积分 ${r.score.fmt()}（第 ${r.rank}/${r.of} 名）· 关注度指数 ${r.attention.index.roundToInt()}（${r.attention.level.label}）")
+            if (r.strengths.isNotEmpty() || r.concerns.isNotEmpty() || r.suggestions.isNotEmpty()) {
+                p.heading("一、综合评价")
+                if (r.strengths.isNotEmpty()) { p.sub("优点"); r.strengths.forEach { p.text("· $it", 10f, GOOD) } }
+                if (r.concerns.isNotEmpty()) { p.sub("需要注意"); r.concerns.forEach { p.text("· $it", 10f, BAD) } }
+                if (r.suggestions.isNotEmpty()) { p.sub("建议"); r.suggestions.forEach { p.text("· $it", 10f) } }
+            }
+            p.heading("二、关注度")
+            if (r.attentionTrend.size >= 2) { p.sub("近 8 周走势（0–100）", 100f); line(p, r.attentionTrend.map { (it / 100).toFloat() }, r.attentionTrend.indices.map { if (it == r.attentionTrend.lastIndex) "本周" else "${r.attentionTrend.size - 1 - it}周前" }, 80f, BAD) }
+            table(p, listOf("项目", "权重", "得分", "说明"), listOf(0.9f, 0.5f, 0.5f, 3.2f), r.attention.parts.map { listOf(it.label, "${(it.weight * 100).roundToInt()}%", "${it.points.roundToInt()}", it.detail) })
+            p.heading("三、作业")
+            table(p, listOf("已交", "优秀", "迟交", "未交", "请假", "未登记", "应交"), listOf(1f, 1f, 1f, 1f, 1f, 1f, 1f),
+                listOf(listOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE, HwStatus.MISSING, HwStatus.LEAVE, HwStatus.NONE).map { "${r.counts[it] ?: 0}" } + "${r.expected}"))
+            table(p, listOf("指标", "本人", "全班", "对比"), listOf(1f, 1f, 1f, 1f), r.stats.map { listOf(it.label, it.text, it.classText, if (it.better) "好于全班" else "不如全班") },
+                r.stats.map { listOf(null, null, null, if (it.better) GOOD else BAD) })
+            p.text("目前连续交齐 ${r.handStreak} 次，最长连续交齐 ${r.longestHand} 次；目前连续未交 ${r.missStreak} 次，最长连续未交 ${r.longestMiss} 次。" +
+                (r.recentRate?.let { " 最近 10 次交齐率 ${pct(it)}" + (r.olderRate?.let { o -> "，之前 10 次 ${pct(o)}" } ?: "") + "。" } ?: ""), 10f)
+            if (r.subjects.size > 1) { p.sub("各科", 50f); table(p, listOf("科目", "次数", "本人交齐率", "全班", "优秀", "缺交"), listOf(1f, 0.7f, 1f, 1f, 0.7f, 0.7f), r.subjects.map { listOf(it.subject, "${it.count}", pct(it.rate), pct(it.classRate), "${it.excellent}", "${it.missing}") }, r.subjects.map { listOf(null, null, if (it.rate >= it.classRate) GOOD else BAD, null, null, if (it.missing > 0) BAD else null) }) }
+            if (r.months.size >= 2) { p.sub("按月交齐率", 100f); line(p, r.months.map { it.rate.toFloat() }, r.months.map { it.label }, 80f, GOOD) }
+            val wd = r.weekdays.mapNotNull { (d, v) -> v?.let { Triple(d, it.toFloat(), pct(it)) } }
+            if (wd.size >= 2) { p.sub("星期规律"); bars(p, wd) }
+            p.heading("四、积分")
+            if (r.scoreTrend.size >= 2) {
+                val v = r.scoreTrend.map { it.score }; val lo = v.min(); val hi = v.max(); val span = (hi - lo).coerceAtLeast(1.0)
+                p.sub("积分走势", 100f)
+                line(p, v.map { ((it - lo) / span * 0.8 + 0.1).toFloat() }, r.scoreTrend.map { SimpleDateFormat("M/d", Locale.CHINA).format(Date(it.time)) }, 80f, Color.rgb(0x7A, 0x5C, 0xFF))
+                p.note("纵轴按 ${lo.fmt()}–${hi.fmt()} 分缩放；名次从第 ${r.scoreTrend.first().rank} 名到第 ${r.scoreTrend.last().rank} 名")
+            }
+            p.text("积分来源（当前一轮）：" + r.sources.entries.joinToString("，") { "${it.key} ${it.value.signed()}" }, 10f)
+            if (r.reasons.isNotEmpty()) p.text("手动加减分：" + r.reasons.joinToString("；") { "${it.first} ${it.second.signed()}" }, 10f, MUTED)
+            if (r.exams.isNotEmpty()) {
+                p.heading("五、考试")
+                table(p, listOf("日期", "考试", "分数", "得分率", "名次", "全班平均", "相对位置"), listOf(0.8f, 1.6f, 0.7f, 0.7f, 0.7f, 0.8f, 1f),
+                    r.exams.map { e -> listOf(SimpleDateFormat("M/d", Locale.CHINA).format(Date(e.exam.date)), "${e.exam.subject} ${e.exam.title}".trim(), if (e.absent) "缺考" else e.score?.fmt() ?: "—", e.pct?.let { pct(it) } ?: "—", e.rank?.let { "$it/${e.of}" } ?: "—", pct(e.classAvgPct), e.z?.let { "%+.1f σ".format(it) } ?: "—") },
+                    r.exams.map { e -> listOf(null, null, null, if (e.pct != null && e.pct < 0.6) BAD else null, null, null, e.z?.let { if (it >= 0) GOOD else BAD }) })
+            }
+            if (r.rounds.size > 1) {
+                p.heading("六、各轮表现")
+                table(p, listOf("轮次", "作业", "交齐率", "缺交", "起始分", "结束分"), listOf(1.4f, 0.6f, 0.8f, 0.6f, 0.8f, 0.8f), r.rounds.map { listOf(it.label, "${it.count}", pct(it.rate), "${it.missing}", it.startScore.fmt(), it.endScore.fmt()) })
+            }
+            if (r.settlements.isNotEmpty()) {
+                p.heading("七、结算记录")
+                table(p, listOf("结算", "结算分", "原因"), listOf(1.2f, 0.6f, 4f), r.settlements.map { (s0, l) -> listOf(s0.title, if (l.skipped) "不结算" else l.delta.signed(), l.reasons.joinToString("；")) })
+            }
+        }
+    }
 }

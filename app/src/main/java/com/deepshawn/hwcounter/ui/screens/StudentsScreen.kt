@@ -445,6 +445,15 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
                         top.yukonga.miuix.kmp.basic.Text(listOf(s.no, s.group, s.gender).filter { it.isNotBlank() }.joinToString(" · "), fontSize = 14.sp, color = mcolors.onSurfaceSecondary)
                         if (s.longLeave) top.yukonga.miuix.kmp.basic.Text("长期请假中", fontSize = 12.sp, color = statusColor(HwStatus.LEAVE))
                         top.yukonga.miuix.kmp.basic.Text("班级第 $rank 名 · 共 ${stats.size} 人", fontSize = 12.sp, color = mcolors.onSurfaceVariantSummary)
+                        val att = androidx.compose.runtime.remember(c, rules) { com.deepshawn.hwcounter.data.Attention.all(c, rules).firstOrNull { it.student.id == s.id } }
+                        att?.let { at ->
+                            val col = com.deepshawn.hwcounter.ui.screens.levelColor(at.level)
+                            top.yukonga.miuix.kmp.basic.Text(
+                                "关注度 ${at.index.toInt()} · ${at.level.label} · 个人分析 ›", fontSize = 12.sp, color = col,
+                                modifier = Modifier.padding(top = 4.dp).clip(androidx.compose.foundation.shape.CircleShape).background(col.copy(alpha = 0.12f))
+                                    .clickable { kit.nav.push(com.deepshawn.hwcounter.ui.Route.Personal(s.id)) }.padding(horizontal = 8.dp, vertical = 2.dp),
+                            )
+                        }
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         top.yukonga.miuix.kmp.basic.Text(com.deepshawn.hwcounter.ui.components.animatedText(me.score.fmt()), fontSize = 30.sp, fontWeight = FontWeight.SemiBold, color = mcolors.primary)
@@ -476,6 +485,7 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
         }
         item {
             SectionTitle("积分流水", Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                TextButton(onClick = { kit.nav.push(com.deepshawn.hwcounter.ui.Route.Personal(s.id)) }) { Text("个人分析") }
                 TextButton(onClick = { kit.nav.push(com.deepshawn.hwcounter.ui.Route.Ledger(s.id)) }) { Text("筛选 / 导出") }
                 if (!readOnlyState) FilledTonalButton(onClick = { scoreDialog = true }) { Text("加减分") }
             }
