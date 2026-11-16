@@ -16,7 +16,7 @@ class ScoresTest {
         assertEquals(0, compareStudentNumbers("02", "2"))
     }
 
-    private val rules = ScoreRules()
+    private val rules = FLAT
     private fun fixture() = SchoolClass(
         name = "一班", students = listOf(Student(id = "s1", no = "01", name = "张三"), Student(id = "s2", no = "02", name = "李四")),
         assignments = (1..3).map { Assignment(id = "a$it", title = "作业", statuses = mapOf("s1" to HwStatus.MISSING), comments = mapOf("s1" to "补交中")) },

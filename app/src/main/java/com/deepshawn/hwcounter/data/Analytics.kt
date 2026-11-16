@@ -463,7 +463,8 @@ object Analytics {
 
     fun sources(c: SchoolClass, rules: ScoreRules, list: List<Assignment>, w: Window, exams: List<Exam>): ScoreSources {
         var hw = 0.0
-        for (a in list) for (st in c.students) hw += rules.of(a.statuses[st.id] ?: HwStatus.NONE)
+        val all = c.autoPointsAll(rules)
+        for (a in list) for (st in c.students) hw += all[st.id]?.get(a.id) ?: rules.of(a.statuses[st.id] ?: HwStatus.NONE)
         val manual = c.scores.filter { inWindow(w, it.time) }
         val ex = exams.sumOf { e -> c.students.sumOf { rules.exam.deltaFor(e, it.id) } }
         return ScoreSources(hw, manual.filter { it.delta > 0 }.sumOf { it.delta }, manual.filter { it.delta < 0 }.sumOf { it.delta }, ex, manual.size)
@@ -536,7 +537,8 @@ object Analytics {
 
     private fun side(c: SchoolClass, rules: ScoreRules, st: Student, list: List<Assignment>, exams: List<Exam>): Side {
         val ins = insight(st, list)
-        val pts = list.mapNotNull { a -> (a.statuses[st.id] ?: HwStatus.NONE).takeIf { it != HwStatus.NONE && it != HwStatus.LEAVE }?.let { rules.of(it) } }
+        val auto = c.autoPoints(rules, st.id)
+        val pts = list.mapNotNull { a -> (a.statuses[st.id] ?: HwStatus.NONE).takeIf { it != HwStatus.NONE && it != HwStatus.LEAVE }?.let { auto[a.id] ?: rules.of(it) } }
         val ex = exams.mapNotNull { e -> e.scores[st.id]?.let { it / e.fullScore } }
         return Side(
             ins.expected - ins.unregistered, if (ins.expected - ins.unregistered == 0) 1f else ins.handedIn.toFloat() / (ins.expected - ins.unregistered),

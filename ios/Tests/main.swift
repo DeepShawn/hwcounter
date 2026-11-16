@@ -150,7 +150,7 @@ do {
 // 积分：重置保留历史，修改基准保留手动加减分及未交次数。
 do {
     func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
-    let rules = Rules()
+    var rules = Rules(); rules.escalation.enabled = false // 旧用例沿用“未交固定扣分”
     var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三"), Student(id: "s2", no: "02", name: "李四")])
     for _ in 1...3 {
         var a = Assignment(title: "作业", subject: "数学")
@@ -176,7 +176,7 @@ do {
 do {
     print("== 积分重置")
     func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
-    let rules = Rules()
+    var rules = Rules(); rules.escalation.enabled = false
     var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三"), Student(id: "s2", no: "02", name: "李四")])
     for i in 1...3 {
         var a = Assignment(title: "作业\(i)", subject: "数学")
@@ -227,7 +227,7 @@ do {
     var e = Exam(title: "期中", scores: ["s1": 95, "s2": 50])
     e.date = 5000
     c.exams = [e]
-    let rules = Rules()
+    var rules = Rules(); rules.escalation.enabled = false
     check(c.stats(rules).map(\.score) == [102, 99], "考试加减分计入积分")
     let reset = c.recharging(rules, ids: ["s1", "s2"], target: 100, time: 9000)
     check(reset.stats(rules).map(\.score) == [100, 100], "重置后之前的考试不再计分")
@@ -342,6 +342,29 @@ do {
     check(c.autoReset?.skipped == ["202611"] && c.applyingAutoReset(rules, now: at(2026, 11, 3)).recharges.map(\.id) == ["auto-202610"], "撤销的月份不再补回")
     let back = try! JSONDecoder().decode(SchoolClass.self, from: JSONEncoder().encode(c))
     check(back.autoReset == c.autoReset, "定期重置设置可编码/解码（与安卓字段一致）")
+}
+// 未交连续递增扣分：与安卓 EscalationTest、网页 recharge.test.mjs 同一组用例
+do {
+    print("== 未交连续递增扣分")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    let rules = Rules()
+    func mk(_ m: [String]) -> SchoolClass {
+        var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三")])
+        for (i, x) in m.enumerated() { var a = Assignment(title: "作业\(i)", subject: "数学"); a.id = "a\(i)"; a.createdAt = Int64((i + 1) * 1000); a.statuses = ["s1": x]; c.assignments.append(a) }
+        return c
+    }
+    func pts(_ c: SchoolClass, _ r: Rules = Rules()) -> [Double] { let p = c.autoPoints(r, "s1"); return c.assignments.map { p[$0.id] ?? 0 } }
+    check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING"])) == [-2, -4, -8, -16], "连续未交 2、4、8、16")
+    check(pts(mk(["MISSING", "LEAVE", "MISSING"])) == [-2, 0, -4], "请假不打断连续")
+    check(pts(mk(["MISSING", "MISSING", "SUBMITTED", "MISSING"])) == [-2, -4, 0, -2], "交过一次就重新算")
+    let many = mk(["MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "MISSING", "MISSING", "MISSING"])
+    let mp = pts(many).enumerated().filter { many.assignments[$0.offset].statuses["s1"] == "MISSING" }.map(\.element)
+    check(mp == [-2, -2, -2, -2, -2, -2, -3, -9, -27, -81], "本轮累计超 6 次后底数为 3")
+    let reset = many.recharging(rules, ids: ["s1"], target: 100, time: 99000, assignmentId: "a14")
+    let rp = reset.autoPoints(rules, "s1")
+    check(rp["a13"] == -9 && rp["a14"] == -2 && rp["a15"] == -4 && reset.stats(rules)[0].score == 94, "重置后新一轮从 2 开始")
+    var capped = Rules(); capped.escalation.cap = 5
+    check(pts(mk(["MISSING", "MISSING", "MISSING"]), capped) == [-2, -4, -5], "单次最多扣分上限")
 }
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

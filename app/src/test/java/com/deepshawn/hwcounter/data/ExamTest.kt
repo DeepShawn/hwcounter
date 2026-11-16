@@ -23,7 +23,7 @@ class ExamTest {
     @Test fun examPointsCountInScoresAndRespectResets() {
         val e = Exam(id = "e1", title = "期中", date = 5_000, scores = mapOf("s1" to 95.0, "s2" to 50.0))
         var c = SchoolClass(name = "一班", students = st, exams = listOf(e))
-        val rules = ScoreRules()
+        val rules = FLAT
         fun score(id: String) = c.studentStats(rules).first { it.student.id == id }.score
         assertEquals(102.0, score("s1"), 0.0); assertEquals(99.0, score("s2"), 0.0); assertEquals(100.0, score("s3"), 0.0)
         assertTrue(c.ledger(rules, "s1").any { it.kind == LedgerRow.Kind.EXAM && it.delta == 2.0 })

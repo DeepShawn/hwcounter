@@ -1,7 +1,7 @@
 import { h, render, Component } from '../vendor/preact.module.js';
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
-import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, compareStudentNumbers, addStudentScores, rechargeScores, removeRecharge, applyAutoResets, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
+import { newId, STATUS, STATUS_KEYS, emptyData, normalizeData, summary, studentStats, compareStudentNumbers, addStudentScores, rechargeScores, removeRecharge, applyAutoResets, autoPoints, ruleOf, fmtNum, signed, fmtDate, isToday, parseRoster } from './model.js';
 import { api, session, meta, setMeta, syncOnce, pushAs, merge, hashData, withLocalKey } from './cloud.js';
 import { createVoiceParser } from './voice.js';
 import { xlsx, ST } from './xlsx.js';
@@ -319,7 +319,7 @@ function AssignView({ s, id, back, open }) {
   const exportX = () => {
     const rows = [[{ v: '学号', s: ST.HEADER }, { v: '姓名', s: ST.HEADER }, { v: '状态', s: ST.HEADER }, { v: '本次分值', s: ST.HEADER }, { v: '备注', s: ST.HEADER }]];
     const styleOf = { SUBMITTED: ST.GREEN, EXCELLENT: ST.GOLD, LATE: ST.YELLOW, MISSING: ST.RED, LEAVE: ST.BLUE, NONE: 0 };
-    for (const st of c.students) { const x = a.statuses[st.id] || 'NONE'; rows.push([st.no, st.name, { v: STATUS[x].label, s: styleOf[x] }, ruleOf(rules, x), a.comments[st.id] || '']); }
+    for (const st of c.students) { const x = a.statuses[st.id] || 'NONE'; rows.push([st.no, st.name, { v: STATUS[x].label, s: styleOf[x] }, autoPoints(c, rules, st.id)[a.id] ?? ruleOf(rules, x), a.comments[st.id] || '']); }
     download(xlsx([{ name: '本次作业', rows }]), `${a.subject}_${a.title}.xlsx`.replace(/[\\/]/g, '_'));
   };
   const shareText = async () => {
@@ -371,7 +371,7 @@ function AssignView({ s, id, back, open }) {
         onCol=${(col) => { if (s.readOnly) return; setMulti(true); const g = seatingToGrid(c.seating, c.students); togglePick(g.map((row) => row[col]).filter(Boolean)); }} />
       ${(() => { const un = c.students.filter((x) => c.seating.seats[x.id] == null); return un.length ? html`<div class="muted tiny pad">未入座：${un.map((x) => html`<button class=${'chip' + (pick.has(x.id) ? ' on' : '')} onClick=${() => { if (multi || pick.size) { togglePick([x.id]); return; } const v = a.statuses[x.id] || 'NONE'; setStatus([x.id], v === 'NONE' || v === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}>${x.name} · ${STATUS[a.statuses[x.id] || 'NONE'].label}</button>`)}</div>` : ''; })()}
     ` : html`
-    <div class="grid">${list.map((st) => { const x = a.statuses[st.id] || 'NONE'; const d = ruleOf(rules, x); return html`
+    <div class="grid">${list.map((st) => { const x = a.statuses[st.id] || 'NONE'; const d = autoPoints(c, rules, st.id)[a.id] ?? ruleOf(rules, x); return html`
       <button type="button" key=${st.id} class=${'stu' + (pick.has(st.id) ? ' sel' : '')} aria-pressed=${multi ? pick.has(st.id) : undefined} style=${x === 'NONE' ? {} : { background: STATUS[x].color + '26', borderColor: STATUS[x].color + '66' }}
         onClick=${() => { if (press.current.held) { press.current.held = false; return; } if (multi || pick.size) { togglePick([st.id]); return; } setStatus([st.id], x === 'NONE' || x === 'MISSING' ? 'SUBMITTED' : 'NONE'); }}
         onContextMenu=${(e) => { e.preventDefault(); if (!multi) setSheet(st); }}
@@ -707,7 +707,7 @@ function Scores({ s }) {
     download(xlsx([{ name: '作业统计', rows }, { name: '各次统计名单', rows: classStatRows(c, fmtDate) }, { name: '积分榜', rows: rank }, { name: '积分明细', rows: log }, ...(recharges.length ? [{ name: '积分重置记录', rows: rc }] : [])]), `${c.name}_作业统计.xlsx`);
   };
   return html`<div class=${'page' + (selecting ? ' scores-selecting' : '')}>
-    <div class="hero"><div class="hero-title">积分榜</div><div class="muted-light small">基准 ${fmtNum(rules.initial)} · 未交 ${signed(rules.missing)} · 迟交 ${signed(rules.late)} · 优秀 ${signed(rules.excellent)}</div>
+    <div class="hero"><div class="hero-title">积分榜</div><div class="muted-light small">基准 ${fmtNum(rules.initial)} · ${rules.escalation?.enabled !== false ? `未交连续 −${fmtNum(rules.escalation?.base ?? 2)}、−${fmtNum((rules.escalation?.base ?? 2) ** 2)}、−${fmtNum((rules.escalation?.base ?? 2) ** 3)}…` : `未交 ${signed(rules.missing)}`} · 迟交 ${signed(rules.late)} · 优秀 ${signed(rules.excellent)}</div>
       ${ranked.length >= 3 && html`<div class="podium">${[1, 0, 2].map((i) => html`<div class=${'pod p' + i}><div>${['🥇', '🥈', '🥉'][i]}</div><${Avatar} name=${ranked[i].student.name} size=${i ? 44 : 54} /><div class="small">${ranked[i].student.name}</div><div class="pod-bar"><b>${fmtNum(ranked[i].score)}</b></div></div>`)}</div>`}
     </div>
     <div class="toolbar"><button class="chip" onClick=${exportAll}>📊 导出全班 Excel</button>
@@ -855,7 +855,12 @@ function Settings({ s }) {
     <div class="card"><${UiPrefsPanel} /></div>
     <div class="section">🧮 计分规则</div>
     <div class="card">${[['initial', '初始分'], ['submitted', '✅ 已交'], ['excellent', '🌟 优秀'], ['late', '🐢 迟交'], ['missing', '❌ 未交'], ['leave', '🏖️ 请假']].map(([k, l]) => html`
-      <div class="row between rule"><span>${l}</span><input class="input num" type="number" step="0.5" value=${data.settings.rules[k]} onChange=${(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) set((x) => ({ ...x, rules: { ...x.rules, [k]: v } })); }} /></div>`)}</div>
+      <div class="row between rule"><span>${l}</span><input class="input num" type="number" step="0.5" value=${data.settings.rules[k]} onChange=${(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) set((x) => ({ ...x, rules: { ...x.rules, [k]: v } })); }} /></div>`)}
+      ${(() => { const esc = data.settings.rules.escalation || {}; const setE = (patch) => set((x) => ({ ...x, rules: { ...x.rules, escalation: { ...(x.rules.escalation || {}), ...patch } } })); return html`
+      <label class="row between rule"><span>未交连续加倍扣分</span><input type="checkbox" checked=${esc.enabled !== false} onChange=${(e) => setE({ enabled: e.target.checked })} /></label>
+      ${esc.enabled !== false && html`${[['base', '底数（第 1 次扣）'], ['heavyAfter', '累计超过几次后'], ['heavyBase', '加重后的底数'], ['cap', '单次最多扣（0 不限）']].map(([k, l]) => html`
+        <div class="row between rule"><span>${l}</span><input class="input num" type="number" step="1" min="0" value=${esc[k]} onChange=${(e) => { const v = parseFloat(e.target.value); if (!Number.isNaN(v) && v >= 0) setE({ [k]: k === 'heavyAfter' ? Math.round(v) : v }); }} /></div>`)}
+        <div class="muted tiny">连续未交第 1 次扣 ${fmtNum(esc.base ?? 2)}，第 2 次 ${fmtNum((esc.base ?? 2) ** 2)}，第 3 次 ${fmtNum((esc.base ?? 2) ** 3)}…；请假、未登记不打断，交过一次就重新算；本轮累计超过 ${esc.heavyAfter ?? 6} 次后底数变为 ${fmtNum(esc.heavyBase ?? 3)}；每次积分重置后重新开始。开启后“❌ 未交”固定扣分不再使用。修改后历史积分自动重算。</div>`}`; })()}</div>
     <div class="section">💾 数据</div>
     <div class="card"><div class="actions">
       <button class="btn ghost" onClick=${() => download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `作业通备份_${new Date().toISOString().slice(0, 10)}.json`)}>备份全部数据</button>

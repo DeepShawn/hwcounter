@@ -33,7 +33,7 @@ class AutoResetAndProgressTest {
     }
 
     @Test fun applyAddsDeterministicResetsAndUndoSkips() {
-        val rules = ScoreRules()
+        val rules = FLAT
         var c = cls().copy(autoReset = AutoReset(target = 100.0, day = 1, since = at(2026, 9, 15)))
         c = c.applyAutoReset(rules, at(2026, 11, 2))
         assertEquals(listOf("auto-202610", "auto-202611"), c.recharges.map { it.id })
@@ -72,13 +72,13 @@ class AutoResetAndProgressTest {
         assertEquals(5, cu.assignments.size)
         assertTrue(cu.previous.isEmpty())
         // 过去的月份：积分变化按月底计算
-        val r = Analytics.report(c, ScoreRules(), Analytics.Spec(Analytics.Range.MONTH, offset = -1), now)
+        val r = Analytics.report(c, FLAT, Analytics.Spec(Analytics.Range.MONTH, offset = -1), now)
         assertEquals(15, r.kpi.assignments)
         assertEquals(-30.0, r.students.first { it.student.id == "s2" }.scoreDelta, 1e-9) // 9 月 15 次未交 × -2
     }
 
     @Test fun progressComparesBeforeAndAfterReset() {
-        val rules = ScoreRules()
+        val rules = FLAT
         val c0 = cls()
         val c = c0.recharge(rules, c0.students.map { it.id }, 100.0, time = at(2026, 10, 1), effectiveAt = at(2026, 10, 1))
         val pg = Analytics.progress(c, rules)!!
@@ -94,7 +94,7 @@ class AutoResetAndProgressTest {
     }
 
     @Test fun moreAnalysisItems() {
-        val rules = ScoreRules()
+        val rules = FLAT
         val c0 = cls()
         val c = c0.recharge(rules, c0.students.map { it.id }, 100.0, time = at(2026, 10, 1), effectiveAt = at(2026, 10, 1))
             .copy(scores = listOf(ScoreEntry(studentId = "s1", delta = 2.0, reason = "主动回答", time = at(2026, 10, 3)), ScoreEntry(studentId = "s4", delta = 1.0, reason = "主动回答", time = at(2026, 10, 4))))

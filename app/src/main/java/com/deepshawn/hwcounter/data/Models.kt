@@ -110,6 +110,8 @@ data class ScoreRules(
     val leave: Double = 0.0,
     /** 考试按分数档自动加减分 */
     val exam: ExamRules = ExamRules(),
+    /** 未交连续递增扣分（开启时代替固定的 [missing]） */
+    val escalation: MissingEscalation = MissingEscalation(),
 ) {
     fun of(s: HwStatus): Double = when (s) {
         HwStatus.NONE -> 0.0
@@ -206,10 +208,11 @@ fun SchoolClass.studentStats(rules: ScoreRules): List<StudentStat> {
         val r = last[st.id]
         val counts = HashMap<HwStatus, Int>()
         var auto = 0.0
+        val pts = autoPoints(rules, st.id)
         for (a in assignments) {
             val s = a.statuses[st.id] ?: HwStatus.NONE
             counts[s] = (counts[s] ?: 0) + 1
-            if (a.countsAfter(r)) auto += rules.of(s)
+            if (a.countsAfter(r)) auto += pts[a.id] ?: rules.of(s)
         }
         var examPts = 0.0
         for (e in exams) if (r == null || r.counts(e.date)) examPts += rules.exam.deltaFor(e, st.id)

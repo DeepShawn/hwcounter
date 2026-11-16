@@ -1,5 +1,7 @@
 package com.deepshawn.hwcounter.export
 
+import com.deepshawn.hwcounter.data.autoPointsAll
+import com.deepshawn.hwcounter.data.missingText
 import com.deepshawn.hwcounter.data.countsAfter
 import com.deepshawn.hwcounter.data.latestRecharges
 
@@ -142,7 +144,7 @@ object Exporter {
             row("已交", rules.submitted)
             row("优秀", rules.excellent)
             row("迟交", rules.late)
-            row("未交", rules.missing)
+            row("未交", if (rules.escalation.enabled) "连续递增：第 1 次 −${rules.escalation.base.fmt()}，连续第 n 次 −${rules.escalation.base.fmt()}^n；本轮累计超 ${rules.escalation.heavyAfter} 次后底数 ${rules.escalation.heavyBase.fmt()}；请假不打断，交过即重算，每次重置重新开始" else rules.missing)
             row("请假", rules.leave)
         }
         x.write(out)
@@ -222,11 +224,12 @@ object Exporter {
             .also { f -> f.outputStream().use { writeStatList(c, title, subject, createdAt, statuses, comments, it) } }
 
     fun csv(c: SchoolClass, a: Assignment, rules: ScoreRules): String = buildString {
+        val pts = c.autoPointsAll(rules)
         append('﻿')
         append("学号,姓名,小组,状态,本次分值,备注\n")
         for (s in c.students) {
             val st = a.statuses[s.id] ?: HwStatus.NONE
-            append(listOf(s.no, s.name, s.group, st.label, rules.of(st).fmt(), a.comments[s.id] ?: "").joinToString(",") { q(it) })
+            append(listOf(s.no, s.name, s.group, st.label, (pts[s.id]?.get(a.id) ?: rules.of(st)).fmt(), a.comments[s.id] ?: "").joinToString(",") { q(it) })
             append('\n')
         }
     }

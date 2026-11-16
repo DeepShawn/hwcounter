@@ -103,13 +103,15 @@ data class LedgerRow(
 fun SchoolClass.ledger(rules: ScoreRules, studentId: String): List<LedgerRow> {
     val last = latestRecharges()[studentId]
     val rows = ArrayList<LedgerRow>()
+    val pts = autoPoints(rules, studentId)
     for (e in scores) if (e.studentId == studentId) {
         rows += LedgerRow("m" + e.id, LedgerRow.Kind.MANUAL, e.time, e.delta, e.reason, e.countsAfter(last), entryId = e.id)
     }
     for (a in assignments) {
         val st = a.statuses[studentId] ?: HwStatus.NONE
-        val d = rules.of(st)
-        if (d != 0.0) rows += LedgerRow("a" + a.id, LedgerRow.Kind.AUTO, a.createdAt, d, "${a.subject}「${a.title}」${st.label}", a.countsAfter(last), assignmentId = a.id)
+        val d = pts[a.id] ?: rules.of(st)
+        val extra = if (st == HwStatus.MISSING && rules.escalation.enabled && -d > rules.escalation.base) "（连续递增）" else ""
+        if (d != 0.0) rows += LedgerRow("a" + a.id, LedgerRow.Kind.AUTO, a.createdAt, d, "${a.subject}「${a.title}」${st.label}$extra", a.countsAfter(last), assignmentId = a.id)
     }
     for (e in exams) {
         val d = rules.exam.deltaFor(e, studentId)
