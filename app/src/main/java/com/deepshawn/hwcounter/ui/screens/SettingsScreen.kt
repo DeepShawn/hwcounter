@@ -650,6 +650,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsIndex(vm: App
         SuperArrow(title = "数据与备份", summary = "备份、恢复、清空数据", onClick = { open("data") })
         SuperArrow(title = "软件更新", summary = "当前 v${BuildConfig.VERSION_NAME}", onClick = { open("update") })
     }
+    group("帮助", key = "idx-help") {
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        SuperArrow(title = "新手引导", summary = "重新查看主要功能介绍", onClick = { com.deepshawn.hwcounter.ui.theme.UiPrefsStore.update(ctx) { it.copy(onboarded = false) } })
+    }
 }
 
 /** 根据模型名粗略判断是否多模态，仅用于列表提示与默认开关 */

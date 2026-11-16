@@ -117,8 +117,13 @@ class ShotsTest {
         @Suppress("UNCHECKED_CAST")
         (AppViewModel::class.java.getDeclaredField("_readOnly").apply { isAccessible = true }.get(vm) as MutableStateFlow<Boolean>).value = false
         val data = sample().let { it.copy(settings = it.settings.copy(dark = dark)) }
-        com.deepshawn.hwcounter.ui.theme.UiPrefsStore.update(app) { ui }
+        // 浅色这一组先截新手引导，其余直接跳过
+        com.deepshawn.hwcounter.ui.theme.UiPrefsStore.update(app) { ui.copy(onboarded = prefix != "light") }
         rule.setContent { HwTheme(data.settings.theme, dark, 1, false, com.deepshawn.hwcounter.ui.theme.UiPrefsStore.prefs) { App(vm, data) } }
+        if (prefix == "light") {
+            save("${prefix}_00a_onboarding"); click("下一步"); save("${prefix}_00b_onboarding"); click("下一步"); save("${prefix}_00c_onboarding")
+            click("跳过")
+        }
         save("${prefix}_01_home"); scroll(); save("${prefix}_02_home_scrolled")
         safe {
             top(); rule.onAllNodes(hasText("练习18", substring = true) and hasClickAction()).onFirst().performClick()

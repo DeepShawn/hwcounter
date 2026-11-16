@@ -27,6 +27,7 @@ enum Pane: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @EnvironmentObject var store: Store
+    @AppStorage("onboarded") private var onboarded = false
     @State private var section: Pane? = .homework
     @State private var showClasses = false
 
@@ -67,6 +68,9 @@ struct RootView: View {
             ZStack { toast }.animation(.spring(response: 0.3, dampingFraction: 0.8), value: store.toast)
         }
         .sheet(isPresented: $showClasses) { ClassesSheet() }
+        .sheet(isPresented: Binding(get: { !onboarded }, set: { if !$0 { onboarded = true } })) {
+            OnboardingView { onboarded = true }
+        }
         .sheet(isPresented: Binding(get: { store.sync.conflict != nil }, set: { _ in })) { ConflictSheet() }
     }
 
