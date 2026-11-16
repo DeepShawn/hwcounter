@@ -49,6 +49,11 @@ class EscalationTest {
         assertEquals(100.0 - 2 - 4, score(c), 1e-9)
     }
 
+    @Test fun defaultCapIsThirty() {
+        assertEquals(30.0, MissingEscalation().cap, 0.0)
+        assertEquals(listOf(-2.0, -4.0, -8.0, -16.0, -30.0, -30.0), pts(cls(M, M, M, M, M, M)))
+    }
+
     @Test fun capAndDisabled() {
         val capped = rules.copy(escalation = MissingEscalation(cap = 5.0))
         val c = cls(M, M, M, M)

@@ -9,7 +9,7 @@ import kotlin.math.pow
  * - 中间请假、未登记不打断也不计数；只要交过一次（已交 / 优秀 / 迟交）就打断，下次未交重新从第 1 次算；
  * - 本轮累计未交超过 [heavyAfter] 次（默认 6 次）后，底数变为 [heavyBase]（默认 3：3、9、27……）；
  * - 每次积分重置开始新一轮：连续次数、累计次数清零，底数回到 [base]。
- * - [cap] > 0 时，单次最多扣 cap 分。
+ * - [cap] > 0 时，单次最多扣 cap 分（默认 30）。
  */
 @Serializable
 data class MissingEscalation(
@@ -17,7 +17,7 @@ data class MissingEscalation(
     val base: Double = 2.0,
     val heavyBase: Double = 3.0,
     val heavyAfter: Int = 6,
-    val cap: Double = 0.0,
+    val cap: Double = 30.0,
 ) {
     /** 本轮第 total 次未交、连续第 streak 次时应扣的分（正数） */
     fun penalty(streak: Int, total: Int): Double {

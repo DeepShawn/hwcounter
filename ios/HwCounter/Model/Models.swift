@@ -410,7 +410,7 @@ struct Seating: Codable, Equatable {
 
 /// 未交连续递增扣分（与安卓 Penalty.kt、网页 model.js 同算法）
 struct MissingEscalation: Equatable {
-    var enabled = true, base = 2.0, heavyBase = 3.0, heavyAfter = 6, cap = 0.0
+    var enabled = true, base = 2.0, heavyBase = 3.0, heavyAfter = 6, cap = 30.0
     func penalty(streak: Int, total: Int) -> Double {
         let b = total > heavyAfter ? heavyBase : base
         let p = pow(b, Double(max(streak, 1)))

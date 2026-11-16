@@ -11,7 +11,7 @@ export const STATUS = {
 };
 export const STATUS_KEYS = Object.keys(STATUS);
 
-export const defaultEscalation = () => ({ enabled: true, base: 2, heavyBase: 3, heavyAfter: 6, cap: 0 });
+export const defaultEscalation = () => ({ enabled: true, base: 2, heavyBase: 3, heavyAfter: 6, cap: 30 });
 export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation() });
 export const defaultSettings = () => ({
   theme: 'mint', dark: 0, layout: 'grid', shape: 1, compact: false, rules: defaultRules(),

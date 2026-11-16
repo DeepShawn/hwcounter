@@ -359,7 +359,7 @@ do {
     check(pts(mk(["MISSING", "MISSING", "SUBMITTED", "MISSING"])) == [-2, -4, 0, -2], "交过一次就重新算")
     let many = mk(["MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "MISSING", "MISSING", "MISSING"])
     let mp = pts(many).enumerated().filter { many.assignments[$0.offset].statuses["s1"] == "MISSING" }.map(\.element)
-    check(mp == [-2, -2, -2, -2, -2, -2, -3, -9, -27, -81], "本轮累计超 6 次后底数为 3")
+    check(mp == [-2, -2, -2, -2, -2, -2, -3, -9, -27, -30], "本轮累计超 6 次后底数为 3，单次最多扣 30")
     let reset = many.recharging(rules, ids: ["s1"], target: 100, time: 99000, assignmentId: "a14")
     let rp = reset.autoPoints(rules, "s1")
     check(rp["a13"] == -9 && rp["a14"] == -2 && rp["a15"] == -4 && reset.stats(rules)[0].score == 94, "重置后新一轮从 2 开始")
