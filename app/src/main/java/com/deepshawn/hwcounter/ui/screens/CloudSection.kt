@@ -259,7 +259,7 @@ private fun ChangePasswordDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                     busy = true
                     scope.launch {
                         runCatching { vm.sync.changePassword(old, new1) }
-                            .onSuccess { kit.toast("✅ 密码已修改"); onDismiss() }
+                            .onSuccess { kit.toast("密码已修改"); onDismiss() }
                             .onFailure { err = it.message ?: "修改失败" }
                         busy = false
                     }

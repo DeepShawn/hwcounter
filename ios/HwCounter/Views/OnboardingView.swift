@@ -34,7 +34,7 @@ struct OnboardingView: View {
             TabView(selection: $page) {
                 ForEach(Array(guideSteps.enumerated()), id: \.offset) { i, st in
                     VStack(spacing: 16) {
-                        Text(st.emoji).font(.system(size: 46))
+                        Image(systemName: lineSymbol(st.emoji)).font(.system(size: 40, weight: .regular)).foregroundStyle(.white)
                             .frame(width: 96, height: 96)
                             .background(LinearGradient(colors: st.colors, startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 28))
                         Text(st.title).font(.title2.bold())

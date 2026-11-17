@@ -174,7 +174,7 @@ fun Ring(value: Double, color: Color, size: Dp = 84.dp, stroke: Dp = 8.dp, conte
 @Composable
 fun Empty(emoji: String = "📭", text: String) {
     Column(Modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(emoji, fontSize = 46.sp)
+        LineIcon(emoji, sub(), size = 42.dp)
         Spacer(Modifier.height(8.dp))
         Text(text, color = sub(), textAlign = TextAlign.Center)
     }

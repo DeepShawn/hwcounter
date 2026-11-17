@@ -352,7 +352,7 @@ fun AssignmentPlagiarismCard(r: PlagiarismGraph.Report, onOpen: (String) -> Unit
     HCard(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("🕵️ 本次抄袭关系图", fontWeight = FontWeight.Bold, color = PlagiarismColor, modifier = Modifier.weight(1f))
+                Text("本次抄袭关系图", fontWeight = FontWeight.Bold, color = PlagiarismColor, modifier = Modifier.weight(1f))
                 Text("${r.copiers} 人抄袭 · ${r.providers} 人提供 · ${if (open) "收起" else "展开"}", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
             }
             if (open) {

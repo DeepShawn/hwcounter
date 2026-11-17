@@ -84,7 +84,7 @@ final class Store: ObservableObject {
             setDrafts(drafts.filter { !done.contains($0.id) })
             syncTask?.cancel()
             Task { await runSync() }
-            say("\(why)☁️ 已上传 \(done.count) 份草稿" + (errs.isEmpty ? "" : "；" + errs.joined(separator: "；")))
+            say("\(why)已上传 \(done.count) 份草稿" + (errs.isEmpty ? "" : "；" + errs.joined(separator: "；")))
         } else if !errs.isEmpty { say(errs.joined(separator: "；")) }
         return done.count
     }
@@ -93,7 +93,7 @@ final class Store: ObservableObject {
         guard !readOnly else { return }
         let now = nowMillis()
         let due = drafts.filter { ($0.scheduledAt ?? Int64.max) <= now }.map(\.id)
-        if !due.isEmpty { uploadDrafts(due, why: "⏰ 定时") }
+        if !due.isEmpty { uploadDrafts(due, why: "定时上传：") }
     }
 
     private func start() async {
@@ -133,7 +133,7 @@ final class Store: ObservableObject {
         if new == old { return }
         if readOnly {
             // 预览模式：班级数据只读；只允许切换班级、改主题等本机显示设置
-            if new.classes != old.classes { say("👀 预览模式：登录后才能修改"); return }
+            if new.classes != old.classes { say("预览模式：登录后才能修改"); return }
             data = new
             var main = Store.loadMain()
             main.settings = new.settings
@@ -370,7 +370,7 @@ final class Store: ObservableObject {
 
     func changePassword(old: String, new: String) async throws {
         try await cloud.changePassword(old: old, new: new)
-        say("✅ 密码已修改")
+        say("密码已修改")
     }
 
     private func onLogin() {

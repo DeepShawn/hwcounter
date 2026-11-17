@@ -80,7 +80,7 @@ struct SeatingSheet: View {
             Group {
                 if let c = store.data.currentClass { content(c) } else { EmptyHint(emoji: "🏫", title: "还没有班级", detail: "") }
             }
-            .navigationTitle("🪑 座位表")
+            .navigationTitle("座位表")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
         }

@@ -9,6 +9,7 @@ import {
 } from './model.js';
 import { api } from './cloud.js';
 import { StatsPage, PlagGraph } from './statspage.js';
+import { Icon as LIcon } from './icons.js';
 import { StockDetail, GroupStockDetail } from './stockpage.js';
 import { plagiarismReport } from './analytics.js';
 
@@ -98,7 +99,7 @@ function Ring({ value, size = 84, stroke = 8, color = 'var(--accent)', children 
 }
 const Tile = ({ label, value, color, onClick }) => html`<div class=${'tile' + (onClick ? ' tap' : '')} onClick=${onClick}><b style=${color ? { color } : null}>${value}</b><span>${label}</span></div>`;
 const Pill = ({ k }) => { const s = SV(k); return html`<span class="pill" style=${{ color: s.color, background: s.color + '1f' }}>${s.label}</span>`; };
-const Empty = ({ emoji = '📭', text }) => html`<div class="empty"><div>${emoji}</div>${text}</div>`;
+const Empty = ({ emoji = '📭', text }) => html`<div class="empty"><div class="empty-i"><${LIcon} name=${emoji} size=${44} stroke=${1.5} /></div>${text}</div>`;
 /** 这次作业里这位同学的抄袭关系（“抄袭 甲” / “抄袭（提供者不明）” / “提供给 乙 抄”） */
 const plagLine = (c, a, sid) => plagiarismDesc(c, a, sid);
 const sortStudents = (list) => [...list].sort((a, b) => compareStudentNumbers(a.no, b.no) || a.name.localeCompare(b.name, 'zh'));
@@ -217,20 +218,20 @@ function AssignView({ c, rules, id, back, open, prefs, setPrefs }) {
         ${a.countedBooks != null && html`<div class="cell-sub">数本数：${a.countedBooks} 本</div>`}
       </div>
     </section>
-    ${plag && plag.cases.length > 0 && html`<${Title}>🕵️ 本次抄袭关系图 · ${plag.copiers} 人抄袭、${plag.providers} 人提供</${Title}>
+    ${plag && plag.cases.length > 0 && html`<${Title}>本次抄袭关系图 · ${plag.copiers} 人抄袭、${plag.providers} 人提供</${Title}>
       <section class="grp an-pad"><${PlagGraph} r=${plag} open=${open} />
         <div class="cell-sub" style=${{ paddingTop: '6px' }}>${[...plag.cases.filter((k) => k.unknown).map((k) => `提供者不明 → ${k.receiver.name}`), ...plag.edges.map((e) => `${e.provider.name} → ${e.receiver.name}`)].join('　')}</div></section>`}
     <div class="chips">${chips.map(([k, l]) => html`<button class=${'chip' + (filter === k ? ' on' : '')} onClick=${() => setFilter(k)}>${l}</button>`)}</div>
     <div class="row-between"><${Title}>同学 · ${shown.length} 人</${Title}><${Seg} items=${[['grid', '网格'], ['list', '列表']]} value=${prefs.layout} onChange=${(v) => setPrefs({ layout: v })} /></div>
     ${prefs.layout === 'list'
       ? html`<${Group}>${shown.map((s) => { const k = view(a, s.id); const d = pts[s.id]; return html`<${Cell} key=${s.id} left=${html`<${Avatar} name=${s.name} size=${38} />`} title=${s.name}
-          sub=${[s.no, s.group, a.comments?.[s.id] && '💬 ' + a.comments[s.id]].filter(Boolean).join(' · ')}
+          sub=${[s.no, s.group, a.comments?.[s.id] && '评语：' + a.comments[s.id]].filter(Boolean).join(' · ')}
           right=${html`<span class="pts">${d ? html`<b style=${{ color: d > 0 ? '#16a34a' : '#e5384d' }}>${signed(d)}</b>` : ''}<${Pill} k=${k} /></span>`} onClick=${() => open({ view: 'student', id: s.id })} />`; })}</${Group}>`
       : html`<div class="grid">${shown.map((s) => { const k = view(a, s.id); const st = SV(k); const d = pts[s.id]; return html`<button key=${s.id} class="stu" style=${{ '--c': st.color }} onClick=${() => open({ view: 'student', id: s.id })}>
           <${Avatar} name=${s.name} size=${40} />
           <b>${s.name}</b><small>${s.no}</small>
           <span class="stu-st">${k === 'PLAG' ? plagLine(c, a, s.id) || st.label : st.label}${d ? html` <em style=${{ color: d > 0 ? '#16a34a' : '#e5384d' }}>${signed(d)}</em>` : ''}</span>
-          ${a.comments?.[s.id] && html`<small class="cm">💬 ${a.comments[s.id]}</small>`}
+          ${a.comments?.[s.id] && html`<small class="cm"><${LIcon} name="message_circle" size=${11} /> ${a.comments[s.id]}</small>`}
         </button>`; })}</div>`}
   </${Page}>`;
 }
@@ -304,7 +305,7 @@ function StudentView({ c, rules, id, back, open }) {
         <div class="hero-title">${s.name}</div>
         <div class="cell-sub">${[s.no, s.group, s.gender, s.longLeave && '长期请假'].filter(Boolean).join(' · ')}</div>
         ${(() => { const roles = [(c.reps || []).includes(s.id) && '课代表', s.group && leaderOf(c, s.group)?.id === s.id && `${s.group}组长`].filter(Boolean); return roles.length ? html`<div class="cell-sub" style=${{ color: 'var(--accent)', fontWeight: 600 }}>${roles.join(' · ')}</div>` : ''; })()}
-        ${s.note && html`<div class="cell-sub">📝 ${s.note}</div>`}
+        ${s.note && html`<div class="cell-sub"><${LIcon} name="notebook_pen" size=${12} /> ${s.note}</div>`}
       </div>
       <div class="big-score"><b>${fmtNum(me?.score ?? 0)}</b><span>积分 · 第 ${st.rank.get(id)} / ${c.students.length} 名</span></div>
     </section>
@@ -351,7 +352,8 @@ function Scores({ c, rules, open }) {
     return rows.sort((a, b) => b.t - a.t);
   }, [c]);
   const [limit, setLimit] = useState(60);
-  const medal = (i) => ['🥇', '🥈', '🥉'][i] || i + 1;
+  const MEDAL = ['#e8a400', '#9aa4b2', '#c07a3a'];
+const medal = (i) => (i < 3 ? html`<${LIcon} name="medal" size=${20} style=${{ color: MEDAL[i] }} />` : i + 1);
   return html`<${Page} title="积分">
     <div class="tiles three">
       <${Tile} label="平均分" value=${fmtNum(avg)} />
@@ -424,7 +426,7 @@ function Settings({ prefs, setPrefs, status, reload, showGuide }) {
     <${Group} title="数据">
       <${Cell} title="刷新数据" sub=${status === 'loading' ? '正在加载…' : status === 'error' ? '加载失败，请检查网络' : '重新获取老师公开的最新数据'} onClick=${reload} />
     </${Group}>
-    <div class="about"><div class="logo">📚</div><b>作业通 · 网页版</b><span>与手机、iPad 数据同步</span></div>
+    <div class="about"><div class="logo"><${LIcon} name="book_open" size=${28} /></div><b>作业通 · 网页版</b><span>与手机、iPad 数据同步</span></div>
   </${Page}>`;
 }
 
@@ -444,7 +446,7 @@ function Guide({ onDone }) {
   return html`<div class="guide" role="dialog" aria-modal="true" aria-label="新手提示">
     <div class="guide-card">
       <div class="guide-top"><span>新手提示 ${i + 1}/${GUIDE.length}</span><button class="guide-skip" onClick=${onDone}>跳过</button></div>
-      <div class="guide-icon" style=${{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}>${emoji}</div>
+      <div class="guide-icon" style=${{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}><${LIcon} name=${emoji} size=${38} /></div>
       <h2>${title}</h2>
       <p>${body}</p>
       <ul>${tips.map((t) => html`<li><i style=${{ background: c1 }}></i>${t}</li>`)}</ul>

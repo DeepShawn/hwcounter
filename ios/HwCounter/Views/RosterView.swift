@@ -141,7 +141,7 @@ struct StudentEditSheet: View {
                     Section("最近作业") {
                         ForEach(c.assignments.sorted { $0.createdAt > $1.createdAt }.prefix(10)) { a in
                             let s = a.status(student.id)
-                            HStack { Text(a.title).lineLimit(1); Spacer(); Text("\(s.emoji) \(s.label)").foregroundStyle(s.color) }
+                            HStack { Text(a.title).lineLimit(1); Spacer(); Text("\(s.label)").foregroundStyle(s.color) }
                         }
                     }
                 }

@@ -47,7 +47,7 @@ struct HeatmapView: View {
                 EmptyHint(emoji: "📈", title: "还没有数据", detail: "布置并登记几次作业后，这里会出现全班热力图")
             }
         }
-        .navigationTitle("🔥 作业热力图")
+        .navigationTitle("作业热力图")
     }
 
     private var legend: some View {

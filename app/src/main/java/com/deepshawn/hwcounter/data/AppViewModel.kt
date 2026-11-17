@@ -103,7 +103,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             update { next }
             setDrafts(_drafts.value.filterNot { it.id in done })
             viewModelScope.launch { runCatching { sync.syncNow() } }
-            notices.tryEmit("$why☁️ 已上传 ${done.size} 份草稿" + if (errs.isNotEmpty()) "；" + errs.joinToString("；") else "")
+            notices.tryEmit("${why}已上传 ${done.size} 份草稿" + if (errs.isNotEmpty()) "；" + errs.joinToString("；") else "")
         } else if (errs.isNotEmpty()) notices.tryEmit(errs.joinToString("；"))
         return done.size
     }
@@ -112,7 +112,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!sync.loggedIn || _readOnly.value) return
         val now = System.currentTimeMillis()
         val due = _drafts.value.filter { (it.scheduledAt ?: Long.MAX_VALUE) <= now }.map { it.id }
-        if (due.isNotEmpty()) uploadDrafts(due, "⏰ 定时")
+        if (due.isNotEmpty()) uploadDrafts(due, "定时上传：")
     }
 
     private fun loadPreview(): AppData {
@@ -186,7 +186,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (_readOnly.value) {
             // 预览模式：班级数据只读；只允许切换班级、改主题等本机显示设置
             if (new.classes != old.classes) {
-                notices.tryEmit("👀 预览模式：登录后才能修改")
+                notices.tryEmit("预览模式：登录后才能修改")
                 return
             }
             _data.value = new
@@ -450,7 +450,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun restoreBackup(text: String): Boolean = withContext(Dispatchers.Default) {
         if (_readOnly.value) {
-            notices.tryEmit("👀 预览模式：登录后才能恢复备份")
+            notices.tryEmit("预览模式：登录后才能恢复备份")
             return@withContext false
         }
         try {

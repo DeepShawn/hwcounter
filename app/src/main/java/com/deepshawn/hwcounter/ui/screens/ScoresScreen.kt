@@ -171,7 +171,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
                 ScoreHero(stats, rules.initial, rules, c.recharges.size) { kit.nav.push(Route.StudentDetail(it)) }
                 c.autoReset?.takeIf { it.enabled }?.let { ar ->
                     Text(
-                        "🗓️ 每月 ${ar.day} 号自动重置为 ${ar.target.fmt()} 分 · 下次 ${fmtDay(ar.next())}",
+                        "每月 ${ar.day} 号自动重置为 ${ar.target.fmt()} 分 · 下次 ${fmtDay(ar.next())}",
                         fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).combinedClickable(onClick = { if (!readOnly) editAuto = true }),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
@@ -245,7 +245,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
             if (!readOnly) {
                 add(SheetAction("批量加减分", "按小组、作业、考试、进步之星等快速选人，可逐人设分值", enabled = c.students.isNotEmpty(), icon = "✨", tint = Color(0xFF3482FF), section = "加减分") { exitSelect(); kit.nav.push(Route.BatchScore()) })
                 add(SheetAction("全班 +1", "全班表现好", enabled = c.students.isNotEmpty(), icon = "🎉", tint = Color(0xFF16A34A), section = "加减分") {
-                    vm.addScore(c.students.map { it.id }, 1.0, "全班表现好"); kit.celebrate(); kit.undoable("全班 +1 🎉")
+                    vm.addScore(c.students.map { it.id }, 1.0, "全班表现好"); kit.celebrate(); kit.undoable("全班 +1")
                 })
                 add(SheetAction("结算本轮", "按交齐度与缺交度加减分，可随即开始新一轮", enabled = c.students.isNotEmpty() && c.assignments.isNotEmpty(), icon = "🧾", tint = Color(0xFFE8792C), section = "结算与重置") { exitSelect(); kit.nav.push(Route.Settlement) })
                 add(SheetAction("积分重置", c.autoReset?.takeIf { it.enabled }?.let { "本轮进度、${daysUntil(it.next())} 天后自动重置为 ${it.target.fmt()} 分；可立即重置或按某次作业重置" } ?: "立即重置或按某次作业重置；可开启每月定期重置", enabled = c.students.isNotEmpty(), icon = "🔄", tint = Color(0xFF7A5CFF), section = "结算与重置") { exitSelect(); kit.nav.push(Route.Reset) })
@@ -524,7 +524,7 @@ private fun HeroNumber(label: String, value: String, modifier: Modifier) {
 @Composable
 private fun Podium(top: List<StudentStat>, onClick: (String) -> Unit) {
     val colors = MiuixTheme.colorScheme
-    val medals = listOf("🥇", "🥈", "🥉")
+    val medals = listOf(Color(0xFFE8A400), Color(0xFF9AA4B2), Color(0xFFC07A3A))
     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
         listOf(1, 0, 2).forEach { idx ->
             val st = top[idx]
@@ -534,7 +534,7 @@ private fun Podium(top: List<StudentStat>, onClick: (String) -> Unit) {
             ) {
                 Box(contentAlignment = Alignment.BottomEnd) {
                     Avatar(st.student.name, size = if (idx == 0) 54.dp else 44.dp)
-                    Text(medals[idx], fontSize = if (idx == 0) 20.sp else 17.sp, modifier = Modifier.padding(start = 2.dp))
+                    com.deepshawn.hwcounter.ui.components.LineIcon("🏅", medals[idx], Modifier.padding(start = 2.dp), size = if (idx == 0) 20.dp else 17.dp)
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(st.student.name, fontWeight = FontWeight.Medium, fontSize = 14.sp, maxLines = 1)
@@ -607,7 +607,7 @@ private fun GroupRow(rank: Int, name: String, list: List<StudentStat>, avg: Doub
     com.deepshawn.hwcounter.ui.components.HCard(Modifier.padding(horizontal = 12.dp, vertical = 5.dp), onClick = onClick) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (rank <= 3) listOf("🥇", "🥈", "🥉")[rank - 1] else "$rank", fontSize = 22.sp, modifier = Modifier.width(36.dp))
+                Box(Modifier.width(36.dp)) { if (rank <= 3) com.deepshawn.hwcounter.ui.components.LineIcon("🏅", listOf(Color(0xFFE8A400), Color(0xFF9AA4B2), Color(0xFFC07A3A))[rank - 1], size = 22.dp) else Text("$rank", fontSize = 22.sp) }
                 Column(Modifier.weight(1f)) {
                     Text(name, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                     Text("${list.size} 人 · 缺交 ${list.sumOf { it.missing }} 次 · 点击给全组加减分", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)

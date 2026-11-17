@@ -35,7 +35,7 @@ struct AssignmentDetailView: View {
                 header(c, a, s)
                 if !store.readOnly, let dr = store.drafts.first(where: { $0.assignmentId == a.id }) {
                     Button { openDraft = IdBox(id: dr.id) } label: {
-                        Text("📝 这次作业有一份未上传的草稿（改动 \(StatTable.changes(dr).count) 人），上传后才会写进这里 · 打开 ›").font(.callout)
+                        Text("这次作业有一份未上传的草稿（改动 \(StatTable.changes(dr).count) 人），上传后才会写进这里 · 打开 ›").font(.callout)
                             .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                             .background(Color.yellow.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
                     }.buttonStyle(.plain)
@@ -140,7 +140,7 @@ struct AssignmentDetailView: View {
                         }
                         .buttonStyle(.bordered).tint(.purple).disabled(targets.isEmpty)
                     }
-                    Button("🕵️ 抄袭…") { plagFor = PlagRequest(ids: targets.map(\.id)) }
+                    Button("抄袭…") { plagFor = PlagRequest(ids: targets.map(\.id)) }
                         .buttonStyle(.bordered).tint(plagiarismColor).disabled(targets.isEmpty)
                 }
             }
@@ -162,10 +162,10 @@ struct AssignmentDetailView: View {
                 }
                 Text("已交 \(s.handedIn) / 应交 \(s.expected)").font(.title2.bold())
                 HStack(spacing: 12) {
-                    Text("🌟 优秀 \(s.c(.EXCELLENT))"); Text("🐢 迟交 \(s.c(.LATE))"); Text("❌ 未交 \(s.c(.MISSING))"); Text("🏖️ 请假 \(s.c(.LEAVE))")
+                    Text("优秀 \(s.c(.EXCELLENT))"); Text("迟交 \(s.c(.LATE))"); Text("未交 \(s.c(.MISSING))"); Text("请假 \(s.c(.LEAVE))")
                 }
                 .font(.callout).foregroundStyle(.secondary)
-                if let n = a.countedBooks { Text("📚 实物本数：\(n)").font(.callout) }
+                if let n = a.countedBooks { Text("实物本数：\(n)").font(.callout) }
             }
             Spacer()
         }
@@ -211,7 +211,7 @@ struct AssignmentDetailView: View {
                 VStack(spacing: 2) {
                     if let st {
                         Text(st.name).font(.subheadline.bold()).lineLimit(1).minimumScaleFactor(0.7)
-                        Text("\(x.emoji) \(x.label)").font(.caption2.weight(.semibold)).foregroundStyle(x.color)
+                        Text("\(x.label)").font(.caption2.weight(.semibold)).foregroundStyle(x.color)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -288,7 +288,7 @@ struct AssignmentDetailView: View {
             HStack(spacing: 8) {
                 FilterChip(title: "全部 \(s.total)", on: filter == nil) { filter = nil }
                 ForEach(HwStatus.allCases) { st in
-                    FilterChip(title: "\(st.emoji) \(st.label) \(s.c(st))", on: filter == st) { filter = filter == st ? nil : st }
+                    FilterChip(title: "\(st.label) \(s.c(st))", on: filter == st) { filter = filter == st ? nil : st }
                 }
             }
         }
@@ -296,12 +296,12 @@ struct AssignmentDetailView: View {
 
     @ViewBuilder private func statusMenu(_ a: Assignment, _ st: Student) -> some View {
         ForEach(HwStatus.allCases) { s in
-            Button { store.setStatus(a.id, [st.id], s) } label: { Text("\(s.emoji) \(s.label)") }
+            Button { store.setStatus(a.id, [st.id], s) } label: { Text("\(s.label)") }
         }
         if store.data.rules.review.enabled {
-            Button { store.markReviewFailed(a.id, [st.id]) } label: { Text("⛔ 复审不合格（扣分×\(fmtNum(store.data.rules.review.multiplier))）") }
+            Button { store.markReviewFailed(a.id, [st.id]) } label: { Text("复审不合格（扣分×\(fmtNum(store.data.rules.review.multiplier))）") }
         }
-        Button { plagFor = PlagRequest(ids: [st.id]) } label: { Text("🕵️ 抄袭…（选出抄了谁的）") }
+        Button { plagFor = PlagRequest(ids: [st.id]) } label: { Text("抄袭…（选出抄了谁的）") }
         if a.plagiarized(st.id) { Button { store.clearPlagiarism(a.id, [st.id]) } label: { Text("取消抄袭标记") } }
     }
 
@@ -361,8 +361,8 @@ struct StudentTile: View {
         VStack(spacing: 4) {
             Text(st.no).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
             Text(st.name).font(.headline).lineLimit(1).minimumScaleFactor(0.7)
-            if plagiarized { Text("🕵️ 抄袭").font(.caption.weight(.semibold)).foregroundStyle(plagiarismColor) }
-            else { Text("\(status.emoji) \(status.label)").font(.caption.weight(.semibold)).foregroundStyle(status.color) }
+            if plagiarized { Text("抄袭").font(.caption.weight(.semibold)).foregroundStyle(plagiarismColor) }
+            else { Text("\(status.label)").font(.caption.weight(.semibold)).foregroundStyle(status.color) }
         }
         .frame(maxWidth: .infinity, minHeight: 84)
         .padding(6)
@@ -401,7 +401,7 @@ struct StudentStatusSheet: View {
                             Button {
                                 store.setStatus(assignmentId, [student.id], s); dismiss()
                             } label: {
-                                VStack { Text(s.emoji).font(.title2); Text(s.label).font(.caption) }
+                                VStack { Image(systemName: lineSymbol(s.emoji)).font(.title2).foregroundStyle(s.color); Text(s.label).font(.caption) }
                                     .frame(maxWidth: .infinity).padding(.vertical, 8)
                                     .background(s == cur && !failed ? s.color.opacity(0.25) : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
                             }
@@ -412,7 +412,7 @@ struct StudentStatusSheet: View {
                             Button {
                                 store.markReviewFailed(assignmentId, [student.id]); dismiss()
                             } label: {
-                                VStack { Text("⛔").font(.title2); Text("复审不合格").font(.caption) }
+                                VStack { Image(systemName: lineSymbol("⛔")).font(.title2); Text("复审不合格").font(.caption) }
                                     .frame(maxWidth: .infinity).padding(.vertical, 8)
                                     .background(failed ? Color.purple.opacity(0.25) : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
                             }
@@ -420,7 +420,7 @@ struct StudentStatusSheet: View {
                             .disabled(store.readOnly)
                         }
                         Button { picking = true } label: {
-                            VStack { Text("🕵️").font(.title2); Text("抄袭").font(.caption) }
+                            VStack { Image(systemName: lineSymbol("🕵️")).font(.title2); Text("抄袭").font(.caption) }
                                 .frame(maxWidth: .infinity).padding(.vertical, 8)
                                 .background((a?.plagiarized(student.id) ?? false) ? plagiarismColor.opacity(0.25) : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
                         }
@@ -433,7 +433,7 @@ struct StudentStatusSheet: View {
                     }
                     if let a, let c = store.data.currentClass, a.plagiarized(student.id) {
                         HStack {
-                            Text("🕵️ " + plagiarismLine(c, a, student.id)).foregroundStyle(plagiarismColor).bold()
+                            Text(plagiarismLine(c, a, student.id)).foregroundStyle(plagiarismColor).bold()
                             Spacer()
                             if !store.readOnly { Button("取消抄袭") { store.clearPlagiarism(assignmentId, [student.id]) } }
                         }

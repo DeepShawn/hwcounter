@@ -14,7 +14,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             cloudSection
-            Section("🎨 主题") {
+            Section("主题") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
                     ForEach(Palette.all) { p in
                         Button { store.setSetting { $0.theme = p.id } } label: {
@@ -28,13 +28,13 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 4)
             }
-            Section("🧮 计分规则") {
+            Section("计分规则") {
                 ruleRow("初始分", \.initial)
-                ruleRow("✅ 已交", \.submitted)
-                ruleRow("🌟 优秀", \.excellent)
-                ruleRow("🐢 迟交", \.late)
-                if !store.data.rules.escalation.enabled { ruleRow("❌ 未交", \.missing) }
-                ruleRow("🏖️ 请假", \.leave)
+                ruleRow("已交", \.submitted)
+                ruleRow("优秀", \.excellent)
+                ruleRow("迟交", \.late)
+                if !store.data.rules.escalation.enabled { ruleRow("未交", \.missing) }
+                ruleRow("请假", \.leave)
                 Toggle(isOn: Binding(get: { store.data.rules.streakBonus.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.streakBonus.enabled = v; d.rules = r } })) {
                     VStack(alignment: .leading) {
                         Text("连续交满后每次加分")
@@ -77,7 +77,7 @@ struct SettingsView: View {
                 }
             }
             .disabled(store.readOnly)
-            Section("🎙️ 语音登记") {
+            Section("语音登记") {
                 Picker("模糊程度", selection: Binding(get: { store.data.voiceFuzzy }, set: { v in store.setSetting { $0.voiceFuzzy = v } })) {
                     Text("严格").tag(0); Text("标准").tag(1); Text("宽松").tag(2)
                 }
@@ -89,10 +89,10 @@ struct SettingsView: View {
                     }
                 }
             }
-            Section("❓ 帮助") {
+            Section("帮助") {
                 Button { onboarded = false } label: { Label("重新查看新手引导", systemImage: "questionmark.circle") }
             }
-            Section("💾 数据") {
+            Section("数据") {
                 Button { backupURL = writeBackup() } label: { Label("备份全部数据（JSON，与安卓/网页通用）", systemImage: "externaldrive") }
                 if let c = store.data.currentClass {
                     Button { backupURL = Exporter.classCSV(c, store.data.rules) } label: { Label("导出本班统计表（CSV）", systemImage: "tablecells") }
@@ -158,7 +158,7 @@ struct SettingsView: View {
             if !store.sync.message.isEmpty {
                 Text(store.sync.message).font(.caption).foregroundStyle(store.sync.error ? .red : .secondary)
             }
-        } header: { Text("☁️ 云端同步") }
+        } header: { Text("云端同步") }
     }
 
     private var historySheet: some View {
@@ -174,7 +174,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .navigationTitle("☁️ 云端历史版本")
+            .navigationTitle("云端历史版本")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("关闭") { history = nil } } }
             .confirmationDialog("恢复 v\(restoring?.version ?? 0)？本机数据会替换为这个版本，并上传为云端最新版本。", isPresented: Binding(get: { restoring != nil }, set: { if !$0 { restoring = nil } }), titleVisibility: .visible) {
                 Button("恢复") {
@@ -219,7 +219,7 @@ struct ChangePasswordSheet: View {
                 }
                 if let err { Text(err).foregroundStyle(.red) }
             }
-            .navigationTitle("🔑 修改密码")
+            .navigationTitle("修改密码")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(busy) }
                 ToolbarItem(placement: .confirmationAction) {

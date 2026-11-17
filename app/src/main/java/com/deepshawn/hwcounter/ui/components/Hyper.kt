@@ -122,7 +122,7 @@ fun ActionSheet(show: Boolean, title: String, actions: List<SheetAction>, onDism
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             if (a.icon != null) {
-                                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) { Text(a.icon, fontSize = 19.sp) }
+                                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) { LineIcon(a.icon, tint, size = 20.dp) }
                                 Spacer(Modifier.width(14.dp))
                             }
                             Column(Modifier.weight(1f)) {

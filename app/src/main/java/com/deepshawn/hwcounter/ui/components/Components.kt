@@ -252,7 +252,7 @@ fun AppCard(
 @Composable
 fun EmptyState(emoji: String, title: String, sub: String, modifier: Modifier = Modifier, action: @Composable () -> Unit = {}) {
     Column(modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(emoji, fontSize = 56.sp)
+        LineIcon(emoji, MaterialTheme.colorScheme.onSurfaceVariant, size = 48.dp)
         Spacer(Modifier.height(12.dp))
         Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         Spacer(Modifier.height(4.dp))

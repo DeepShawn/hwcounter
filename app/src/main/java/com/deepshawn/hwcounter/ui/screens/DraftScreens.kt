@@ -117,7 +117,7 @@ fun ScheduleDialog(initial: Long?, onDismiss: () -> Unit, onSave: (Long?) -> Uni
     )
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("⏰ 定时上传") },
+        title = { Text("定时上传") },
         text = {
             Column {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -201,7 +201,7 @@ fun DraftScreen(vm: AppViewModel, data: AppData, draftId: String) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { kit.nav.pop() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = Color.White) }
                     Column(Modifier.weight(1f)) {
-                        Text("📝 草稿 · 只保存在本机 · ${if (d.isNew) "新作业" else "已有作业"}", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+                        Text("草稿 · 只保存在本机 · ${if (d.isNew) "新作业" else "已有作业"}", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
                         Text(d.title.ifBlank { "未命名作业" }, color = Color.White, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.combinedClickable(onClick = { edit = true }))
                         Text("${d.subject} · ${c.name} · 编辑于 ${fmtEdited(d.updatedAt)}", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
@@ -218,33 +218,33 @@ fun DraftScreen(vm: AppViewModel, data: AppData, draftId: String) {
                     Spacer(Modifier.width(14.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         (REG + HwStatus.NONE).forEach { k -> Text("${k.label} ${t.count(k)}", color = Color.White, fontSize = 12.sp) }
-                        Text("✏️ 改动 ${changed.size} 人", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("改动 ${changed.size} 人", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
         item {
             AppCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), padding = PaddingValues(12.dp)) {
-                Text(d.scheduledAt?.let { "⏰ 将在 ${fmtTime(it)} 自动上传" } ?: "还没上传：云端和其它设备暂时看不到这些登记", fontSize = 13.sp)
+                Text(d.scheduledAt?.let { "将在 ${fmtTime(it)} 自动上传" } ?: "还没上传：云端和其它设备暂时看不到这些登记", fontSize = 13.sp)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { vm.uploadDrafts(listOf(d.id)) }, Modifier.weight(1f)) { Text("☁️ 上传") }
-                    FilledTonalButton(onClick = { sched = true }, Modifier.weight(1f)) { Text(if (d.scheduledAt != null) "⏰ 改时间" else "⏰ 定时上传") }
+                    Button(onClick = { vm.uploadDrafts(listOf(d.id)) }, Modifier.weight(1f)) { Text("上传") }
+                    FilledTonalButton(onClick = { sched = true }, Modifier.weight(1f)) { Text(if (d.scheduledAt != null) "改时间" else "定时上传") }
                 }
             }
         }
         item {
             FlowRow(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip({ kit.nav.push(Route.StatTable(d.id)) }, { Text("📊 从统计表导入") })
-                AssistChip({ confirmFill = true }, { Text("☑️ 剩余标未交") })
-                AssistChip({ shareStatList(ctx, c, d.title, d.subject, d.createdAt, d.statuses, d.comments) }, { Text("📋 统计名单") })
-                AssistChip({ confirmDelete = true }, { Text("🗑️ 删除草稿", color = statusColor(HwStatus.MISSING)) })
+                AssistChip({ kit.nav.push(Route.StatTable(d.id)) }, { Text("从统计表导入") })
+                AssistChip({ confirmFill = true }, { Text("剩余标未交") })
+                AssistChip({ shareStatList(ctx, c, d.title, d.subject, d.createdAt, d.statuses, d.comments) }, { Text("统计名单") })
+                AssistChip({ confirmDelete = true }, { Text("删除草稿", color = statusColor(HwStatus.MISSING)) })
             }
         }
         item {
             Column(Modifier.padding(horizontal = 16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(typed, { typed = it }, Modifier.weight(1f), singleLine = true, placeholder = { Text("⌨️ 首字母 zjy lzh / 学号 / 姓名", fontSize = 13.sp) })
+                    OutlinedTextField(typed, { typed = it }, Modifier.weight(1f), singleLine = true, placeholder = { Text("首字母 zjy lzh / 学号 / 姓名", fontSize = 13.sp) })
                     Spacer(Modifier.width(8.dp))
                     Button(onClick = { submitTyped() }) { Text("登记") }
                 }
@@ -259,10 +259,10 @@ fun DraftScreen(vm: AppViewModel, data: AppData, draftId: String) {
         }
         item {
             FlowRow(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (c.seating != null) Chip2("🪑 座位表", seatView, { seatView = !seatView })
+                if (c.seating != null) Chip2("座位表", seatView, { seatView = !seatView })
                 filters.forEachIndexed { i, l -> Chip2(l, filter == i, { filter = i }) }
             }
-            Text("点一下切换 已交/未登记 · 长按设置状态、备注 · ✏️ = 相对云端改过", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+            Text("点一下切换 已交/未登记 · 长按设置状态、备注 · 带铅笔图标的 = 相对云端改过", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
         }
         val seating = c.seating
         if (seatView && seating != null) {
@@ -275,7 +275,7 @@ fun DraftScreen(vm: AppViewModel, data: AppData, draftId: String) {
                             val x = stOf(st)
                             SeatCellUi(if (x == HwStatus.NONE) MaterialTheme.colorScheme.surfaceContainerLowest else statusContainer(x), if (x == HwStatus.NONE) MaterialTheme.colorScheme.outlineVariant else statusColor(x)) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text((if (st.id in changed) "✏️" else "") + st.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Row(verticalAlignment = Alignment.CenterVertically) { if (st.id in changed) com.deepshawn.hwcounter.ui.components.LineIcon("✏️", MaterialTheme.colorScheme.primary, size = 12.dp); Text(st.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                                     Text(x.label, fontSize = 10.sp, color = statusColor(x))
                                 }
                             }
@@ -324,7 +324,7 @@ fun DraftScreen(vm: AppViewModel, data: AppData, draftId: String) {
     }
     if (sched) ScheduleDialog(d.scheduledAt, { sched = false }) { at ->
         vm.editDraft(d.id) { it.copy(scheduledAt = at) }; sched = false
-        kit.toast(if (at != null) "⏰ 将在 ${fmtTime(at)} 自动上传" else "已取消定时上传")
+        kit.toast(if (at != null) "将在 ${fmtTime(at)} 自动上传" else "已取消定时上传")
     }
     if (edit) NewAssignmentDialog(data.settings.subjects, d.title, d.subject, "保存", onDismiss = { edit = false }) { tt, ss ->
         vm.editDraft(d.id) { it.copy(title = tt, subject = ss) }; edit = false
@@ -347,10 +347,10 @@ private fun DraftStudentCard(s: Student, st: HwStatus, changed: Boolean, comment
     ) {
         Column(Modifier.padding(8.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Avatar(s.name, size = 38.dp)
-            Text((if (changed) "✏️" else "") + s.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) { if (changed) com.deepshawn.hwcounter.ui.components.LineIcon("✏️", MaterialTheme.colorScheme.primary, size = 13.dp); Text(s.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             Text(s.no, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(st.label, color = statusColor(st), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            if (!comment.isNullOrBlank()) Text("💬 $comment", fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (!comment.isNullOrBlank()) Text("$comment", fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -369,7 +369,7 @@ fun DraftListScreen(vm: AppViewModel, data: AppData) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { kit.nav.pop() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = Color.White) }
                     Column(Modifier.weight(1f)) {
-                        Text("🗂️ 草稿箱", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                        Text("草稿箱", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
                         Text("草稿只保存在这台设备上，上传后才会进入云端数据库", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
                     }
                     if (list.size > 1) TextButton(onClick = { vm.uploadDrafts(list.map { it.id }) }) { Text("全部上传", color = Color.White) }
@@ -384,8 +384,8 @@ fun DraftListScreen(vm: AppViewModel, data: AppData) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text((if (d.isNew) "🆕 " else "") + d.title.ifBlank { "未命名作业" }, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${c?.let { "${it.emoji} ${it.name}" } ?: "⚠️ 班级已删除"} · ${d.subject} · 改动 ${StatTable.changes(d).size} 人 · 编辑于 ${fmtEdited(d.updatedAt)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        d.scheduledAt?.let { Text("⏰ ${fmtTime(it)} 自动上传", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
+                        Text("${c?.name ?: "班级已删除"} · ${d.subject} · 改动 ${StatTable.changes(d).size} 人 · 编辑于 ${fmtEdited(d.updatedAt)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        d.scheduledAt?.let { Text("${fmtTime(it)} 自动上传", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
                     }
                     if (t != null) Column(horizontalAlignment = Alignment.End) {
                         Text("${t.handedIn}/${t.expected}", fontWeight = FontWeight.Black)
@@ -394,8 +394,8 @@ fun DraftListScreen(vm: AppViewModel, data: AppData) {
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = { del = d }) { Text("删除", color = statusColor(HwStatus.MISSING)) }
-                    TextButton(onClick = { sched = d }) { Text(if (d.scheduledAt != null) "⏰ 改时间" else "⏰ 定时上传") }
-                    Button(onClick = { vm.uploadDrafts(listOf(d.id)) }) { Text("☁️ 上传") }
+                    TextButton(onClick = { sched = d }) { Text(if (d.scheduledAt != null) "改时间" else "定时上传") }
+                    Button(onClick = { vm.uploadDrafts(listOf(d.id)) }) { Text("上传") }
                 }
             }
         }
@@ -403,7 +403,7 @@ fun DraftListScreen(vm: AppViewModel, data: AppData) {
     sched?.let { d ->
         ScheduleDialog(d.scheduledAt, { sched = null }) { at ->
             vm.editDraft(d.id) { it.copy(scheduledAt = at) }; sched = null
-            kit.toast(if (at != null) "⏰ 将在 ${fmtTime(at)} 自动上传" else "已取消定时上传")
+            kit.toast(if (at != null) "将在 ${fmtTime(at)} 自动上传" else "已取消定时上传")
         }
     }
     del?.let { d -> ConfirmDialog("删除草稿？", "「${d.title}」里的登记不会上传。", "删除", { del = null }) { del = null; vm.deleteDraft(d.id) } }
@@ -475,8 +475,8 @@ fun StatTableScreen(vm: AppViewModel, data: AppData, draftId: String?) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { kit.nav.pop() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = Color.White) }
                     Column(Modifier.weight(1f)) {
-                        Text("📊 统计表识别", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                        Text(target?.let { "导入到草稿：${it.title}" } ?: "${c.emoji} ${c.name} · 认出每个同学交没交，自动统计", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
+                        Text("统计表识别", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                        Text(target?.let { "导入到草稿：${it.title}" } ?: "${c.name} · 认出每个同学交没交，自动统计", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
                     }
                 }
             }
@@ -487,9 +487,9 @@ fun StatTableScreen(vm: AppViewModel, data: AppData, draftId: String?) {
                 Text("✓ √ 交 1 → 已交 · 优 A ★ → 优秀 · 迟 补 → 迟交 · × X 未交 缺 0 → 未交 · 假 病 → 请假 · 空白 → 未登记。多列（多次作业）可以选用哪一列。", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { photoSheet = true }, Modifier.weight(1f)) { Text("📷 照片") }
-                    FilledTonalButton(onClick = { openFile.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "text/*", "*/*")) }, Modifier.weight(1f)) { Text("📄 文件") }
-                    FilledTonalButton(onClick = { paste = true }, Modifier.weight(1f)) { Text("📋 粘贴") }
+                    Button(onClick = { photoSheet = true }, Modifier.weight(1f)) { Text("照片") }
+                    FilledTonalButton(onClick = { openFile.launch(arrayOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "text/*", "*/*")) }, Modifier.weight(1f)) { Text("文件") }
+                    FilledTonalButton(onClick = { paste = true }, Modifier.weight(1f)) { Text("粘贴") }
                 }
                 if (busy) Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)); Text("正在识别照片…", fontSize = 13.sp)
@@ -513,13 +513,13 @@ fun StatTableScreen(vm: AppViewModel, data: AppData, draftId: String?) {
                         Column {
                             Text("交齐率 ${(t.rate * 100).toInt()}%", fontWeight = FontWeight.Bold)
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { (REG + HwStatus.NONE).forEach { k -> Text("${k.label} ${t.count(k)}", color = statusColor(k), fontSize = 12.sp, fontWeight = FontWeight.Bold) } }
-                            if (t.count(HwStatus.MISSING) > 0) Text("❌ 未交：" + t.lists[HwStatus.MISSING].orEmpty().joinToString("、") { it.name }, fontSize = 12.sp)
-                            if (t.count(HwStatus.NONE) > 0) Text("⏳ 未登记：" + t.lists[HwStatus.NONE].orEmpty().joinToString("、") { it.name }, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (t.count(HwStatus.MISSING) > 0) Text("未交：" + t.lists[HwStatus.MISSING].orEmpty().joinToString("、") { it.name }, fontSize = 12.sp)
+                            if (t.count(HwStatus.NONE) > 0) Text("未登记：" + t.lists[HwStatus.NONE].orEmpty().joinToString("、") { it.name }, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     Spacer(Modifier.height(8.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = { shareStatList(ctx, c, header, "", System.currentTimeMillis(), st) }) { Text("📋 导出统计名单") }
+                        FilledTonalButton(onClick = { shareStatList(ctx, c, header, "", System.currentTimeMillis(), st) }) { Text("导出统计名单") }
                         if (target != null) Button(onClick = {
                             vm.editDraft(target.id) { it.copy(statuses = it.statuses + st) }; kit.toast("已导入 ${st.size} 人到草稿"); kit.nav.pop()
                         }) { Text("写入这份草稿") }
@@ -529,7 +529,7 @@ fun StatTableScreen(vm: AppViewModel, data: AppData, draftId: String?) {
                                 kit.toast("已存为 ${r.columns.size} 份草稿"); kit.nav.replace(Route.Drafts)
                             }) { Text("每列各存一份草稿") }
                             if (c.assignments.isNotEmpty()) FilledTonalButton(onClick = { into = true }) { Text("写入已有作业") }
-                            Button(onClick = { saveAs = true }) { Text("📝 存为新作业草稿") }
+                            Button(onClick = { saveAs = true }) { Text("存为新作业草稿") }
                         }
                     }
                 }
@@ -569,7 +569,7 @@ fun StatTableScreen(vm: AppViewModel, data: AppData, draftId: String?) {
         var text by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { paste = false },
-            title = { Text("📋 粘贴统计表") },
+            title = { Text("粘贴统计表") },
             text = {
                 Column {
                     Text("从 Excel / WPS / 在线表格里选中整张表复制，粘贴到这里", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -585,7 +585,7 @@ fun StatTableScreen(vm: AppViewModel, data: AppData, draftId: String?) {
         NewAssignmentDialog(data.settings.subjects, guess, "", "存为草稿", onDismiss = { saveAs = false }) { tt, ss ->
             saveAs = false
             val d = StatTable.newDraft(c, null, tt, ss, st)
-            vm.addDraft(d); kit.toast("📝 已存为草稿（只保存在本机）"); kit.nav.replace(Route.Draft(d.id))
+            vm.addDraft(d); kit.toast("已存为草稿（只保存在本机）"); kit.nav.replace(Route.Draft(d.id))
         }
     }
     if (into) {
@@ -625,7 +625,7 @@ fun DraftCheckbox(checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked, onChange)
         Column {
-            Text("📝 先存为草稿", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text("先存为草稿", fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Text("登记只保存在本机，确认后再手动上传或定时上传", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

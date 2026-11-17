@@ -78,7 +78,7 @@ struct RootView: View {
     private var classHeader: some View {
         let c = store.data.currentClass
         return HStack(spacing: 12) {
-            Text(c?.emoji ?? "🎒").font(.system(size: 34))
+            Image(systemName: lineSymbol(c?.emoji ?? "🎒")).font(.system(size: 28)).foregroundStyle(Color.accentColor)
                 .frame(width: 54, height: 54)
                 .background(Palette.of(store.data.theme).gradient.opacity(0.25), in: RoundedRectangle(cornerRadius: 14))
             VStack(alignment: .leading, spacing: 2) {
@@ -156,7 +156,7 @@ struct ClassesSheet: View {
                         store.switchClass(c.id); dismiss()
                     } label: {
                         HStack {
-                            Text(c.emoji).font(.title2)
+                            Image(systemName: lineSymbol(c.emoji)).font(.title2).foregroundStyle(Color.accentColor)
                             VStack(alignment: .leading) {
                                 Text(c.name).font(.headline)
                                 Text("\(c.students.count) 名学生 · \(c.assignments.count) 次作业").font(.caption).foregroundStyle(.secondary)
@@ -185,7 +185,7 @@ struct ClassesSheet: View {
                         TextField("班级名称，如 三年二班", text: $name)
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6)) {
                             ForEach(emojis, id: \.self) { e in
-                                Text(e).font(.largeTitle).padding(4)
+                                Image(systemName: lineSymbol(e)).font(.title).frame(width: 48, height: 48)
                                     .background(e == emoji ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 10))
                                     .onTapGesture { emoji = e }
                             }
@@ -214,7 +214,7 @@ struct ConflictSheet: View {
     @EnvironmentObject var store: Store
     var body: some View {
         VStack(spacing: 18) {
-            Text("☁️").font(.system(size: 54))
+            Image(systemName: "icloud").font(.system(size: 50, weight: .light)).foregroundStyle(Color.accentColor)
             Text("本机和云端都有改动").font(.title2.bold())
             Text("可能是在别的设备（安卓 / 网页 / 另一台 iPad）上也改过。请选择怎么处理：").foregroundStyle(.secondary).multilineTextAlignment(.center)
             VStack(spacing: 10) {

@@ -114,7 +114,7 @@ private fun Sidebar(state: AppState) {
     val look = LocalLook.current
     Column(Modifier.width(220.dp).fillMaxHeight().background(colors.surfaceContainer).padding(12.dp)) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(look.palette.a, look.palette.b))), contentAlignment = Alignment.Center) { Text("📚", fontSize = 18.sp) }
+            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(look.palette.a, look.palette.b))), contentAlignment = Alignment.Center) { LineIcon("📚", Color.White, size = 20.dp) }
             Spacer(Modifier.width(10.dp))
             Column { Text("作业通", fontWeight = FontWeight.Bold, fontSize = 17.sp); Text("Windows 查看版", fontSize = 11.sp, color = sub()) }
         }
@@ -142,7 +142,7 @@ private fun Sidebar(state: AppState) {
                     .clickable { state.switchTab(t) }.padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(t.icon, fontSize = 16.sp)
+                LineIcon(t.icon, if (active) colors.primary else colors.onSurface, size = 18.dp)
                 Spacer(Modifier.width(10.dp))
                 Text(t.label, fontSize = 15.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal, color = if (active) colors.primary else colors.onSurface)
             }
@@ -229,7 +229,7 @@ fun Guide(onDone: () -> Unit) {
                 Text("新手提示 ${i + 1}/${GUIDE.size}", Modifier.weight(1f), fontSize = 13.sp, color = sub())
                 Text("跳过", Modifier.clip(CircleShape).clickable(onClick = onDone).padding(8.dp), color = colors.primary, fontWeight = FontWeight.SemiBold)
             }
-            Box(Modifier.padding(vertical = 12.dp).size(80.dp).clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(listOf(look.palette.a, look.palette.b))), contentAlignment = Alignment.Center) { Text(emoji, fontSize = 38.sp) }
+            Box(Modifier.padding(vertical = 12.dp).size(80.dp).clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(listOf(look.palette.a, look.palette.b))), contentAlignment = Alignment.Center) { LineIcon(emoji, Color.White, size = 38.dp) }
             Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Text(body, Modifier.padding(vertical = 8.dp), fontSize = 14.sp, color = sub())
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(track()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

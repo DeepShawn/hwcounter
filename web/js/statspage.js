@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
 import { analysisXlsx, analysisHtml } from './reportexport.js';
 import { StockTab } from './stockpage.js';
+import { Icon } from './icons.js';
 import { STATUS, fmtNum, signed, compareStudentNumbers, rechargeCounts, defaultPlagiarism, plagiarismFactor, copiedFrom, copiedBy, plagiarized, plagiarismDesc } from './model.js';
 import {
   report as buildReport, text as reportText, examReport, periodBounds, periodLabel, difficultyText, discriminationText,
@@ -422,7 +423,7 @@ function Groups({ kit, c, rules, open }) {
   const nowP = r.periods[r.periods.length - 1];
   return html`<div class="st">小组对抗排名 · 综合分（交齐 50% · 少扣分 25% · 优秀 15% · 考试 10%）</div>
     <section class="grp">${r.teams.map((t) => html`<button class="an-row" key=${t.name} onClick=${() => open({ view: 'group', id: t.name })}>
-      <b class="an-medal">${['🥇', '🥈', '🥉'][t.rank - 1] || t.rank}</b><i class="an-dot" style=${{ background: colorOf[t.name] }}></i>
+      <b class="an-medal">${t.rank <= 3 ? html`<${Icon} name="medal" size=${20} style=${{ color: ['#e8a400', '#9aa4b2', '#c07a3a'][t.rank - 1] }} />` : t.rank}</b><i class="an-dot" style=${{ background: colorOf[t.name] }}></i>
       <div class="an-grow"><b>${t.name}${t.leader ? ` · 组长 ${t.leader.name}` : ''}</b><small>交齐 ${pct(t.rate)} · 人均扣分 ${fmtNum(t.deductPerCapita)} · 优秀 ${pct(t.excellentRate)}${t.examPct != null ? ` · 考试 ${pct(t.examPct)}` : ''}<br />胜 ${t.wins}${t.ties ? ` · 并列 ${t.ties}` : ''} · 周冠军 ${t.weekWins} · 全组交齐 ${t.complete}/${t.played}${gr.enabled && t.rankPoints ? ` · 排名奖惩每人 ${signed(t.rankPoints)}` : ''}</small></div>
       <div class="an-att"><b style=${{ color: colorOf[t.name], fontSize: '20px' }}>${Math.round(t.score * 100)}</b><small>综合 · 均分 ${fmtNum(t.avgScore)}</small></div></button>`)}</section>
     ${gr.enabled && nowP && html`<div class="st">本期排名 · ${periodLabel[gr.period] || '每周'} · ${nowP.label}</div><section class="grp">
@@ -438,7 +439,7 @@ function Groups({ kit, c, rules, open }) {
         <b>${w.winners.length ? w.winners.join('、') : '平'}</b></div>`)}
       <div class="legend in">${names.map((g) => html`<span><i style=${{ background: colorOf[g], borderRadius: '50%' }}></i>${g}</span>`)}<span>颜色越深交齐率越高（50% 以下最浅）· ★ 本周第一</span></div></div></${Card}>`}
     ${r.progress.length > 0 && html`<${Card} title=${`小组进步与退步 · ${r.progressBasis}`}>${r.progress.map((p) => { const v = Math.round(p.index * 100); const upq = v >= 2; const dn = v <= -2;
-      return html`<button class="an-row" key=${p.group} onClick=${() => open({ view: 'group', id: p.group })}><span style=${{ fontSize: '18px' }}>${upq ? '📈' : dn ? '📉' : '➖'}</span>
+      return html`<button class="an-row" key=${p.group} onClick=${() => open({ view: 'group', id: p.group })}><span style=${{ color: upq ? GOOD : dn ? BAD : 'var(--sub)', display: 'grid' }}><${Icon} name=${upq ? 'trending_up' : dn ? 'trending_down' : 'minus'} size=${20} /></span>
         <div class="an-grow"><b style=${{ color: upq ? GOOD : dn ? BAD : null }}>${p.group}${upq ? ' · 进步' : dn ? ' · 退步' : ' · 持平'}</b><small>${p.reasons.join(' · ') || '变化不大'}</small></div>
         <b style=${{ color: upq ? GOOD : dn ? BAD : 'var(--sub)' }}>${p.index >= 0 ? '+' : ''}${v}</b></button>`; })}
       <${Note}>指数 = 交齐率变化 50% + 每次人均扣分减少 30% + 考试得分率变化 20%（没有考试时按比例分配）</${Note}></${Card}>`}
