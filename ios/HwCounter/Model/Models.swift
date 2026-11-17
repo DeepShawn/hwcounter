@@ -447,9 +447,16 @@ struct MissingEscalation: Equatable {
     var enabled = true, base = 2.0, heavyBase = 3.0, heavyAfter = 6, cap = 30.0
     func penalty(streak: Int, total: Int) -> Double {
         let b = total > heavyAfter ? heavyBase : base
-        let p = pow(b, Double(max(streak, 1)))
+        let p = MissingEscalationAmount.amount(b, streak)
         return cap > 0 ? min(p, cap) : p
     }
+}
+
+/// 连续第 n 次未交的扣分（不含上限）：b、b、b²、b³……（第 1、2 次相同，之后每次翻 b 倍），与安卓、网页一致
+enum MissingEscalationAmount {
+    static func amount(_ b: Double, _ n: Int) -> Double { pow(b, Double(max(max(n, 1) - 1, 1))) }
+    /// 说明文字：“2、2、4、8…”
+    static func seq(_ b: Double) -> String { (1...4).map { fmtNum(amount(b, $0)) }.joined(separator: "、") + "…" }
 }
 
 /// 连续交作业奖励：本轮连续按时交满 after 次后，之后每连续交一次额外加 bonus

@@ -9,8 +9,8 @@ const pts = (c, r = defaultRules()) => { const p = autoPoints(c, r, 's'); return
 const M = 'MISSING';
 
 test('复审不合格翻倍，并算一次未交', () => {
-  assert.deepEqual(pts(mk([M, M], [0])), [-4, -4]);
-  assert.equal(pts(mk([M, M, M], [2]))[2], -16);
+  assert.deepEqual(pts(mk([M, M], [0])), [-4, -2]);
+  assert.equal(pts(mk([M, M, M], [2]))[2], -8);
   assert.equal(pts(mk(Array(6).fill(M), [5]))[5], -60);
   const st = studentStats(mk(['SUBMITTED', M], [1]), defaultRules())[0];
   assert.equal(st.missing, 1); assert.equal(st.score, 96);

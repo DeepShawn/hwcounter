@@ -13,6 +13,7 @@ import android.text.TextPaint
 import android.text.TextUtils
 import com.deepshawn.hwcounter.data.Analytics
 import com.deepshawn.hwcounter.data.HwStatus
+import com.deepshawn.hwcounter.data.MissingEscalation
 import com.deepshawn.hwcounter.data.SchoolClass
 import com.deepshawn.hwcounter.data.fmt
 import com.deepshawn.hwcounter.data.fmtDay
@@ -545,15 +546,15 @@ object PdfReport {
             ))
             if (e.enabled) {
                 p.heading("二、未交连续加倍扣分")
-                p.text("连续未交时，第 1 次扣 ${e.base.fmt()} 分，第 2 次扣 ${(e.base * e.base).fmt()} 分，第 3 次扣 ${(e.base * e.base * e.base).fmt()} 分，以此类推（每次翻倍）。", 10.5f)
+                p.text("连续未交时，第 1 次扣 ${e.base.fmt()} 分，第 2 次也扣 ${e.base.fmt()} 分，第 3 次扣 ${MissingEscalation.amount(e.base, 3).fmt()} 分，第 4 次扣 ${MissingEscalation.amount(e.base, 4).fmt()} 分，以此类推（从第 2 次起每次翻倍）。", 10.5f)
                 p.text("· 中间请假、未登记的不打断连续，也不计次；只要交过一次，就打断，下次未交重新从第 1 次算。", 10f)
-                p.text("· 同一轮内累计未交超过 ${e.heavyAfter} 次后，改为第 1 次扣 ${e.heavyBase.fmt()} 分、第 2 次 ${(e.heavyBase * e.heavyBase).fmt()} 分、第 3 次 ${(e.heavyBase * e.heavyBase * e.heavyBase).fmt()} 分……", 10f)
+                p.text("· 同一轮内累计未交超过 ${e.heavyAfter} 次后，改为 ${MissingEscalation.seq(e.heavyBase).removeSuffix("…")} 分……", 10f)
                 if (e.cap > 0) p.text("· 单次最多扣 ${e.cap.fmt()} 分。", 10f)
                 p.text("· 每次积分重置后进入新一轮，连续次数和累计次数清零，重新从 ${e.base.fmt()} 分开始。", 10f)
                 p.gap(4f)
-                val ex = (1..6).map { k -> val v = minOf(Math.pow(e.base, k.toDouble()), if (e.cap > 0) e.cap else Double.MAX_VALUE); "第 $k 次 −${v.fmt()}" }
+                val ex = (1..6).map { k -> val v = minOf(MissingEscalation.amount(e.base, k), if (e.cap > 0) e.cap else Double.MAX_VALUE); "第 $k 次 −${v.fmt()}" }
                 p.text("举例：连续未交 " + ex.joinToString("，") + "。", 10f, MUTED)
-                p.text("举例：未交、请假、未交 → 按连续两次计，分别扣 ${e.base.fmt()}、${(e.base * e.base).fmt()} 分；未交、交、未交 → 各扣 ${e.base.fmt()} 分。", 10f, MUTED)
+                p.text("举例：未交、请假、未交 → 按连续两次计，各扣 ${e.base.fmt()} 分；未交、请假、未交、未交 → 第三次扣 ${MissingEscalation.amount(e.base, 3).fmt()} 分；未交、交、未交 → 各扣 ${e.base.fmt()} 分。", 10f, MUTED)
             }
             if (b.enabled) {
                 p.heading("三、连续交作业奖励")

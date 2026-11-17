@@ -114,20 +114,22 @@ test('未交连续递增扣分（与安卓 EscalationTest 一致）', () => {
   const r = defaultRules();
   const mk = (...m) => ({ id: 'c', name: '一班', recharges: [], scores: [], students: [{ id: 's1', no: '01', name: '张三' }], assignments: m.map((x, i) => ({ id: `a${i}`, title: `作业${i}`, createdAt: (i + 1) * 1000, statuses: { s1: x } })) });
   const pts = (c, rr = r) => c.assignments.map((a) => autoPoints(c, rr, 's1')[a.id]);
-  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING', 'MISSING')), [-2, -4, -8, -16]);
-  assert.deepEqual(pts(mk('MISSING', 'LEAVE', 'MISSING')), [-2, 0, -4]);
-  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'SUBMITTED', 'MISSING')), [-2, -4, 0, -2]);
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING', 'MISSING')), [-2, -2, -4, -8]);
+  assert.equal(escalationSeq(2), '2、2、4、8…');
+  assert.deepEqual(pts(mk('MISSING', 'LEAVE', 'MISSING')), [-2, 0, -2]);
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'SUBMITTED', 'MISSING')), [-2, -2, 0, -2]);
   const many = mk('MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING', 'MISSING', 'MISSING', 'MISSING');
-  assert.deepEqual(pts(many).filter((_, i) => many.assignments[i].statuses.s1 === 'MISSING'), [-2, -2, -2, -2, -2, -2, -3, -9, -27, -30]);
+  assert.deepEqual(pts(many).filter((_, i) => many.assignments[i].statuses.s1 === 'MISSING'), [-2, -2, -2, -2, -2, -2, -3, -3, -9, -27]);
   const reset = rechargeScores(many, r, ['s1'], 100, '', 99000, { assignmentId: 'a14' });
   const p = autoPoints(reset, r, 's1');
-  assert.equal(p.a13, -9); assert.equal(p.a14, -2); assert.equal(p.a15, -4);
-  assert.equal(studentStats(reset, r)[0].score, 94);
-  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING'), { ...r, escalation: { ...r.escalation, cap: 5 } }), [-2, -4, -5]);
+  assert.equal(p.a13, -3); assert.equal(p.a14, -2); assert.equal(p.a15, -2);
+  assert.equal(studentStats(reset, r)[0].score, 96);
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING'), { ...r, escalation: { ...r.escalation, cap: 5 } }), [-2, -2, -4]);
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING', 'MISSING'), { ...r, escalation: { ...r.escalation, cap: 5 } }), [-2, -2, -4, -5]);
   assert.deepEqual(pts(mk('MISSING', 'MISSING'), { ...r, escalation: { enabled: false } }), [-2, -2]);
 });
 
-import { roundAway } from '../../web/js/model.js';
+import { roundAway, escalationSeq } from '../../web/js/model.js';
 test('连续交奖励与取整（与安卓 StreakBonusAndRoundingTest 一致）', () => {
   const r = defaultRules();
   const mk = (...m) => ({ id: 'c', name: '一班', recharges: [], scores: [], students: [{ id: 's1', no: '01', name: '张三' }], assignments: m.map((x, i) => ({ id: `a${i}`, title: `作业${i}`, createdAt: (i + 1) * 1000, statuses: { s1: x } })) });

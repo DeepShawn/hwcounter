@@ -172,16 +172,16 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                     fun esc(f: (com.deepshawn.hwcounter.data.MissingEscalation) -> com.deepshawn.hwcounter.data.MissingEscalation) = rules { it.copy(escalation = f(it.escalation)) }
                     SuperSwitch(
                         checked = e.enabled, onCheckedChange = { v -> esc { it.copy(enabled = v) } }, title = "连续未交加倍扣分",
-                        summary = if (e.enabled) "第 1 次 −${e.base.fmt()}，连续第 2 次 −${(e.base * e.base).fmt()}，第 3 次 −${(e.base * e.base * e.base).fmt()}…；关闭后每次未交固定 ${s.rules.missing.signed()}" else "关闭：每次未交固定 ${s.rules.missing.signed()}",
+                        summary = if (e.enabled) "连续未交第 1、2 次 −${e.base.fmt()}，第 3 次 −${com.deepshawn.hwcounter.data.MissingEscalation.amount(e.base, 3).fmt()}，第 4 次 −${com.deepshawn.hwcounter.data.MissingEscalation.amount(e.base, 4).fmt()}…（第 2 次起每次翻倍）；关闭后每次未交固定 ${s.rules.missing.signed()}" else "关闭：每次未交固定 ${s.rules.missing.signed()}",
                     )
                     if (e.enabled) Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
-                        RuleRow("底数（第 1 次扣）", e.base) { v -> if (v >= 1) esc { it.copy(base = v) } }
+                        RuleRow("底数（第 1、2 次扣）", e.base) { v -> if (v >= 1) esc { it.copy(base = v) } }
                         RuleRow("累计超过几次后", e.heavyAfter.toDouble(), 1.0) { v -> if (v >= 1) esc { it.copy(heavyAfter = v.toInt()) } }
                         RuleRow("加重后的底数", e.heavyBase) { v -> if (v >= 1) esc { it.copy(heavyBase = v) } }
                         RuleRow("单次最多扣（0 不限）", e.cap, 1.0) { v -> if (v >= 0) esc { it.copy(cap = v) } }
                         Text(
                             "· 请假、未登记不打断连续，也不计次；只要交过一次（已交 / 优秀 / 迟交）就打断，重新从第 1 次算\n" +
-                                "· 本轮累计未交超过 ${e.heavyAfter} 次后，底数变为 ${e.heavyBase.fmt()}（${e.heavyBase.fmt()}、${(e.heavyBase * e.heavyBase).fmt()}、${(e.heavyBase * e.heavyBase * e.heavyBase).fmt()}…）\n" +
+                                "· 本轮累计未交超过 ${e.heavyAfter} 次后，底数变为 ${e.heavyBase.fmt()}（${com.deepshawn.hwcounter.data.MissingEscalation.seq(e.heavyBase)}）\n" +
                                 "· 每次积分重置开始新一轮：连续次数和累计次数清零，底数回到 ${e.base.fmt()}\n" +
                                 "· 修改后历史积分自动重算",
                             fontSize = 11.sp, lineHeight = 17.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp),

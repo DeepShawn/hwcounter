@@ -16,11 +16,11 @@ class ReviewTest {
 
     @Test fun failedReviewDoublesTheEscalatedPenalty() {
         val rules = ScoreRules()
-        // 第 1 次未交（复审不合格）：2 × 2 = 4；第 2 次连续未交：4
+        // 第 1 次未交（复审不合格）：2 × 2 = 4；第 2 次连续未交：仍扣 2
         val p = cls(listOf(M, M), failed = setOf(0)).autoPointDetails(rules, "s")
         assertEquals(-4.0, p.getValue("a0").points, 1e-9)
         assertTrue(p.getValue("a0").reviewFailed)
-        assertEquals(-4.0, p.getValue("a1").points, 1e-9)
+        assertEquals(-2.0, p.getValue("a1").points, 1e-9)
         // 复审不合格算一次未交，连续计数接着往上
         assertEquals(2, p.getValue("a1").missStreak)
         val stat = cls(listOf(S, M), failed = setOf(1)).studentStats(rules).single()
@@ -29,11 +29,11 @@ class ReviewTest {
     }
 
     @Test fun laterInAStreakAndCap() {
-        // 连续第 3 次（8 分）复审不合格 → 16；单次上限 30 作用于普通扣分，翻倍后可到 60
+        // 连续第 3 次（4 分）复审不合格 → 8；单次上限 30 作用于普通扣分，翻倍后可到 60
         val p = cls(listOf(M, M, M), failed = setOf(2)).autoPointDetails(ScoreRules(), "s")
-        assertEquals(-16.0, p.getValue("a2").points, 1e-9)
-        val q = cls(List(6) { M }, failed = setOf(5)).autoPointDetails(ScoreRules(), "s")
-        assertEquals(-60.0, q.getValue("a5").points, 1e-9)
+        assertEquals(-8.0, p.getValue("a2").points, 1e-9)
+        val q = cls(List(7) { M }, failed = setOf(6)).autoPointDetails(ScoreRules(), "s")
+        assertEquals(-60.0, q.getValue("a6").points, 1e-9)
     }
 
     @Test fun disabledOrChangedStatus() {

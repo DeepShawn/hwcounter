@@ -354,17 +354,17 @@ do {
         return c
     }
     func pts(_ c: SchoolClass, _ r: Rules = Rules()) -> [Double] { let p = c.autoPoints(r, "s1"); return c.assignments.map { p[$0.id] ?? 0 } }
-    check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING"])) == [-2, -4, -8, -16], "连续未交 2、4、8、16")
-    check(pts(mk(["MISSING", "LEAVE", "MISSING"])) == [-2, 0, -4], "请假不打断连续")
-    check(pts(mk(["MISSING", "MISSING", "SUBMITTED", "MISSING"])) == [-2, -4, 0, -2], "交过一次就重新算")
+    check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING"])) == [-2, -2, -4, -8] && MissingEscalationAmount.seq(2) == "2、2、4、8…", "连续未交 2、2、4、8")
+    check(pts(mk(["MISSING", "LEAVE", "MISSING", "MISSING"])) == [-2, 0, -2, -4], "请假不打断连续")
+    check(pts(mk(["MISSING", "MISSING", "SUBMITTED", "MISSING"])) == [-2, -2, 0, -2], "交过一次就重新算")
     let many = mk(["MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "MISSING", "MISSING", "MISSING"])
     let mp = pts(many).enumerated().filter { many.assignments[$0.offset].statuses["s1"] == "MISSING" }.map(\.element)
-    check(mp == [-2, -2, -2, -2, -2, -2, -3, -9, -27, -30], "本轮累计超 6 次后底数为 3，单次最多扣 30")
+    check(mp == [-2, -2, -2, -2, -2, -2, -3, -3, -9, -27], "本轮累计超 6 次后底数为 3（3、3、9、27）")
     let reset = many.recharging(rules, ids: ["s1"], target: 100, time: 99000, assignmentId: "a14")
     let rp = reset.autoPoints(rules, "s1")
-    check(rp["a13"] == -9 && rp["a14"] == -2 && rp["a15"] == -4 && reset.stats(rules)[0].score == 94, "重置后新一轮从 2 开始")
+    check(rp["a13"] == -3 && rp["a14"] == -2 && rp["a15"] == -2 && reset.stats(rules)[0].score == 96, "重置后新一轮从 2 开始")
     var capped = Rules(); capped.escalation.cap = 5
-    check(pts(mk(["MISSING", "MISSING", "MISSING"]), capped) == [-2, -4, -5], "单次最多扣分上限")
+    check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING"]), capped) == [-2, -2, -4, -5], "单次最多扣分上限")
 }
 // 连续交奖励与取整：与安卓 StreakBonusAndRoundingTest、网页同一组用例
 do {
@@ -402,8 +402,8 @@ do {
     }
     func pts(_ c: SchoolClass, _ r: Rules = Rules()) -> [Double] { let p = c.autoPoints(r, "s"); return c.assignments.map { p[$0.id] ?? 0 } }
     let M = "MISSING"
-    check(pts(mk([M, M], failed: [0])) == [-4, -4], "复审不合格翻倍（2×2），并算一次未交")
-    check(pts(mk([M, M, M], failed: [2]))[2] == -16, "连续第 3 次 8 分翻倍为 16")
+    check(pts(mk([M, M], failed: [0])) == [-4, -2], "复审不合格翻倍（2×2），并算一次未交")
+    check(pts(mk([M, M, M], failed: [2]))[2] == -8, "连续第 3 次 4 分翻倍为 8")
     check(pts(mk(Array(repeating: M, count: 6), failed: [5]))[5] == -60, "上限 30 之后再翻倍")
     var off = Rules(); off.review.enabled = false
     check(pts(mk([M], failed: [0]), off) == [-2], "关闭复审按普通未交")
@@ -487,7 +487,7 @@ do {
     for (k, (st, p)) in rows.enumerated() { var a = Assignment(title: "作业\(k)", subject: ""); a.id = "a\(k)"; a.createdAt = Int64((k + 1) * 86_400_000); a.statuses = st; a.plagiarism = p; c.assignments.append(a) }
     func pts(_ c: SchoolClass, _ r: Rules, _ id: String) -> [Double] { let p = c.autoPoints(r, id); return c.assignments.map { p[$0.id] ?? 0 } }
     let R = Rules()
-    check(pts(c, R, "a") == [-4, 0, -8, -4] && pts(c, R, "b") == [-4, 0, -8, 0] && pts(c, R, "c")[2] == -4 && pts(c, R, "d").reduce(0, +) == 0, "抄袭者和提供者都翻倍，累犯加重")
+    check(pts(c, R, "a") == [-4, 0, -8, -2] && pts(c, R, "b") == [-4, 0, -8, 0] && pts(c, R, "c")[2] == -4 && pts(c, R, "d").reduce(0, +) == 0, "抄袭者和提供者都翻倍，累犯加重")
     check(!c.assignments[3].plagiarized("a") && c.stats(R).first { $0.id == "a" }!.missing == 3, "对方已交不算；抄袭算一次未交")
     let reset = c.recharging(R, ids: c.students.map(\.id), target: 100, time: 10 * 86_400_000, assignmentId: "a2")
     check(reset.autoPoints(R, "a")["a2"] == -4, "重置后重新计次")
