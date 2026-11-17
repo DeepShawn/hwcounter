@@ -3,10 +3,10 @@
 import { h } from '../vendor/preact.module.js';
 import { useState, useEffect, useMemo } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
-import { STATUS, fmtNum, signed, compareStudentNumbers, rechargeCounts } from './model.js';
+import { STATUS, fmtNum, signed, compareStudentNumbers, rechargeCounts, defaultPlagiarism, plagiarismFactor } from './model.js';
 import {
   report as buildReport, text as reportText, examReport, periodBounds, periodLabel, difficultyText, discriminationText,
-  attention, attentionWeekly, ATT_LEVELS, stockBoard, groupStockBoard, SPANS, groupReport, groupDuel, classResets,
+  attention, attentionWeekly, ATT_LEVELS, stockBoard, groupStockBoard, SPANS, groupReport, groupDuel, classResets, plagiarismReport,
 } from './analytics.js';
 
 const html = htm.bind(h);
@@ -39,11 +39,12 @@ export function StatsPage({ kit, c, rules, open, prefs }) {
   const exams = c.exams || [];
   return html`<${Page} title="统计" large="数据分析" actions=${html`<button class="ib" aria-label="分析报告" onClick=${() => setShare(true)}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg></button>`}>
     <div class="meta">${c.name} · ${c.students.length} 人 · ${c.assignments.length} 次作业 · ${exams.length} 场考试</div>
-    <div class="pad"><${Seg} items=${[['hw', '作业'], ['exam', '考试'], ['att', '关注'], ['group', '小组']]} value=${mode} onChange=${setMode} /></div>
+    <div class="pad"><${Seg} items=${[['hw', '作业'], ['exam', '考试'], ['att', '关注'], ['group', '小组'], ['plag', '抄袭']]} value=${mode} onChange=${setMode} /></div>
     ${mode === 'hw' && html`<${Homework} kit=${kit} c=${c} rules=${rules} open=${open} share=${share} setShare=${setShare} />`}
     ${mode === 'exam' && html`<${Exams} kit=${kit} c=${c} rules=${rules} open=${open} />`}
     ${mode === 'att' && html`<${AttentionTab} kit=${kit} c=${c} rules=${rules} open=${open} us=${prefs.usColors !== false} />`}
     ${mode === 'group' && html`<${Groups} kit=${kit} c=${c} rules=${rules} open=${open} />`}
+    ${mode === 'plag' && html`<${Plagiarism} kit=${kit} c=${c} rules=${rules} open=${open} />`}
     ${mode !== 'hw' && share && html`<${ReportSheet} c=${c} rules=${rules} spec=${{ range: 'ALL' }} onClose=${() => setShare(false)} />`}
   </${Page}>`;
 }
@@ -424,18 +425,68 @@ function MiniChart({ q, color }) {
   return html`<svg width=${W} height=${H} aria-hidden="true"><line x1="0" x2=${W} y1=${y(q.base)} y2=${y(q.base)} stroke="var(--sub)" stroke-dasharray="2 3" stroke-width="0.8" />
     <path d=${v.map((t, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(t).toFixed(1)}`).join(' ')} fill="none" stroke=${color} stroke-width="1.6" /></svg>`;
 }
+/** 行情计算：优先放到 Web Worker（不卡页面），每个区间算一次就缓存；不支持时退回主线程 */
+let stockWorker = null; let reqSeq = 0; const pending = new Map();
+function worker() {
+  if (stockWorker !== null) return stockWorker;
+  try {
+    stockWorker = new Worker(new URL('./stockworker.js', import.meta.url), { type: 'module' });
+    stockWorker.onmessage = (e) => { const p = pending.get(e.data.id); if (p) { pending.delete(e.data.id); e.data.error ? p.reject(new Error(e.data.error)) : p.resolve(e.data.board); } };
+    stockWorker.onerror = () => { stockWorker = false; for (const p of pending.values()) p.reject(new Error('worker')); pending.clear(); };
+  } catch { stockWorker = false; }
+  return stockWorker;
+}
+function computeBoard(c, rules, kind, span) {
+  const now = Date.now();
+  const local = () => new Promise((resolve) => setTimeout(() => resolve(kind === 1 ? groupStockBoard(c, rules, span, now) : stockBoard(c, rules, span, now)), 0));
+  const w = worker();
+  if (!w) return local();
+  const id = ++reqSeq;
+  return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); w.postMessage({ id, c, rules, kind, span, now }); }).catch(local);
+}
+const boardCache = new WeakMap();
+function useBoard(c, rules, kind, span) {
+  let byRules = boardCache.get(c); if (!byRules) { byRules = new WeakMap(); boardCache.set(c, byRules); }
+  let cache = byRules.get(rules); if (!cache) { cache = new Map(); byRules.set(rules, cache); }
+  const key = `${kind}:${span}`;
+  const [, tick] = useState(0);
+  const [shown, setShown] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const want = (k, sp) => {
+      const kk = `${k}:${sp}`;
+      if (!cache.has(kk)) cache.set(kk, computeBoard(c, rules, k, sp).then((b) => { cache.set(kk, { board: b }); return b; }, () => { cache.delete(kk); return undefined; }));
+      return cache.get(kk);
+    };
+    const hit = cache.get(key);
+    if (hit && hit.board !== undefined) { setShown({ key, board: hit.board }); return; }
+    want(kind, span).then((b) => {
+      if (!alive) return;
+      setShown({ key, board: b }); tick((x) => x + 1);
+      // 预先把其他区间也算好，切换时立即显示
+      for (const [sp] of SPANS) want(kind, sp);
+    });
+    return () => { alive = false; };
+  }, [c, rules, key]);
+  const hit = cache.get(key);
+  if (hit && hit.board !== undefined) return { board: hit.board, stale: false };
+  // 还在算：先显示同一类（个人 / 小组）上一次的行情
+  return { board: shown && shown.key.split(':')[0] === String(kind) ? shown.board : undefined, stale: true };
+}
+
 function StockTab({ kit, c, rules, list, open, us }) {
   const { Empty } = kit;
   const [kind, setKind] = useKeep('kind'); const [span, setSpan] = useKeep('span'); const [kline, setKline] = useKeep('kline');
   const [pill, setPill] = useKeep('pill'); const [sort, setSort] = useKeep('sort');
   const [sel, setSel] = useState(null);
-  const board = useLater(() => (kind === 0 ? stockBoard(c, rules, span) : groupStockBoard(c, rules, span)), [c, rules, span, kind]);
+  const { board, stale } = useBoard(c, rules, kind, span);
   const up = us ? '#12a866' : '#e5433a'; const down = us ? '#e5433a' : '#12a866';
   const sc = (x) => (x > 0.005 ? up : x < -0.005 ? down : '#8e8e93');
   if (!c.students.length) return html`<${Empty} emoji="📈" text="还没有学生" />`;
   const head = html`<div class="pad an-picker"><${Tabs2} items=${['个人 · 关注度', '小组 · 综合分']} value=${kind} onChange=${(v) => { setKind(v); setSel(null); }} />
     <${Tabs2} items=${SPANS.map((s) => s[1])} value=${SPANS.findIndex((s) => s[0] === span)} onChange=${(i) => { setSpan(SPANS[i][0]); setSel(null); }} /></div>`;
   if (board === undefined) return html`${head}<div class="empty">正在计算行情…</div>`;
+  const busy = stale && board.span !== span;
   if (board === null) return html`${head}<${Empty} emoji="👥" text="还没有小组（每组至少 2 人）" />`;
   const m = board.market; const spanLabel = SPANS.find((s) => s[0] === board.span)[1];
   const isGroup = kind === 1;
@@ -446,7 +497,7 @@ function StockTab({ kit, c, rules, list, open, us }) {
   const sorted = [...rows].sort([(a, b) => b.val - a.val, (a, b) => b.q.change - a.q.change, (a, b) => a.q.change - b.q.change, (a, b) => compareStudentNumbers(a.no || '', b.no || '') || (a.title < b.title ? -1 : 1)][sort]);
   const ups = rows.filter((x) => x.q.change > 0.005).sort((a, b) => b.q.change - a.q.change); const downs = rows.filter((x) => x.q.change < -0.005).sort((a, b) => a.q.change - b.q.change);
   return html`${head}
-    <section class="grp an-pad"><div class="an-mkt"><b>${isGroup ? 'GRP' : 'ATTN'}</b><small>${isGroup ? '小组综合指数 · 各组平均' : '关注指数 · 全班平均'}</small></div>
+    <section class="grp an-pad"><div class="an-mkt"><b>${isGroup ? 'GRP' : 'ATTN'}</b><small>${isGroup ? '小组综合指数 · 各组平均' : '关注指数 · 全班平均'}</small>${busy && html`<small class="an-busy">正在计算${SPANS.find((x) => x[0] === span)[1]}…</small>`}</div>
       <${QuoteHeader} q=${m} sel=${sel} spanLabel=${spanLabel} sc=${sc} />
       <div class="an-toggles"><${Tabs2} items=${['走势', 'K 线']} value=${kline ? 1 : 0} onChange=${(v) => setKline(v === 1)} /></div>
       <${StockChart} q=${m} kline=${kline} sc=${sc} sel=${sel} onSel=${setSel} />
@@ -528,3 +579,57 @@ function Duel({ c, r, a, b, setA, setB, names, colorOf }) {
   </div></${Card}>`;
 }
 
+
+// ---------------- 抄袭 ----------------
+const PROVIDER = '#e8792c'; const COPIER = '#e5384d'; const BOTH = '#8e44ad'; const PLAGC = '#d9480f';
+const roleColor = (n) => (n.copied > 0 && n.provided > 0 ? BOTH : n.copied > 0 ? COPIER : PROVIDER);
+export const plagiarismText = (rules) => { const pg = { ...defaultPlagiarism(), ...(rules.plagiarism || {}) };
+  return pg.enabled ? `抄袭：抄袭者和提供者都记一次未交，扣分 ×${fmtNum(pg.multiplier)}${pg.escalate ? `，累犯逐次加重（第 n 次再 ×n，最多 ×${pg.maxTimes}）` : ''}` : '抄袭：按普通未交扣分'; };
+
+/** 关系图：同学排成一圈（同一个抄袭圈的挨在一起），箭头从提供者指向抄袭者 */
+function PlagGraph({ r, open }) {
+  const nodeOf = Object.fromEntries(r.nodes.map((n) => [n.student.id, n]));
+  const order = r.clusters.flat().filter((s) => nodeOf[s.id]);
+  const n = order.length; const W = 340; const cx = W / 2; const cy = W / 2;
+  const nr = n > 16 ? 12 : 16; const ring = W / 2 - nr - 22;
+  const pos = Object.fromEntries(order.map((s, i) => { const a = n === 1 ? -Math.PI / 2 : -Math.PI / 2 + 2 * Math.PI * i / n; return [s.id, [cx + ring * Math.cos(a), cy + ring * Math.sin(a)]]; }));
+  const maxC = Math.max(1, ...r.edges.map((e) => e.count));
+  return html`<svg class="an-graph" viewBox=${`0 0 ${W} ${W}`} role="img" aria-label=${`抄袭关系图：${n} 位同学，${r.edges.length} 条关系`}>
+    ${r.edges.map((e) => { const [ax, ay] = pos[e.provider.id]; const [bx, by] = pos[e.receiver.id]; const d = Math.max(1, Math.hypot(bx - ax, by - ay)); const ux = (bx - ax) / d; const uy = (by - ay) / d;
+      const sx = ax + ux * nr; const sy = ay + uy * nr; const ex = bx - ux * (nr + 2); const ey = by - uy * (nr + 2);
+      const w = 1.5 + 3 * e.count / maxC; const op = 0.45 + 0.5 * e.count / maxC; const ang = Math.atan2(uy, ux); const hd = 8 + w;
+      const p1 = `${ex - hd * Math.cos(ang - 0.45)},${ey - hd * Math.sin(ang - 0.45)}`; const p2 = `${ex - hd * Math.cos(ang + 0.45)},${ey - hd * Math.sin(ang + 0.45)}`;
+      return html`<g opacity=${op}><line x1=${sx} y1=${sy} x2=${ex} y2=${ey} stroke=${PLAGC} stroke-width=${w} /><polygon points=${`${ex},${ey} ${p1} ${p2}`} fill=${PLAGC} />
+        ${e.count > 1 && html`<circle cx=${(sx + ex) / 2} cy=${(sy + ey) / 2} r="8" fill=${PLAGC} /><text x=${(sx + ex) / 2} y=${(sy + ey) / 2 + 3.5} text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${e.count}</text>`}
+        <title>${`${e.provider.name} → ${e.receiver.name}：${e.count} 次`}</title></g>`; })}
+    ${order.map((s) => { const [x, y] = pos[s.id]; const nd = nodeOf[s.id]; const below = y >= cy;
+      return html`<g class="tap" onClick=${() => open({ view: 'student', id: s.id })}><circle cx=${x} cy=${y} r=${nr} fill=${roleColor(nd)} stroke="#fff" stroke-width="2" />
+        <text x=${x} y=${y + 4.5} text-anchor="middle" font-size=${n > 16 ? 11 : 13} font-weight="700" fill="#fff">${s.name.slice(-1)}</text>
+        <text x=${x} y=${below ? y + nr + 12 : y - nr - 5} text-anchor="middle" font-size="10.5" fill="var(--fg)">${s.name}</text>
+        <title>${`${s.name}：${nd.role}，抄袭 ${nd.copied} 次、提供 ${nd.provided} 次`}</title></g>`; })}
+  </svg>`;
+}
+
+function Plagiarism({ kit, c, rules, open }) {
+  const { Empty, Avatar, Cell } = kit;
+  const r = useMemo(() => plagiarismReport(c, rules), [c, rules]);
+  const pg = { ...defaultPlagiarism(), ...(rules.plagiarism || {}) };
+  if (!r.cases.length) return html`<${Empty} emoji="🕵️" text=${`还没有抄袭记录。老师在作业里把同学记为抄袭并选出抄了谁的之后，这里会出现关系图。${plagiarismText(rules)}`} />`;
+  return html`<div class="tiles">
+      <div class="tile"><b style=${{ color: PLAGC }}>${r.cases.length}</b><span>抄袭记录</span></div>
+      <div class="tile"><b style=${{ color: PLAGC }}>${r.copiers}</b><span>抄袭者</span></div>
+      <div class="tile"><b style=${{ color: PLAGC }}>${r.providers}</b><span>提供者</span></div>
+      <div class="tile"><b style=${{ color: PLAGC }}>${fmtNum(r.points)}</b><span>共扣分</span></div></div>
+    <div class="meta">${plagiarismText(rules)}；改成其他状态即取消。</div>
+    <${Card} title="关系图 · 箭头从提供者指向抄袭者，线越粗次数越多"><div class="an-pad"><${PlagGraph} r=${r} open=${open} />
+      <div class="legend in" style=${{ padding: '8px 0 0' }}>${[[PROVIDER, '提供者'], [COPIER, '抄袭者'], [BOTH, '既抄又提供']].map(([col, l]) => html`<span><i style=${{ background: col, borderRadius: '50%' }}></i>${l}</span>`)}</div></div></${Card}>
+    <${Card} title="抄袭关系（提供者 → 抄袭者）">${r.edges.map((e) => html`<button class="an-row" key=${e.provider.id + e.receiver.id} onClick=${() => open({ view: 'student', id: e.receiver.id })}>
+      <div class="an-grow"><b><span style=${{ color: PROVIDER }}>${e.provider.name}</span> <span class="muted">→</span> <span style=${{ color: COPIER }}>${e.receiver.name}</span></b><small>${e.assignments.slice(-3).map((a) => a.title).join('、')}</small></div><b>${e.count} 次</b></button>`)}</${Card}>
+    <${Card} title="涉及的同学（按次数）">${r.nodes.map((nd) => html`<button class="an-row" key=${nd.student.id} onClick=${() => open({ view: 'student', id: nd.student.id })}><${Avatar} name=${nd.student.name} size=${36} />
+      <div class="an-grow"><b>${nd.student.name} <em class="an-tag" style=${{ color: roleColor(nd), background: roleColor(nd) + '1f' }}>${nd.role}</em></b>
+        <small>${[nd.copied && `抄袭 ${nd.copied} 次`, nd.provided && `提供 ${nd.provided} 次`, `本轮第 ${nd.roundTimes} 次${pg.enabled && pg.escalate && nd.roundTimes > 0 ? `（下次 ×${fmtNum(plagiarismFactor(pg, nd.roundTimes + 1))}）` : ''}`].filter(Boolean).join(' · ')}</small></div>
+      <b style=${{ color: COPIER, fontSize: '16px' }}>${fmtNum(nd.points)}</b></button>`)}</${Card}>
+    ${r.clusters.some((x) => x.length >= 3) && html`<${Card} title="抄袭圈（互相连在一起的同学）"><div class="an-pad">${r.clusters.filter((x) => x.length >= 2).map((cl, i) => html`<${Chips} title=${`第 ${i + 1} 圈 · ${cl.length} 人`} items=${cl.map((s) => [s, ''])} color=${PLAGC} open=${open} />`)}</div></${Card}>`}
+    <${Card} title="最近的抄袭记录">${r.cases.slice(0, 20).map((k) => html`<${Cell} key=${k.assignment.id + k.receiver.id} title=${`${k.receiver.name} 抄袭 ${k.providers.map((p) => p.name).join('、')}`}
+      sub=${`${md(k.assignment.createdAt)} · ${k.assignment.subject || ''} ${k.assignment.title}`} onClick=${() => open({ view: 'assign', id: k.assignment.id })} />`)}</${Card}>`;
+}

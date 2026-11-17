@@ -112,6 +112,12 @@ fun SchoolClass.ledger(rules: ScoreRules, studentId: String): List<LedgerRow> {
         val p = pts[a.id]
         val d = p?.points ?: rules.of(st)
         val extra = when {
+            p != null && p.plagiarism > 0 -> {
+                val from = a.copiedFrom(studentId).mapNotNull { id -> students.firstOrNull { it.id == id }?.name }
+                val by = a.copiedBy(studentId).mapNotNull { id -> students.firstOrNull { it.id == id }?.name }
+                val who = listOfNotNull(from.takeIf { it.isNotEmpty() }?.let { "抄袭 ${it.joinToString("、")}" }, by.takeIf { it.isNotEmpty() }?.let { "提供给 ${it.joinToString("、")} 抄" }).joinToString("；")
+                "（$who，本轮第 ${p.plagiarism} 次，扣分 ×${p.plagiarismFactor.fmt()}${if (p.missStreak >= 2 && rules.escalation.enabled) "，连续第 ${p.missStreak} 次未交" else ""}）"
+            }
             p != null && p.reviewFailed -> "（复审不合格，扣分 ×${rules.review.multiplier.fmt()}${if (p.missStreak >= 2 && rules.escalation.enabled) "，连续第 ${p.missStreak} 次未交" else ""}）"
             p != null && p.missStreak >= 2 && rules.escalation.enabled -> "（连续第 ${p.missStreak} 次未交）"
             p != null && p.bonus != 0.0 -> "（连续交第 ${p.handStreak} 次 ${p.bonus.signed()}）"

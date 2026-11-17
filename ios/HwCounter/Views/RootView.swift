@@ -19,10 +19,10 @@ struct HwCounterApp: App {
 }
 
 enum Pane: String, CaseIterable, Identifiable {
-    case homework, heatmap, scores, roster, settings
+    case homework, heatmap, plagiarism, scores, roster, settings
     var id: String { rawValue }
-    var title: String { ["作业", "热力图", "积分", "名单", "设置"][Pane.allCases.firstIndex(of: self)!] }
-    var icon: String { ["checklist", "square.grid.3x3.fill", "star.circle", "person.3", "gearshape"][Pane.allCases.firstIndex(of: self)!] }
+    var title: String { ["作业", "热力图", "抄袭关系", "积分", "名单", "设置"][Pane.allCases.firstIndex(of: self)!] }
+    var icon: String { ["checklist", "square.grid.3x3.fill", "arrow.triangle.branch", "star.circle", "person.3", "gearshape"][Pane.allCases.firstIndex(of: self)!] }
 }
 
 struct RootView: View {
@@ -55,6 +55,7 @@ struct RootView: View {
                 switch (store.readOnly && section == .roster) ? Pane.homework : (section ?? Pane.homework) {
                 case .homework: AssignmentsView()
                 case .heatmap: HeatmapView()
+                case .plagiarism: PlagiarismView()
                 case .scores: ScoresView()
                 case .roster: RosterView()
                 case .settings: SettingsView()

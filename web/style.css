@@ -369,3 +369,6 @@ button.ib:active { background: var(--chip); }
 .grp .chip:not(.on) { background: var(--chip); }
 .an-btn { display: block; text-align: center; }
 .an-grow small { -webkit-line-clamp: 3; }
+.an-graph { width: 100%; max-width: 420px; display: block; margin: 0 auto; overflow: visible; }
+.an-graph .tap { cursor: pointer; }
+.an-busy { margin-left: auto; color: var(--accent) !important; animation: fade-in .6s ease-in-out infinite alternate; }

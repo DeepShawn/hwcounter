@@ -18,7 +18,8 @@ const names = ['张锦宇', '李子涵', '林静', '王芳', '冉浩', '周杰',
 const students = names.map((n, i) => ({ id: `s${i}`, no: String(i + 1).padStart(2, '0'), name: n, group: `第${(i % 3) + 1}组` }));
 const st = (i, k) => ((i * 7 + k * 3) % 11 === 0 ? 'MISSING' : (i + k) % 9 === 0 ? 'LATE' : (i * 3 + k) % 7 === 0 ? 'EXCELLENT' : (i + k) % 13 === 0 ? 'LEAVE' : 'SUBMITTED');
 const assignments = Array.from({ length: 12 }, (_, k) => ({ id: `a${k}`, title: `练习${k + 1}`, subject: ['语文', '数学', '英语'][k % 3], createdAt: now - (12 - k) * 2 * DAY,
-  statuses: Object.fromEntries(students.map((s, i) => [s.id, k === 11 && i === 3 ? 'MISSING' : st(i, k)])), comments: k === 11 ? { s1: '字迹潦草' } : {}, reviewFailed: k === 11 ? ['s3'] : [] }));
+  statuses: Object.fromEntries(students.map((s, i) => [s.id, (k === 11 && i === 3) || (k === 10 && (i === 2 || i === 4)) ? 'MISSING' : st(i, k)])), comments: k === 11 ? { s1: '字迹潦草' } : {}, reviewFailed: k === 11 ? ['s3'] : [],
+  plagiarism: k === 10 ? { s4: ['s2'] } : {} }));
 const seed = { version: 1, currentClassId: 'c1', settings: { rules: {} },
   classes: [{ id: 'c1', name: '高一(3)班', emoji: '🚀', students, assignments, groupLeaders: { 第1组: 's0', 第2组: 's1' }, reps: ['s1'],
     scores: [{ id: 'm1', studentId: 's0', delta: 2, reason: '课堂表现好', time: now - DAY }, { id: 'm2', studentId: 's5', delta: -1, reason: '迟到', time: now - 3 * DAY }],
@@ -128,6 +129,15 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   for (const t of ['本期排名', '历次排名', '每周对抗 · 交齐率最高的组胜出', '两组对决', '组长奖惩'])
     check(await page.isVisible(`.st:has-text("${t}")`), `小组分析：${t}`);
   await shot('7b-groups');
+  // 抄袭：关系图
+  await page.click('.seg button:has-text("抄袭")'); await page.waitForSelector('.an-graph');
+  check((await page.locator('.an-graph circle').count()) >= 2 && await page.isVisible('text=冉浩 抄袭 林静'), '抄袭关系图与记录');
+  await shot('7f-plagiarism');
+  await page.click('.cell:has-text("冉浩 抄袭 林静")'); await page.waitForSelector('.cell:has-text("冉浩")');
+  check(await page.isVisible('.cell:has-text("冉浩") .pill:has-text("抄袭")') && await page.isVisible('.cell:has-text("林静") .pill:has-text("抄袭")'), '作业页：抄袭者和提供者都标为抄袭');
+  await page.click('.cell:has-text("冉浩")'); await page.waitForSelector('text=积分流水');
+  check(await page.isVisible('text=抄袭 林静，本轮第 1 次，扣分 ×2'), '积分流水写明抄袭了谁、第几次、倍数');
+  await page.goBack(); await page.goBack(); await page.waitForSelector('.an-graph');
   await page.click('.seg button:has-text("作业")');
   await page.click('.tabbar button:has-text("设置")'); await page.waitForSelector('text=主题配色');
   check((await page.locator('input:not([type=checkbox])').count()) === 0, '设置里没有任何输入框（只有个性化开关）');

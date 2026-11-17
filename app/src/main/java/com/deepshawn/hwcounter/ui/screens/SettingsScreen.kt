@@ -199,6 +199,29 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                         Text("在作业页长按同学，或多选后点「复审不合格」。改回其他状态即取消。修改后历史积分自动重算。", fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp))
                     }
                 }
+                group("抄袭处罚", key = "plagiarism") {
+                    val pg = s.rules.plagiarism
+                    fun pl(f: (com.deepshawn.hwcounter.data.PlagiarismRules) -> com.deepshawn.hwcounter.data.PlagiarismRules) = rules { it.copy(plagiarism = f(it.plagiarism)) }
+                    SuperSwitch(
+                        checked = pg.enabled, onCheckedChange = { v -> pl { it.copy(enabled = v) } }, title = "抄袭处罚",
+                        summary = "抄袭者和提供者都记一次未交（参与连续未交、累计未交），这一次扣分 ×${pg.multiplier.fmt()}；关闭后按普通未交扣分",
+                    )
+                    if (pg.enabled) {
+                        SuperSwitch(
+                            checked = pg.escalate, onCheckedChange = { v -> pl { it.copy(escalate = v) } }, title = "累犯逐次加重",
+                            summary = "本轮第 2 次涉及抄袭再 ×2、第 3 次 ×3……最多 ×${pg.maxTimes}；每次积分重置重新计次",
+                        )
+                        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                            RuleRow("扣分倍数", pg.multiplier, 0.5) { v -> if (v >= 1) pl { it.copy(multiplier = v) } }
+                            if (pg.escalate) RuleRow("累犯最多再乘", pg.maxTimes.toDouble(), 1.0) { v -> if (v >= 1) pl { it.copy(maxTimes = v.toInt()) } }
+                            Text(
+                                "例：连续未交第 1 次扣 2 分，抄袭第 1 次扣 ${(2 * pg.factor(1)).fmt()}、第 2 次扣 ${(2 * pg.factor(2)).fmt()}、第 3 次扣 ${(2 * pg.factor(3)).fmt()}。\n" +
+                                    "在作业页长按同学（或多选后）点「抄袭」，再选出抄了谁的；改回其他状态即取消。统计 → 抄袭 可看关系图。抄袭扣分也计入小组对抗和组长奖惩。",
+                                fontSize = 11.sp, lineHeight = 17.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp),
+                            )
+                        }
+                    }
+                }
                 group("组长奖惩", key = "leader") {
                     val lr = s.rules.leader
                     fun ld(f: (com.deepshawn.hwcounter.data.LeaderRules) -> com.deepshawn.hwcounter.data.LeaderRules) = rules { it.copy(leader = f(it.leader)) }
@@ -624,7 +647,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsIndex(vm: App
         SuperArrow(
             title = "作业计分",
             summary = "初始 ${r.initial.fmt()} 分 · " + (if (r.escalation.enabled) "未交递增扣分" else "未交 ${r.missing.signed()}") +
-                " · 复审" + (if (r.review.enabled) "不合格 ×${r.review.multiplier.fmt()}" else "已关闭") + (if (r.leader.enabled) " · 组长${r.leader.periodLabel}奖惩${if (r.leader.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.leader.mode) + "）" else ""}" else "") + (if (r.groupRank.enabled) " · 小组${r.groupRank.periodLabel}排名${if (r.groupRank.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.groupRank.mode) + "）" else ""}" else "") + if (r.streakBonus.enabled) " · 连续交奖励" else "",
+                " · 复审" + (if (r.review.enabled) "不合格 ×${r.review.multiplier.fmt()}" else "已关闭") + (if (r.plagiarism.enabled) " · 抄袭 ×${r.plagiarism.multiplier.fmt()}${if (r.plagiarism.escalate) "起累犯加重" else ""}" else "") + (if (r.leader.enabled) " · 组长${r.leader.periodLabel}奖惩${if (r.leader.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.leader.mode) + "）" else ""}" else "") + (if (r.groupRank.enabled) " · 小组${r.groupRank.periodLabel}排名${if (r.groupRank.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.groupRank.mode) + "）" else ""}" else "") + if (r.streakBonus.enabled) " · 连续交奖励" else "",
             onClick = { open("scoring") },
         )
         SuperArrow(title = "考试计分", summary = if (r.exam.enabled) "按得分率分 ${r.exam.bands.size} 档自动加减积分" else "已关闭", onClick = { open("exam") })

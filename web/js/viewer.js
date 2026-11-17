@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from '../vendor
 import htm from '../vendor/htm.module.js';
 import {
   STATUS, normalizeData, summary, studentStats, compareStudentNumbers, autoPoints, ruleOf, fmtNum, signed, fmtDate,
-  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, leaderPeriods, leaderOf, groupRankPoints,
+  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, leaderPeriods, leaderOf, groupRankPoints,
 } from './model.js';
 import { api } from './cloud.js';
 import { StatsPage } from './statspage.js';
@@ -25,8 +25,9 @@ const PALETTES = {
 
 /** 状态显示：在原有状态上加“复审不合格” */
 const REVIEW = { label: '复审不合格', short: '不合格', emoji: '⛔', color: '#b0306f' };
-const view = (a, sid) => (failedReview(a, sid) ? 'REVIEW' : a.statuses[sid] || 'NONE');
-const SV = (k) => (k === 'REVIEW' ? REVIEW : STATUS[k] || STATUS.NONE);
+const PLAG = { label: '抄袭', short: '抄', emoji: '🕵️', color: '#d9480f' };
+const view = (a, sid) => (plagiarized(a, sid) ? 'PLAG' : failedReview(a, sid) ? 'REVIEW' : a.statuses[sid] || 'NONE');
+const SV = (k) => (k === 'PLAG' ? PLAG : k === 'REVIEW' ? REVIEW : STATUS[k] || STATUS.NONE);
 const HANDED = new Set(['SUBMITTED', 'EXCELLENT', 'LATE']);
 const pct = (x) => (x == null || !Number.isFinite(x) ? '—' : `${Math.round(x * 100)}%`);
 const md = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
@@ -96,6 +97,12 @@ function Ring({ value, size = 84, stroke = 8, color = 'var(--accent)', children 
 const Tile = ({ label, value, color, onClick }) => html`<div class=${'tile' + (onClick ? ' tap' : '')} onClick=${onClick}><b style=${color ? { color } : null}>${value}</b><span>${label}</span></div>`;
 const Pill = ({ k }) => { const s = SV(k); return html`<span class="pill" style=${{ color: s.color, background: s.color + '1f' }}>${s.label}</span>`; };
 const Empty = ({ emoji = '📭', text }) => html`<div class="empty"><div>${emoji}</div>${text}</div>`;
+/** 这次作业里这位同学的抄袭关系（“抄袭 甲” / “提供给 乙 抄”） */
+const plagLine = (c, a, sid) => {
+  const names = (ids) => ids.map((id) => c.students.find((x) => x.id === id)?.name).filter(Boolean).join('、');
+  const from = copiedFrom(a, sid); const by = copiedBy(a, sid);
+  return [from.length && `抄袭 ${names(from)}`, by.length && `提供给 ${names(by)} 抄`].filter(Boolean).join('；');
+};
 const sortStudents = (list) => [...list].sort((a, b) => compareStudentNumbers(a.no, b.no) || a.name.localeCompare(b.name, 'zh'));
 
 // ---------------- 计算 ----------------
@@ -119,9 +126,17 @@ function ledger(c, rules, sid) {
   const rows = [];
   for (const e of c.scores) if (e.studentId === sid) rows.push({ key: 'm' + e.id, t: e.time, d: e.delta, title: e.reason || '加减分', kind: e.settlementId ? '结算' : '加减分', counts: entryCounts(e, last) });
   const pts = autoPoints(c, rules, sid);
-  for (const a of c.assignments) {
+  const pg = { ...defaultPlagiarism(), ...(rules.plagiarism || {}) };
+  const resets = (c.recharges || []).filter((r) => (r.studentIds || []).includes(sid))
+    .sort((x, y) => (x.effectiveAt ?? x.time) - (y.effectiveAt ?? y.time) || x.time - y.time || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+  let round; let plag = 0;
+  for (const a of [...c.assignments].sort((x, y) => x.createdAt - y.createdAt || (x.id < y.id ? -1 : 1))) {
+    let r = null; for (const x of resets) if (rechargeCounts(x, a.createdAt)) r = x;
+    if ((r && r.id) !== round) { round = r && r.id; plag = 0; }
     const k = view(a, sid); const d = pts[a.id] ?? ruleOf(rules, a.statuses[sid]);
-    if (d) rows.push({ key: 'a' + a.id, t: a.createdAt, d, title: `${a.subject ? a.subject : ''}「${a.title}」${SV(k).label}`, kind: '作业', counts: assignmentCounts(a, last) });
+    let extra = '';
+    if (k === 'PLAG' && pg.enabled) { plag++; extra = `（${plagLine(c, a, sid)}，本轮第 ${plag} 次，扣分 ×${fmtNum(plagiarismFactor(pg, plag))}）`; }
+    if (d) rows.push({ key: 'a' + a.id, t: a.createdAt, d, title: `${a.subject ? a.subject : ''}「${a.title}」${SV(k).label}${extra}`, kind: '作业', counts: assignmentCounts(a, last) });
   }
   for (const e of c.exams || []) {
     const d = examDelta(rules, e, sid);
@@ -158,7 +173,7 @@ function Home({ c, data, prefs, setPrefs, open }) {
         <div class="hero-title">${latest.title}</div>
         <div class="cell-sub">${fmtDate(latest.createdAt)}${latest.subject ? ' · ' + latest.subject : ''}</div>
         <div class="hero-counts">
-          ${(() => { const ks = c.students.map((x) => view(latest, x.id)); return ['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'REVIEW', 'LEAVE', 'NONE'].map((k) => [k, ks.filter((x) => x === k).length]).filter(([, n]) => n).map(([k, n]) => html`<span style=${{ color: SV(k).color }}>${SV(k).label} ${n}</span>`); })()}
+          ${(() => { const ks = c.students.map((x) => view(latest, x.id)); return ['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'REVIEW', 'PLAG', 'LEAVE', 'NONE'].map((k) => [k, ks.filter((x) => x === k).length]).filter(([, n]) => n).map(([k, n]) => html`<span style=${{ color: SV(k).color }}>${SV(k).label} ${n}</span>`); })()}
         </div>
       </div>
     </section>` : html`<${Empty} emoji="📚" text="还没有作业" />`}
@@ -189,7 +204,7 @@ function AssignView({ c, rules, id, back, open, prefs, setPrefs }) {
   const sm = summary(c, a);
   const keys = c.students.map((s) => view(a, s.id));
   const count = (k) => keys.filter((x) => x === k).length;
-  const chips = [['ALL', `全部 ${c.students.length}`], ...['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'REVIEW', 'LEAVE', 'NONE'].filter((k) => count(k)).map((k) => [k, `${SV(k).label} ${count(k)}`])];
+  const chips = [['ALL', `全部 ${c.students.length}`], ...['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'REVIEW', 'PLAG', 'LEAVE', 'NONE'].filter((k) => count(k)).map((k) => [k, `${SV(k).label} ${count(k)}`])];
   const shown = sortStudents(c.students).filter((s) => filter === 'ALL' || view(a, s.id) === filter);
   return html`<${Page} title=${a.title} onBack=${back}>
     <div class="meta">${fmtDate(a.createdAt)}${a.subject ? ' · ' + a.subject : ''}</div>
@@ -197,7 +212,7 @@ function AssignView({ c, rules, id, back, open, prefs, setPrefs }) {
       <${Ring} value=${sm.rate} color=${rateColor(sm.rate)}><b>${pct(sm.rate)}</b><span>交齐率</span></${Ring}>
       <div class="hero-main">
         <div class="hero-title">已交 ${sm.handedIn} / 应交 ${sm.expected}</div>
-        <div class="hero-counts">${['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'REVIEW', 'LEAVE', 'NONE'].filter((k) => count(k)).map((k) => html`<span style=${{ color: SV(k).color }}>${SV(k).label} ${count(k)}</span>`)}</div>
+        <div class="hero-counts">${['SUBMITTED', 'EXCELLENT', 'LATE', 'MISSING', 'REVIEW', 'PLAG', 'LEAVE', 'NONE'].filter((k) => count(k)).map((k) => html`<span style=${{ color: SV(k).color }}>${SV(k).label} ${count(k)}</span>`)}</div>
         ${a.countedBooks != null && html`<div class="cell-sub">数本数：${a.countedBooks} 本</div>`}
       </div>
     </section>
@@ -210,7 +225,7 @@ function AssignView({ c, rules, id, back, open, prefs, setPrefs }) {
       : html`<div class="grid">${shown.map((s) => { const k = view(a, s.id); const st = SV(k); const d = pts[s.id]; return html`<button key=${s.id} class="stu" style=${{ '--c': st.color }} onClick=${() => open({ view: 'student', id: s.id })}>
           <${Avatar} name=${s.name} size=${40} />
           <b>${s.name}</b><small>${s.no}</small>
-          <span class="stu-st">${st.label}${d ? html` <em style=${{ color: d > 0 ? '#16a34a' : '#e5384d' }}>${signed(d)}</em>` : ''}</span>
+          <span class="stu-st">${k === 'PLAG' ? plagLine(c, a, s.id) || st.label : st.label}${d ? html` <em style=${{ color: d > 0 ? '#16a34a' : '#e5384d' }}>${signed(d)}</em>` : ''}</span>
           ${a.comments?.[s.id] && html`<small class="cm">💬 ${a.comments[s.id]}</small>`}
         </button>`; })}</div>`}
   </${Page}>`;
@@ -284,7 +299,8 @@ function StudentView({ c, rules, id, back, open }) {
       <${Tile} label="已交" value=${cnt('SUBMITTED')} color=${STATUS.SUBMITTED.color} />
       <${Tile} label="优秀" value=${cnt('EXCELLENT')} color=${STATUS.EXCELLENT.color} />
       <${Tile} label="迟交" value=${cnt('LATE')} color=${STATUS.LATE.color} />
-      <${Tile} label="未交" value=${cnt('MISSING') + cnt('REVIEW')} color=${STATUS.MISSING.color} />
+      <${Tile} label="未交" value=${cnt('MISSING') + cnt('REVIEW') + cnt('PLAG')} color=${STATUS.MISSING.color} />
+      ${cnt('PLAG') > 0 && html`<${Tile} label="抄袭" value=${cnt('PLAG')} color=${PLAG.color} />`}
       <${Tile} label="复审不合格" value=${cnt('REVIEW')} color=${REVIEW.color} />
       <${Tile} label="请假" value=${cnt('LEAVE')} color=${STATUS.LEAVE.color} />
       <${Tile} label="考试" value=${exams.filter((e) => e.scores?.[id] != null).length} />

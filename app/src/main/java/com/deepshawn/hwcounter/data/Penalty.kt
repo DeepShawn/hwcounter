@@ -49,6 +49,22 @@ data class ReviewRules(
     val multiplier: Double = 2.0,
 )
 
+/**
+ * 抄袭（三端同一算法）：作业里记下“谁抄了谁的”，抄袭者和提供者都记为“未交”（参与连续未交和累计次数），
+ * 这一次的扣分 × [multiplier]（默认 2）；[escalate] 开启时累犯逐次加重：本轮第 2 次涉及抄袭再 ×2、第 3 次 ×3……最多 ×[maxTimes]。
+ * 每次积分重置开始新一轮重新计次。同一次作业既复审不合格又抄袭时按抄袭算（不叠加）。关闭后按普通未交扣分。
+ */
+@Serializable
+data class PlagiarismRules(
+    val enabled: Boolean = true,
+    val multiplier: Double = 2.0,
+    val escalate: Boolean = true,
+    val maxTimes: Int = 4,
+) {
+    /** 本轮第 n 次涉及抄袭时的总倍数 */
+    fun factor(n: Int): Double = multiplier * (if (escalate) n.coerceIn(1, maxOf(1, maxTimes)) else 1).toDouble()
+}
+
 /** 正分向上取整、负分向下取整（远离 0 取整） */
 fun roundAway(x: Double): Double = if (x > 0) kotlin.math.ceil(x - 1e-9) else if (x < 0) kotlin.math.floor(x + 1e-9) else 0.0
 
@@ -60,24 +76,34 @@ inline fun ScoreRules.pt(x: Double): Double = x
 fun ScoreRules.shown(total: Double): Double = if (roundPoints) roundAway(total) else total
 
 /** 某次作业的计分明细 */
-data class AutoPoint(val points: Double, val missStreak: Int = 0, val handStreak: Int = 0, val bonus: Double = 0.0, val reviewFailed: Boolean = false)
+data class AutoPoint(
+    val points: Double, val missStreak: Int = 0, val handStreak: Int = 0, val bonus: Double = 0.0, val reviewFailed: Boolean = false,
+    /** 本轮第几次涉及抄袭（0 = 这次没有），以及这次的总倍数 */
+    val plagiarism: Int = 0, val plagiarismFactor: Double = 1.0,
+)
 
 /** 某位同学每次作业的自动计分明细（作业 id → 明细）：未交连续递增扣分 + 连续交奖励，每轮重置重新计 */
 fun SchoolClass.autoPointDetails(rules: ScoreRules, studentId: String): Map<String, AutoPoint> {
     val esc = rules.escalation; val sb = rules.streakBonus
     val out = HashMap<String, AutoPoint>()
     val resets = recharges.filter { studentId in it.studentIds }.sortedWith(compareBy<ScoreRecharge> { it.start }.thenBy { it.time }.thenBy { it.id })
-    var round: String? = null; var streak = 0; var total = 0; var run = 0
+    var round: String? = null; var streak = 0; var total = 0; var run = 0; var plag = 0
     for (a in assignments.sortedWith(compareBy<Assignment> { it.createdAt }.thenBy { it.id })) {
         val st = a.statuses[studentId] ?: HwStatus.NONE
         val r = resets.lastOrNull { it.counts(a.createdAt) }?.id
-        if (r != round) { round = r; streak = 0; total = 0; run = 0 }
+        if (r != round) { round = r; streak = 0; total = 0; run = 0; plag = 0 }
         out[a.id] = when (st) {
             HwStatus.MISSING -> {
                 streak++; total++; run = 0
                 val base = if (esc.enabled) -esc.penalty(streak, total) else rules.of(st)
-                val failed = rules.review.enabled && a.failedReview(studentId)
-                AutoPoint(rules.pt(if (failed) base * rules.review.multiplier else base), missStreak = streak, reviewFailed = failed)
+                if (rules.plagiarism.enabled && a.plagiarized(studentId)) {
+                    plag++
+                    val f = rules.plagiarism.factor(plag)
+                    AutoPoint(rules.pt(base * f), missStreak = streak, plagiarism = plag, plagiarismFactor = f)
+                } else {
+                    val failed = rules.review.enabled && a.failedReview(studentId)
+                    AutoPoint(rules.pt(if (failed) base * rules.review.multiplier else base), missStreak = streak, reviewFailed = failed)
+                }
             }
             HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE -> {
                 streak = 0

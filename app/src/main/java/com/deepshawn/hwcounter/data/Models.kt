@@ -62,9 +62,28 @@ data class Assignment(
     val pinned: Boolean = false,
     /** 复审不合格的同学：状态记为未交（多算一次未交），扣分按 [ReviewRules.multiplier] 翻倍 */
     val reviewFailed: List<String> = emptyList(),
+    /** 抄袭：抄袭者 id → 提供者 id 列表。抄袭者和提供者都记为未交，扣分按 [PlagiarismRules] 翻倍、累犯加重 */
+    val plagiarism: Map<String, List<String>> = emptyMap(),
 ) {
     /** 这位同学是否复审不合格（只有状态仍是“未交”时才算） */
     fun failedReview(studentId: String): Boolean = studentId in reviewFailed && statuses[studentId] == HwStatus.MISSING
+
+    /** 这位同学抄了谁的（只有状态仍是“未交”时才算） */
+    fun copiedFrom(studentId: String): List<String> = if (statuses[studentId] == HwStatus.MISSING) plagiarism[studentId].orEmpty() else emptyList()
+
+    /** 谁抄了这位同学的（只有状态仍是“未交”时才算） */
+    fun copiedBy(studentId: String): List<String> =
+        if (statuses[studentId] != HwStatus.MISSING) emptyList() else plagiarism.filter { (r, ps) -> studentId in ps && statuses[r] == HwStatus.MISSING }.keys.toList()
+
+    /** 这次作业是否涉及抄袭（抄袭者或提供者） */
+    fun plagiarized(studentId: String): Boolean = copiedFrom(studentId).isNotEmpty() || copiedBy(studentId).isNotEmpty()
+
+    /** 去掉这些同学的抄袭标记（作为抄袭者和提供者） */
+    fun withoutPlagiarism(ids: Collection<String>): Assignment {
+        if (plagiarism.isEmpty()) return this
+        val set = ids.toSet()
+        return copy(plagiarism = plagiarism.filterKeys { it !in set }.mapValues { (_, ps) -> ps - set }.filterValues { it.isNotEmpty() })
+    }
 }
 
 @Serializable
@@ -131,6 +150,8 @@ data class ScoreRules(
     val settlement: SettlementRules = SettlementRules(),
     /** 作业复审：不合格记一次未交，扣分翻倍 */
     val review: ReviewRules = ReviewRules(),
+    /** 抄袭：抄袭者和提供者都记未交、扣分翻倍，累犯逐次加重（见 Penalty.kt） */
+    val plagiarism: PlagiarismRules = PlagiarismRules(),
     /** 组长奖惩：按课代表选的周期，看小组人均作业扣分（见 Leader.kt） */
     val leader: LeaderRules = LeaderRules(),
     /** 小组对抗排名：按名次给整组每人加减分（见 GroupRank.kt） */

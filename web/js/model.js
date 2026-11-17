@@ -15,15 +15,22 @@ export const defaultEscalation = () => ({ enabled: true, base: 2, heavyBase: 3, 
 export const defaultStreakBonus = () => ({ enabled: true, after: 5, bonus: 1, lateCounts: false });
 /** 作业复审：不合格记一次未交（参与连续 / 累计），这一次扣分 × multiplier；没复审的默认合格 */
 export const defaultReview = () => ({ enabled: true, multiplier: 2 });
+/** 抄袭：抄袭者和提供者都记未交、扣分 ×multiplier；累犯逐次加重（第 n 次再 ×n，最多 ×maxTimes），每轮重新计次 */
+export const defaultPlagiarism = () => ({ enabled: true, multiplier: 2, escalate: true, maxTimes: 4 });
+export const plagiarismFactor = (pr, n) => pr.multiplier * (pr.escalate ? Math.min(Math.max(1, n), Math.max(1, pr.maxTimes)) : 1);
 /** 组长奖惩（与安卓 Leader.kt 同算法）：按周期（assignment / day / week / month）看小组人均作业扣分 */
 export const defaultLeader = () => ({ enabled: true, period: 'week', clean: 3, low: 2, below: 1, above: -1, high: -2, veryHigh: -3, top: 1, bottom: -1, progress: 1, regress: -1, streakStep: 1, streakMax: 3, cap: 5, mode: 'both' });
 /** 加减方式：both / plus（仅加分）/ minus（仅扣分） */
 export const applyMode = (mode, x) => (mode === 'plus' ? Math.max(0, x) : mode === 'minus' ? Math.min(0, x) : x);
 /** 小组对抗排名（与安卓 GroupRank.kt 同算法）：按周期给小组综合排名，按名次给整组每人加减分 */
 export const defaultGroupRank = () => ({ enabled: true, period: 'week', first: 2, second: 1, third: 0, last: -1, wRate: 0.5, wDeduct: 0.25, wExcellent: 0.15, wExam: 0.1, mode: 'both' });
-export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true, review: defaultReview(), leader: defaultLeader(), groupRank: defaultGroupRank() });
+export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true, review: defaultReview(), plagiarism: defaultPlagiarism(), leader: defaultLeader(), groupRank: defaultGroupRank() });
 /** 这位同学这次作业是否复审不合格（只有状态仍是未交时才算） */
 export const failedReview = (a, sid) => (a.reviewFailed || []).includes(sid) && a.statuses[sid] === 'MISSING';
+/** 抄袭（只有状态仍是“未交”时才算）：这位同学抄了谁的 / 谁抄了这位同学的 / 是否涉及 */
+export const copiedFrom = (a, sid) => (a.statuses[sid] === 'MISSING' ? (a.plagiarism || {})[sid] || [] : []);
+export const copiedBy = (a, sid) => (a.statuses[sid] !== 'MISSING' ? [] : Object.entries(a.plagiarism || {}).filter(([r, ps]) => ps.includes(sid) && a.statuses[r] === 'MISSING').map(([r]) => r));
+export const plagiarized = (a, sid) => copiedFrom(a, sid).length > 0 || copiedBy(a, sid).length > 0;
 /** 正分向上取整、负分向下取整（与安卓 roundAway 一致） */
 export const roundAway = (x) => (x > 0 ? Math.ceil(x - 1e-9) : x < 0 ? Math.floor(x + 1e-9) : 0);
 /** 单笔加减分保留原值；取整只作用在最终显示的总积分上 */
@@ -48,13 +55,14 @@ export function normalizeData(d) {
   out.settings.rules.escalation = { ...defaultEscalation(), ...(out.settings.rules.escalation || {}) };
   out.settings.rules.streakBonus = { ...defaultStreakBonus(), ...(out.settings.rules.streakBonus || {}) };
   out.settings.rules.review = { ...defaultReview(), ...(out.settings.rules.review || {}) };
+  out.settings.rules.plagiarism = { ...defaultPlagiarism(), ...(out.settings.rules.plagiarism || {}) };
   out.settings.rules.leader = { ...defaultLeader(), ...(out.settings.rules.leader || {}) };
   out.settings.rules.groupRank = { ...defaultGroupRank(), ...(out.settings.rules.groupRank || {}) };
   out.settings.ai = { ...base.settings.ai, ...(out.settings.ai || {}) };
   out.classes = (out.classes || []).map((c) => ({
     id: newId(), emoji: '🎒', students: [], assignments: [], scores: [], ...c,
     students: (c.students || []).map((s) => ({ id: newId(), group: '', gender: '', note: '', longLeave: false, ...s })),
-    assignments: (c.assignments || []).map((a) => ({ id: newId(), subject: '', createdAt: Date.now(), statuses: {}, comments: {}, countedBooks: null, pinned: false, reviewFailed: [], ...a })),
+    assignments: (c.assignments || []).map((a) => ({ id: newId(), subject: '', createdAt: Date.now(), statuses: {}, comments: {}, countedBooks: null, pinned: false, reviewFailed: [], plagiarism: {}, ...a })),
     scores: (c.scores || []).map((e) => ({ id: newId(), time: Date.now(), ...e })),
     exams: (c.exams || []).map((e) => ({ id: newId(), subject: '', date: Date.now(), fullScore: 100, scores: {}, absent: [], note: '', autoScore: true, ...e })),
     groupLeaders: c.groupLeaders || {},
@@ -137,21 +145,23 @@ export function autoPoints(c, rules, sid) {
   const esc = { ...defaultEscalation(), ...(rules.escalation || {}) };
   const sb = { ...defaultStreakBonus(), ...(rules.streakBonus || {}) };
   const rv = { ...defaultReview(), ...(rules.review || {}) };
+  const pg = { ...defaultPlagiarism(), ...(rules.plagiarism || {}) };
   const out = {};
   const resets = (c.recharges || []).filter((r) => (r.studentIds || []).includes(sid))
     .sort((a, b) => rechargeStart(a) - rechargeStart(b) || a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const list = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  let round; let streak = 0; let total = 0; let run = 0;
+  let round; let streak = 0; let total = 0; let run = 0; let plag = 0;
   for (const a of list) {
     const s = a.statuses[sid] || 'NONE';
     let r = null; for (const x of resets) if (rechargeCounts(x, a.createdAt)) r = x.id;
-    if (r !== round) { round = r; streak = 0; total = 0; run = 0; }
+    if (r !== round) { round = r; streak = 0; total = 0; run = 0; plag = 0; }
     if (s === 'MISSING') {
       streak++; total++; run = 0;
       let base;
       if (!esc.enabled) base = ruleOf(rules, s);
       else { const b = total > esc.heavyAfter ? esc.heavyBase : esc.base; let p = b ** streak; if (esc.cap > 0) p = Math.min(p, esc.cap); base = -p; }
-      out[a.id] = pt(rules, rv.enabled && failedReview(a, sid) ? base * rv.multiplier : base);
+      if (pg.enabled && plagiarized(a, sid)) { plag++; out[a.id] = pt(rules, base * plagiarismFactor(pg, plag)); }
+      else out[a.id] = pt(rules, rv.enabled && failedReview(a, sid) ? base * rv.multiplier : base);
     } else if (s === 'SUBMITTED' || s === 'EXCELLENT' || s === 'LATE') {
       streak = 0;
       const counts = s !== 'LATE' || sb.lateCounts;

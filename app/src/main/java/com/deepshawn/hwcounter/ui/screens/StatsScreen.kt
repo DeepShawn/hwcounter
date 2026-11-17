@@ -152,6 +152,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
     val stockUi = rememberStockUi()
     val stockBoard = if (mode == 2 && stockMode && stockUi.kind == 0) rememberBoard(c, rules, stockUi.span) else null
     val groupStockBoard = if (mode == 2 && stockMode && stockUi.kind == 1) rememberGroupBoard(c, rules, stockUi.span) else null
+    val plagReport = remember(c, rules, mode == 4) { if (mode == 4) com.deepshawn.hwcounter.data.PlagiarismGraph.report(c, rules) else null }
     val groupReport = remember(c, rules, mode == 3) { if (mode == 3) com.deepshawn.hwcounter.data.GroupAnalysis.report(c, rules) else null }
     val subjectsWithExams = remember(c.exams) { c.exams.map { it.subject }.filter { it.isNotBlank() }.distinct() }
     var examSubject by rememberSaveable { mutableIntStateOf(0) }
@@ -160,7 +161,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
 
     MiuixPage(
         title = "统计", largeTitle = "数据分析",
-        swipe = Triple(4, mode) { mode = it },
+        swipe = Triple(5, mode) { mode = it },
         actions = {
             IconButton(onClick = { share = true }, modifier = Modifier.padding(end = 16.dp)) { Icon(Icons.Filled.IosShare, "分析报告", tint = colors.onSurface) }
         },
@@ -168,7 +169,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
         item(key = "mode") {
             Column(Modifier.padding(horizontal = 12.dp)) {
                 Text("${c.name} · ${c.students.size} 人 · ${c.assignments.size} 次作业 · ${c.exams.size} 场考试", fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, bottom = 10.dp))
-                HTabs(listOf("作业", "考试", "关注", "小组"), mode, { mode = it })
+                HTabs(listOf("作业", "考试", "关注", "小组", "抄袭"), mode, { mode = it })
             }
         }
         if (mode == 0) {
@@ -184,6 +185,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 onBatch = if (readOnly) null else { ids, reason -> kit.nav.push(Route.BatchScore(ids, reason)) },
             )
         }
+        else if (mode == 4) plagReport?.let { pr -> plagiarismSections(c, rules, pr, { kit.nav.push(Route.StudentDetail(it)) }) { kit.nav.push(Route.Assign(it)) } }
         else if (mode == 3) groupReport?.let { gr -> groupSections(c, rules, gr) { kit.nav.push(Route.Group(it)) } }
         else if (mode == 2) {
             item(key = "att-view") {

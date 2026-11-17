@@ -62,6 +62,19 @@ struct SettingsView: View {
                 if store.data.rules.review.enabled {
                     Stepper("复审不合格扣分倍数 ×\(fmtNum(store.data.rules.review.multiplier))", value: Binding(get: { store.data.rules.review.multiplier }, set: { v in store.setSetting { d in var r = d.rules; r.review.multiplier = v; d.rules = r } }), in: 1...5, step: 0.5)
                 }
+                Toggle(isOn: Binding(get: { store.data.rules.plagiarism.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.plagiarism.enabled = v; d.rules = r } })) {
+                    VStack(alignment: .leading) {
+                        Text("抄袭处罚")
+                        Text(store.data.rules.plagiarism.text + "；在作业里长按同学选「抄袭」，侧边栏「抄袭关系」看关系图").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if store.data.rules.plagiarism.enabled {
+                    Stepper("抄袭扣分倍数 ×\(fmtNum(store.data.rules.plagiarism.multiplier))", value: Binding(get: { store.data.rules.plagiarism.multiplier }, set: { v in store.setSetting { d in var r = d.rules; r.plagiarism.multiplier = v; d.rules = r } }), in: 1...5, step: 0.5)
+                    Toggle("累犯逐次加重（每轮重新计次）", isOn: Binding(get: { store.data.rules.plagiarism.escalate }, set: { v in store.setSetting { d in var r = d.rules; r.plagiarism.escalate = v; d.rules = r } }))
+                    if store.data.rules.plagiarism.escalate {
+                        Stepper("累犯最多再乘 ×\(store.data.rules.plagiarism.maxTimes)", value: Binding(get: { store.data.rules.plagiarism.maxTimes }, set: { v in store.setSetting { d in var r = d.rules; r.plagiarism.maxTimes = v; d.rules = r } }), in: 1...10)
+                    }
+                }
             }
             .disabled(store.readOnly)
             Section("🎙️ 语音登记") {

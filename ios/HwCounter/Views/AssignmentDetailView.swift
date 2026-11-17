@@ -17,6 +17,7 @@ struct AssignmentDetailView: View {
     @State private var typedAs: HwStatus = .SUBMITTED
     @State private var ambiguous: [VoiceMatch] = []
     @State private var openDraft: IdBox? = nil
+    @State private var plagFor: PlagRequest? = nil
 
     var body: some View {
         if let c = store.data.currentClass, let a = c.assignments.first(where: { $0.id == assignmentId }) {
@@ -60,7 +61,7 @@ struct AssignmentDetailView: View {
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12)], spacing: 12) {
                         ForEach(students) { st in
-                            StudentTile(st: st, status: a.status(st.id), comment: a.comments[st.id], selecting: selecting, selected: pick.contains(st.id))
+                            StudentTile(st: st, status: a.status(st.id), comment: a.comments[st.id], selecting: selecting, selected: pick.contains(st.id), plagiarized: a.plagiarized(st.id))
                                 .onTapGesture { tap(a, st) }
                                 .contextMenu { if !store.readOnly && !selecting { statusMenu(a, st) } }
                         }
@@ -91,6 +92,7 @@ struct AssignmentDetailView: View {
             let targets = store.data.classes.first(where: { $0.id == request.classId })?.students.filter { request.studentIds.contains($0.id) } ?? []
             ScoreSheet(students: targets, classId: request.classId, onSaved: { cancelSelection() }, initialReason: "作业：\(a.title)")
         }
+        .sheet(item: $plagFor) { r in ProviderPickerSheet(assignmentId: a.id, receivers: r.ids) { cancelSelection() } }
         .sheet(isPresented: $showVoice) { VoiceSheet(assignmentId: a.id) }
         .sheet(isPresented: $showPhoto) { PhotoRecognizeSheet(assignmentId: a.id) }
         .sheet(item: $openDraft) { b in NavigationStack { DraftDetailView(draftId: b.id) } }
@@ -131,6 +133,8 @@ struct AssignmentDetailView: View {
                         }
                         .buttonStyle(.bordered).tint(.purple).disabled(targets.isEmpty)
                     }
+                    Button("🕵️ 抄袭…") { plagFor = PlagRequest(ids: targets.map(\.id)) }
+                        .buttonStyle(.bordered).tint(plagiarismColor).disabled(targets.isEmpty)
                 }
             }
             Button {
@@ -290,6 +294,8 @@ struct AssignmentDetailView: View {
         if store.data.rules.review.enabled {
             Button { store.markReviewFailed(a.id, [st.id]) } label: { Text("⛔ 复审不合格（扣分×\(fmtNum(store.data.rules.review.multiplier))）") }
         }
+        Button { plagFor = PlagRequest(ids: [st.id]) } label: { Text("🕵️ 抄袭…（选出抄了谁的）") }
+        if a.plagiarized(st.id) { Button { store.clearPlagiarism(a.id, [st.id]) } label: { Text("取消抄袭标记") } }
     }
 
     /// 点一下：未登记 → 已交 → 未登记；其它状态打开详情
@@ -343,11 +349,13 @@ struct StudentTile: View {
     var comment: String? = nil
     var selecting = false
     var selected = false
+    var plagiarized = false
     var body: some View {
         VStack(spacing: 4) {
             Text(st.no).font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
             Text(st.name).font(.headline).lineLimit(1).minimumScaleFactor(0.7)
-            Text("\(status.emoji) \(status.label)").font(.caption.weight(.semibold)).foregroundStyle(status.color)
+            if plagiarized { Text("🕵️ 抄袭").font(.caption.weight(.semibold)).foregroundStyle(plagiarismColor) }
+            else { Text("\(status.emoji) \(status.label)").font(.caption.weight(.semibold)).foregroundStyle(status.color) }
         }
         .frame(maxWidth: .infinity, minHeight: 84)
         .padding(6)
@@ -372,6 +380,7 @@ struct StudentStatusSheet: View {
     let assignmentId: String
     let student: Student
     @State private var comment = ""
+    @State private var picking = false
 
     var body: some View {
         let a = store.data.currentClass?.assignments.first { $0.id == assignmentId }
@@ -403,7 +412,22 @@ struct StudentStatusSheet: View {
                             .buttonStyle(.plain)
                             .disabled(store.readOnly)
                         }
+                        Button { picking = true } label: {
+                            VStack { Text("🕵️").font(.title2); Text("抄袭").font(.caption) }
+                                .frame(maxWidth: .infinity).padding(.vertical, 8)
+                                .background((a?.plagiarized(student.id) ?? false) ? plagiarismColor.opacity(0.25) : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(store.readOnly)
                     }
+                    if let a, let c = store.data.currentClass, a.plagiarized(student.id) {
+                        HStack {
+                            Text("🕵️ " + plagiarismLine(c, a, student.id)).foregroundStyle(plagiarismColor).bold()
+                            Spacer()
+                            if !store.readOnly { Button("取消抄袭") { store.clearPlagiarism(assignmentId, [student.id]) } }
+                        }
+                    }
+                    Text(store.data.rules.plagiarism.text).font(.caption).foregroundStyle(.secondary)
                 }
                 Section("评语") {
                     TextField("给这次作业写一句评语", text: $comment, axis: .vertical).disabled(store.readOnly)
@@ -420,10 +444,13 @@ struct StudentStatusSheet: View {
                 }
             }
             .onAppear { comment = a?.comments[student.id] ?? "" }
+            .sheet(isPresented: $picking) { ProviderPickerSheet(assignmentId: assignmentId, receivers: [student.id]) }
         }
         .presentationDetents([.medium, .large])
     }
 }
+
+struct PlagRequest: Identifiable { let ids: [String]; var id: String { ids.joined(separator: ",") } }
 
 // ---------- 导出 / 分享 ----------
 struct ShareFile: Identifiable { let url: URL; var id: String { url.path } }

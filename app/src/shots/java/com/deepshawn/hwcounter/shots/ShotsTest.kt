@@ -57,7 +57,8 @@ class ShotsTest {
                     else -> HwStatus.SUBMITTED
                 }
             }
-            Assignment(id = "a$k", title = "练习${k + 1}", subject = subjects[k % 3], createdAt = now - (18 - k) * day * 2 + 3600_000L * 9, statuses = m, reviewFailed = if (k == 17) listOf("s5") else emptyList())
+            Assignment(id = "a$k", title = "练习${k + 1}", subject = subjects[k % 3], createdAt = now - (18 - k) * day * 2 + 3600_000L * 9, statuses = if (k == 15 || k == 16) m + mapOf("s3" to HwStatus.MISSING, "s1" to HwStatus.MISSING, "s8" to HwStatus.MISSING) else m, reviewFailed = if (k == 17) listOf("s5") else emptyList(),
+                plagiarism = when (k) { 15 -> mapOf("s3" to listOf("s1")); 16 -> mapOf("s3" to listOf("s1"), "s8" to listOf("s1")); else -> emptyMap() })
         }
         fun examScores(seed: Int, base: Double) = st.associate { s -> val i = s.id.drop(1).toInt(); s.id to (base + ((i * 37 + seed * 11) % 41) - 8).coerceIn(28.0, 100.0) }
         val exams = listOf(
@@ -167,6 +168,7 @@ class ShotsTest {
             click("考试"); save("${prefix}_31_stats_exam")
             for (i in 2..9) { scroll(); save("${prefix}_3${i}_stats_exam") }
             top(); click("小组"); save("${prefix}_34a_groups"); scroll(); save("${prefix}_34b_groups"); scroll(); save("${prefix}_34c_groups"); scroll(); save("${prefix}_34d_groups"); scroll(); save("${prefix}_34e_groups")
+            safe { top(); click("抄袭"); save("${prefix}_36a_plagiarism"); scroll(); save("${prefix}_36b_plagiarism"); scroll(); save("${prefix}_36c_plagiarism") }
             top(); click("关注"); save("${prefix}_35a_attention"); scroll(); save("${prefix}_35b_attention")
             safe {
                 top(); click("股票"); waitStock(); save("${prefix}_37a_stock"); scroll(); save("${prefix}_37b_stock"); scroll(); save("${prefix}_37c_stock"); scroll(); save("${prefix}_37d_stock")

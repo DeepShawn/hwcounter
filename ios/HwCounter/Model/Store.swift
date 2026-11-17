@@ -207,10 +207,24 @@ final class Store: ObservableObject {
     func setStatus(_ aid: String, _ ids: [String], _ st: HwStatus) {
         editAssignment(aid) { a in
             for id in ids { if st == .NONE { a.statuses.removeValue(forKey: id) } else { a.statuses[id] = st.rawValue } }
-            // 改成其他状态时取消复审不合格
+            // 改成其他状态时取消复审不合格和抄袭标记
             a.reviewFailed.removeAll { ids.contains($0) }
+            a.removePlagiarism(ids)
         }
     }
+    /// 抄袭：抄袭者抄了提供者的，双方都记为未交（扣分翻倍，累犯加重）
+    func markPlagiarism(_ aid: String, receivers: [String], providers: [String]) {
+        editAssignment(aid) { a in
+            for r in receivers {
+                var l = a.plagiarism[r] ?? []
+                for p in providers where p != r && !l.contains(p) { l.append(p) }
+                if !l.isEmpty { a.plagiarism[r] = l }
+            }
+            for id in receivers + providers { a.statuses[id] = HwStatus.MISSING.rawValue }
+        }
+    }
+    /// 取消抄袭标记（状态保持未交）
+    func clearPlagiarism(_ aid: String, _ ids: [String]) { editAssignment(aid) { $0.removePlagiarism(ids) } }
     /// 复审不合格：记为未交（多算一次未交），扣分翻倍；没复审的默认合格
     func markReviewFailed(_ aid: String, _ ids: [String]) {
         editAssignment(aid) { a in
