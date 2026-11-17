@@ -53,8 +53,9 @@ fun main(args: Array<String>) {
     shot("06_stats_hw", 9000) { it.tab = Tab.STATS }
     shot("07_exam", 1400) { it.open(Route.Exam("e2")) }
     shot("06b_stats_exam", 4200) { it.tab = Tab.STATS; Keep.mode = 1 }
-    shot("06c_stats_attention", 2200) { it.tab = Tab.STATS; Keep.mode = 2; Keep.att = 0 }
-    shot("06d_stats_stock", 2600) { it.tab = Tab.STATS; Keep.mode = 2; Keep.att = 1 }
+    shot("06c_stats_attention", 2200) { it.tab = Tab.STATS; Keep.mode = 2 }
+    shot("06d_stats_stock", 2600) { it.tab = Tab.STATS; Keep.mode = 5; Keep.metric = 0 }
+    shot("06d2_stats_credit", 2600) { it.tab = Tab.STATS; Keep.mode = 5; Keep.metric = 1 }
     shot("06e_stats_groups", 3600) { it.tab = Tab.STATS; Keep.mode = 3 }
     shot("06f_stats_plagiarism", 2400) { it.tab = Tab.STATS; Keep.mode = 4 }
     shot("08_settings") { it.tab = Tab.SETTINGS }

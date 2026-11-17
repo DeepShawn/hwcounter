@@ -709,9 +709,19 @@ function buildBoard(span, from, step, now, eventsAll, valueAt, volumeOf, ids, ma
     const b = bounds[i + 1]; const ev = events.filter((t) => t >= a && t < b);
     return ev.length <= maxPerBucket ? ev : [...new Set(Array.from({ length: maxPerBucket }, (_, k) => ev[Math.trunc(k * (ev.length - 1) / Math.max(1, maxPerBucket - 1))]))];
   });
-  const values = new Map([...new Set([...bounds, ...inner.flat()])].map((t) => [t, valueAt(t)]));
+  // valueAt(t) 返回 { id: 值 }，没有数据的不出现。没有数据的时刻不算 0（否则一开盘就是 0、之后“全部上涨”）：
+  // 沿用前一个值，最开始那段用第一个有数据的值（与安卓 AttentionStock.fill 一致）
+  const times = [...new Set([...bounds, ...inner.flat()])].sort((a, b) => a - b);
+  const raw = new Map(times.map((t) => [t, valueAt(t) || {}]));
+  const filled = new Map(times.map((t) => [t, {}]));
+  for (const id of ids) {
+    let last = null; for (const t of times) { const v = raw.get(t)[id]; if (v != null) { last = v; break; } }
+    if (last == null) continue;
+    for (const t of times) { const v = raw.get(t)[id]; if (v != null) last = v; filled.get(t)[id] = last; }
+  }
+  const val = (t, id) => { const m = filled.get(t); if (id != null) return m[id] ?? 0; const v = Object.values(m); return v.length ? avg(v) : 0; };
   const quote = (id) => quoteOf(id ?? '', bounds.slice(0, -1).map((a, i) => {
-    const b = bounds[i + 1]; const vs = [values.get(a)(id), ...inner[i].map((t) => values.get(t)(id)), values.get(b)(id)];
+    const b = bounds[i + 1]; const vs = [val(a, id), ...inner[i].map((t) => val(t, id)), val(b, id)];
     return { start: a, end: b, open: vs[0], high: Math.max(...vs), low: Math.min(...vs), close: vs[vs.length - 1], volume: volumeOf(a, b, id) };
   }));
   const stocks = Object.fromEntries(ids.map((id) => [id, quote(id)]));
@@ -722,7 +732,8 @@ function buildBoard(span, from, step, now, eventsAll, valueAt, volumeOf, ids, ma
 export function stockBoard(c, rules, span, now = Date.now()) {
   const [from, step] = stockWindow(c, span, now);
   const ids = c.students.map((s) => s.id);
-  const valueAt = (t) => { const m = Object.fromEntries(attention(c, rules, t).map((x) => [x.student.id, x.index])); return (id) => (id == null ? (ids.length ? avg(ids.map((i) => m[i] ?? 0)) : 0) : m[id] ?? 0); };
+  const first = eventTimes(c)[0];
+  const valueAt = (t) => (first == null || t < first ? {} : Object.fromEntries(attention(c, rules, t).map((x) => [x.student.id, x.index])));
   const volumeOf = (a, b, id) => sum(c.assignments.filter((x) => x.createdAt >= a && x.createdAt < b), (x) => (id == null ? Object.values(x.statuses).filter((s) => s !== 'NONE').length : st(x, id) !== 'NONE' ? 1 : 0))
     + c.scores.filter((e) => e.time >= a && e.time < b && (id == null || e.studentId === id)).length
     + sum((c.exams || []).filter((e) => e.date >= a && e.date < b), (e) => (id == null ? Object.keys(e.scores || {}).length : e.scores?.[id] != null ? 1 : 0));
@@ -759,7 +770,7 @@ export function groupStockBoard(c, rules, span, now = Date.now(), win = 10) {
   const sorted = sortedAssignments(c);
   const auto = {}; for (const ms of Object.values(groups)) for (const m of ms) auto[m.id] = autoPoints(c, rules, m.id);
   const events = [...new Set([...sorted.map((a) => a.createdAt), ...(c.exams || []).map((e) => e.date)])].sort((a, b) => a - b);
-  const valueAt = (t) => { const m = groupScoresAt(c, rules, groups, auto, sorted, t, win); const v = Object.values(m); return (g) => (g == null ? (v.length ? avg(v) : 0) : m[g] ?? 0); };
+  const valueAt = (t) => groupScoresAt(c, rules, groups, auto, sorted, t, win);
   const volumeOf = (a, b, g) => { const ms = g == null ? Object.values(groups).flat() : groups[g];
     return sum(sorted.filter((x) => x.createdAt >= a && x.createdAt < b), (x) => ms.filter((m) => st(x, m.id) !== 'NONE').length)
       + sum((c.exams || []).filter((e) => e.date >= a && e.date < b), (e) => ms.filter((m) => e.scores?.[m.id] != null).length); };
@@ -770,12 +781,11 @@ export function groupStockBoard(c, rules, span, now = Date.now(), win = 10) {
 const recordVolume = (c, a, b, ids) => sum(c.assignments.filter((x) => x.createdAt >= a && x.createdAt < b), (x) => Object.entries(x.statuses).filter(([id, k]) => k !== 'NONE' && (!ids || ids.has(id))).length)
   + sum((c.exams || []).filter((e) => e.date >= a && e.date < b), (e) => Object.keys(e.scores || {}).filter((id) => !ids || ids.has(id)).length);
 const recordEvents = (c) => [...new Set([...c.assignments.map((a) => a.createdAt), ...(c.exams || []).map((e) => e.date)])].sort((a, b) => a - b);
-const avgOf = (m) => (k) => { const v = Object.values(m); return k == null ? (v.length ? avg(v) : 0) : m[k] ?? 0; };
 /** 个人 · 信誉分（越高越好） */
 export function creditStockBoard(c, span, now = Date.now()) {
   const [from, step] = stockWindow(c, span, now);
   const ids = c.students.map((s) => s.id);
-  const valueAt = (t) => avgOf(Object.fromEntries(creditAll(c, t).filter((r) => r.hasData).map((r) => [r.student.id, r.index])));
+  const valueAt = (t) => Object.fromEntries(creditAll(c, t).filter((r) => r.hasData).map((r) => [r.student.id, r.index]));
   return buildBoard(span, from, step, now, recordEvents(c), valueAt, (a, b, id) => recordVolume(c, a, b, id == null ? null : new Set([id])), ids);
 }
 /** 小组 · 信誉分 */
@@ -783,7 +793,7 @@ export function groupCreditBoard(c, span, now = Date.now()) {
   const groups = namedGroups(c); const names = Object.keys(groups);
   if (!names.length) return null;
   const [from, step] = stockWindow(c, span, now);
-  const valueAt = (t) => avgOf(creditGroups(c, t));
+  const valueAt = (t) => creditGroups(c, t);
   const volumeOf = (a, b, g) => recordVolume(c, a, b, new Set((g == null ? Object.values(groups).flat() : groups[g]).map((m) => m.id)));
   return buildBoard(span, from, step, now, recordEvents(c), valueAt, volumeOf, names);
 }
@@ -797,7 +807,8 @@ export function groupAttentionBoard(c, rules, span, now = Date.now()) {
   const groups = namedGroups(c); const names = Object.keys(groups);
   if (!names.length) return null;
   const [from, step] = stockWindow(c, span, now);
-  const valueAt = (t) => avgOf(groupAttentionAt(c, rules, t, groups));
+  const first = recordEvents(c)[0];
+  const valueAt = (t) => (first == null || t < first ? {} : groupAttentionAt(c, rules, t, groups));
   const volumeOf = (a, b, g) => recordVolume(c, a, b, new Set((g == null ? Object.values(groups).flat() : groups[g]).map((m) => m.id)));
   return buildBoard(span, from, step, now, [...recordEvents(c), ...c.scores.map((e) => e.time)].sort((a, b) => a - b), valueAt, volumeOf, names);
 }

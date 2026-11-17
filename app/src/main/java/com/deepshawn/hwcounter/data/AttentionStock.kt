@@ -49,6 +49,20 @@ object AttentionStock {
     private fun eventTimes(c: SchoolClass): List<Long> =
         (c.assignments.map { it.createdAt } + c.scores.map { it.time } + c.exams.map { it.date } + c.recharges.map { it.start } + c.settlements.map { it.time }).distinct().sorted()
 
+    /**
+     * 没有数据的时刻（还没开始记录、这位同学 / 这个组还没有数据）不算 0：沿用前一个值，最开始那段用第一个有数据的值。
+     * 否则区间一开盘就是 0，之后“全部上涨”（与网页 analytics.buildBoard 一致）。
+     */
+    fun fill(points: List<Long>, ids: Collection<String>, raw: Map<Long, Map<String, Double>>): Map<Long, Map<String, Double>> {
+        val sorted = points.sorted()
+        val out = sorted.associateWith { HashMap<String, Double>() }
+        for (id in ids) {
+            var last = sorted.firstNotNullOfOrNull { raw[it]?.get(id) } ?: continue
+            for (t in sorted) { raw[t]?.get(id)?.let { last = it }; out.getValue(t)[id] = last }
+        }
+        return out
+    }
+
     /** 区间的起点和每根 K 线的长度 */
     fun window(c: SchoolClass, span: Span, now: Long): Pair<Long, Long> {
         val today = startOfDay(now)
@@ -72,9 +86,10 @@ object AttentionStock {
             if (ev.size <= maxPerBucket) ev else (0 until maxPerBucket).map { k -> ev[(k * (ev.size - 1)) / (maxPerBucket - 1).coerceAtLeast(1)] }.distinct()
         }
         val points = (bounds + inner.flatten()).distinct().sorted()
-        val values = points.associateWith { t -> Attention.all(c, rules, t).associate { it.student.id to it.index } }
         val ids = c.students.map { it.id }
-        fun v(t: Long, id: String?) = values.getValue(t).let { m -> if (id == null) (if (m.isEmpty()) 0.0 else ids.map { m[it] ?: 0.0 }.average()) else m[id] ?: 0.0 }
+        val first = eventTimes(c).firstOrNull()
+        val values = fill(points, ids, points.associateWith { t -> if (first == null || t < first) emptyMap() else Attention.all(c, rules, t).associate { it.student.id to it.index } })
+        fun v(t: Long, id: String?) = values.getValue(t).let { m -> if (id == null) (if (m.isEmpty()) 0.0 else m.values.average()) else m[id] ?: 0.0 }
 
         // 成交量：每段的记录条数
         fun volume(a: Long, b: Long, id: String?): Int {

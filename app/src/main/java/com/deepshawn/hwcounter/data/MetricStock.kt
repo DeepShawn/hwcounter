@@ -19,7 +19,7 @@ object MetricStock {
             if (e.size <= maxPerBucket) e else (0 until maxPerBucket).map { k -> e[(k * (e.size - 1)) / (maxPerBucket - 1).coerceAtLeast(1)] }.distinct()
         }
         val points = (bounds + inner.flatten()).distinct().sorted()
-        val values = points.associateWith(valuesAt)
+        val values = AttentionStock.fill(points, ids, points.associateWith(valuesAt))
         fun v(t: Long, id: String?): Double {
             val m = values.getValue(t)
             return if (id == null) (if (m.isEmpty()) 0.0 else m.values.average()) else m[id] ?: 0.0
@@ -60,8 +60,9 @@ object MetricStock {
     fun groupAttention(c: SchoolClass, rules: ScoreRules, span: AttentionStock.Span, now: Long = System.currentTimeMillis(), maxPerBucket: Int = 6): AttentionStock.Board? {
         val groups = Credit.groupsOf(c)
         if (groups.isEmpty()) return null
+        val first = events(c).minOrNull()
         return build(c, span, now, maxPerBucket, groups.keys.toList(), events(c) + c.scores.map { it.time },
-            { t -> groupAttentionAt(c, rules, t, groups) },
+            { t -> if (first == null || t < first) emptyMap() else groupAttentionAt(c, rules, t, groups) },
             { a, b, g -> studentVolume(c, a, b, (if (g == null) groups.values.flatten() else groups.getValue(g)).map { it.id }.toSet()) })
     }
 

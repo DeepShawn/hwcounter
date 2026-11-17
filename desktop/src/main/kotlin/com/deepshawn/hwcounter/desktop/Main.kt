@@ -198,11 +198,18 @@ fun Page(title: String, onBack: (() -> Unit)?, actions: (@Composable () -> Unit)
             Spacer(Modifier.weight(1f))
             actions?.invoke()
         }
-        Box(Modifier.fillMaxSize().verticalScroll(scroll), contentAlignment = Alignment.TopCenter) {
-            Column(Modifier.widthIn(max = 860.dp).fillMaxWidth().padding(bottom = 32.dp)) {
-                Text(title, Modifier.padding(start = 26.dp, end = 26.dp, bottom = 10.dp), fontSize = 32.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                content()
+        Box(Modifier.fillMaxSize()) {
+            // 滚轮、触摸屏手指滑动、按住鼠标拖动都能滚动；右侧有滚动条
+            Box(Modifier.fillMaxSize().dragScroll(scroll).verticalScroll(scroll), contentAlignment = Alignment.TopCenter) {
+                Column(Modifier.widthIn(max = 860.dp).fillMaxWidth().padding(bottom = 32.dp)) {
+                    Text(title, Modifier.padding(start = 26.dp, end = 26.dp, bottom = 10.dp), fontSize = 32.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    content()
+                }
             }
+            androidx.compose.foundation.VerticalScrollbar(
+                androidx.compose.foundation.rememberScrollbarAdapter(scroll),
+                Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(end = 2.dp, top = 4.dp, bottom = 4.dp),
+            )
         }
     }
 }

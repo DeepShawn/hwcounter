@@ -2,6 +2,7 @@
 
 package com.deepshawn.hwcounter.desktop
 
+import androidx.compose.foundation.gestures.draggable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -212,4 +213,20 @@ fun Swatch(p: Palette, on: Boolean, onClick: () -> Unit) {
         Spacer(Modifier.height(4.dp))
         Text(p.name, fontSize = 11.5.sp, color = if (on) MiuixTheme.colorScheme.onSurface else sub(), fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
     }
+}
+
+/**
+ * 按住拖动也能滚动（带惯性）。Windows 触摸屏上手指滑动、按住鼠标拖动，在 Compose 桌面版里都只是“鼠标拖动”，
+ * 默认的 verticalScroll / horizontalScroll 只认滚轮，所以要自己接上。点按不受影响（超过拖动阈值才算滑动）。
+ */
+@Composable
+fun Modifier.dragScroll(state: androidx.compose.foundation.ScrollState, orientation: androidx.compose.foundation.gestures.Orientation = androidx.compose.foundation.gestures.Orientation.Vertical): Modifier {
+    val fling = androidx.compose.foundation.gestures.ScrollableDefaults.flingBehavior()
+    return this.then(
+        Modifier.draggable(
+            state = androidx.compose.foundation.gestures.rememberDraggableState { d -> state.dispatchRawDelta(-d) },
+            orientation = orientation,
+            onDragStopped = { v -> state.scroll { with(fling) { performFling(-v) } } },
+        ),
+    )
 }

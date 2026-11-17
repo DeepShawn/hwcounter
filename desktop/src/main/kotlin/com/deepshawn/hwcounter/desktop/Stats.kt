@@ -153,7 +153,8 @@ private fun Homework(x: Ctx) {
     }
     Group("每次作业构成") {
         val max = rep.points.maxOf { it.summary.total }.coerceAtLeast(1)
-        Row(Modifier.fillMaxWidth().height(150.dp).horizontalScroll(rememberScrollState()).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
+        val hs = rememberScrollState()
+        Row(Modifier.fillMaxWidth().height(150.dp).dragScroll(hs, androidx.compose.foundation.gestures.Orientation.Horizontal).horizontalScroll(hs).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
             rep.points.forEach { pt ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Column(Modifier.width(18.dp).height(100.dp), verticalArrangement = Arrangement.Bottom) {
@@ -285,7 +286,7 @@ private fun Heatmap(x: Ctx, rep: Analytics.Report) {
         Tabs2(listOf("按学号", "按缺交"), sort) { sort = it }
         Row(Modifier.padding(16.dp)) {
             Column { Spacer(Modifier.height(16.dp)); rows.forEach { s -> Text(s.name, Modifier.width(64.dp).height(21.dp).clickable { x.open(Route.Student(s.id)) }, fontSize = 11.5.sp, maxLines = 1) } }
-            Column(Modifier.weight(1f).horizontalScroll(scroll)) {
+            Column(Modifier.weight(1f).dragScroll(scroll, androidx.compose.foundation.gestures.Orientation.Horizontal).horizontalScroll(scroll)) {
                 Row { cols.forEach { a -> Text(md(a.createdAt), Modifier.width(21.dp).clickable { x.open(Route.Assign(a.id)) }, fontSize = 8.sp, color = sub(), maxLines = 1) } }
                 rows.forEach { s ->
                     Row(Modifier.height(21.dp)) {
@@ -388,7 +389,8 @@ private fun ReportDialog(x: Ctx, onClose: () -> Unit) {
                     Text(msg, color = sub(), fontSize = 13.sp)
                 }
                 Spacer(Modifier.height(12.dp))
-                Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(14.dp)).background(cardColor()).padding(12.dp).verticalScroll(rememberScrollState())) {
+                val rs = rememberScrollState()
+                Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(14.dp)).background(cardColor()).padding(12.dp).dragScroll(rs).verticalScroll(rs)) {
                     androidx.compose.foundation.text.selection.SelectionContainer { Text(text, fontSize = 13.sp, lineHeight = 21.sp) }
                 }
             }
@@ -676,7 +678,8 @@ private fun Groups(x: Ctx) {
                 rep.periods.asReversed().take(12).forEach { pp ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(pp.label.removeSuffix(" 这周"), Modifier.width(110.dp), fontSize = 12.sp, color = sub(), maxLines = 1)
-                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        val ps = rememberScrollState()
+                        Row(Modifier.dragScroll(ps, androidx.compose.foundation.gestures.Orientation.Horizontal).horizontalScroll(ps), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             pp.standings.forEach { st -> val col = colorOf[st.group] ?: BLUE; Text("${st.rank}. ${st.group}" + if (st.points != 0.0) " ${st.points.signed()}" else "", Modifier.clip(RoundedCornerShape(8.dp)).background(col.copy(alpha = if (st.rank == 1) 0.18f else 0.08f)).padding(horizontal = 8.dp, vertical = 3.dp), fontSize = 12.sp, color = col, fontWeight = if (st.rank == 1) FontWeight.Bold else FontWeight.Normal) }
                         }
                     }
