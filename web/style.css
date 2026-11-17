@@ -373,3 +373,48 @@ button.ib:active { background: var(--chip); }
 .an-graph .tap { cursor: pointer; }
 .an-busy { margin-left: auto; color: var(--accent) !important; animation: fade-in .6s ease-in-out infinite alternate; }
 .chips + .tiles { margin-top: 8px; }
+
+/* ---------- 股票模式（与安卓一致） ---------- */
+.stk-card .an-mkt { align-items: center; }
+.stk-live { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: #12a866; box-shadow: 0 0 0 0 rgba(18, 168, 102, .5); animation: stk-live 1.8s ease-out infinite; flex: none; }
+.an-busy + .stk-live { margin-left: 8px; }
+@keyframes stk-live { 0% { box-shadow: 0 0 0 0 rgba(18, 168, 102, .55); } 80%, 100% { box-shadow: 0 0 0 8px rgba(18, 168, 102, 0); } }
+.stk-chart { width: 100%; user-select: none; -webkit-user-select: none; }
+.stk-row { display: flex; align-items: stretch; }
+.stk-chart .an-stock { flex: none; width: auto; height: auto; touch-action: pan-y; cursor: crosshair; overflow: visible; }
+.stk-axis { width: 44px; flex: none; display: flex; flex-direction: column; justify-content: space-between; padding-left: 6px; }
+.stk-axis small { color: var(--sub); font-size: 10px; line-height: 1; }
+.stk-axis.vol { justify-content: flex-start; gap: 2px; padding-top: 2px; }
+.stk-axis.vol small { font-size: 9px; }
+.stk-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.stk-foot small { color: var(--sub); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stk-toggles { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
+.stk-toggles .chip { background: var(--chip); padding: 6px 12px; font-size: 12.5px; }
+.stk-toggles .chip.on { background: var(--accent); color: #fff; }
+.stk-toggles .grow { flex: 1; }
+.stk-span { margin-top: 8px; }
+.stk-note { font-size: 11px; margin-top: 8px; line-height: 1.5; }
+.stk-mini { flex: none; margin-right: 12px; width: 70px; height: 30px; }
+.stk-line { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.motion .stk-line { animation: stk-draw .9s ease-out both; }
+.motion .stk-area { animation: fade-in .9s ease-out both; }
+.motion .stk-candle { animation: stk-rise .45s ease-out both; transform-origin: center; transform-box: fill-box; }
+@keyframes stk-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes stk-rise { from { opacity: 0; transform: scaleY(.2); } to { opacity: 1; transform: none; } }
+.stk-pulse { opacity: .25; transform-box: fill-box; transform-origin: center; animation: stk-pulse 1.6s ease-out infinite; }
+@keyframes stk-pulse { 0% { transform: scale(.6); opacity: .45; } 100% { transform: scale(1.9); opacity: 0; } }
+.an-quote > b.flash-up, .an-quote > b.flash-down { animation: stk-flash .9s ease-out; border-radius: 6px; }
+@keyframes stk-flash { 0% { background: rgba(127, 127, 127, .25); } 100% { background: transparent; } }
+.stk-tape { margin: 0 12px 10px; overflow: hidden; border-radius: 10px; background: var(--card); padding: 7px 0; -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); }
+.stk-tape-in { display: flex; width: max-content; animation: stk-tape linear infinite; }
+.stk-tape:hover .stk-tape-in { animation-play-state: paused; }
+@keyframes stk-tape { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.stk-tick { display: inline-flex; gap: 5px; align-items: baseline; padding: 0 7px 0 14px; font-size: 12px; white-space: nowrap; }
+.stk-tick b { font-weight: 700; }
+.stk-tick span:last-child { font-weight: 600; }
+.stk-hist { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.stk-hist th { color: var(--sub); font-weight: 400; font-size: 11px; text-align: right; padding: 4px 0; }
+.stk-hist td { text-align: right; padding: 5px 0; border-top: 1px solid var(--line); }
+.stk-hist th:first-child, .stk-hist td:first-child { text-align: left; }
+.mono { font-family: ui-monospace, Menlo, monospace; }
+@media (prefers-reduced-motion: reduce) { .stk-tape-in { animation-duration: 0s !important; } .stk-tape { overflow-x: auto; } .stk-live, .stk-pulse { animation: none; } }
