@@ -241,10 +241,13 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                             SuperSwitch(
                                 checked = e.gapBalance, onCheckedChange = { v -> esc { it.copy(gapBalance = v) } },
                                 title = "间断未交平衡",
-                                summary = if (e.gapBalance) "已开启：隔几次不交一次也会逐次加重。次数取“连续未交次数”和“最近 ${e.gapWindow} 次作业里的未交次数”中较大的（请假、未登记不算）。例：隔一次不交一次，依次扣 ${gapExample(e)}"
+                                summary = if (e.gapBalance) "已开启：隔几次不交一次也会逐次加重。次数取“连续未交次数”和“最近 ${e.gapWindow} 次作业里的未交次数”中较大的（请假、未登记不算），间断未交最多按第 ${e.gapMax} 次算。例：隔一次不交一次，依次扣 ${gapExample(e)}"
                                 else "已关闭：只看连续未交，交过一次就从第 1 次重新算（隔一次不交一次，每次都只扣 ${e.penalty(1, 1).fmt()}）",
                             )
-                            if (e.gapBalance) RuleRow("看最近几次作业", e.gapWindow.toDouble(), 1.0) { v -> if (v >= 2 && v <= 30) esc { it.copy(gapWindow = v.toInt()) } }
+                            if (e.gapBalance) {
+                                RuleRow("看最近几次作业", e.gapWindow.toDouble(), 1.0) { v -> if (v >= 2 && v <= 30) esc { it.copy(gapWindow = v.toInt()) } }
+                                RuleRow("间断最多按第几次算", e.gapMax.toDouble(), 1.0) { v -> if (v >= 1 && v <= 20) esc { it.copy(gapMax = v.toInt()) } }
+                            }
                             Text(
                                 (if (e.gapBalance) "· 请假、未登记不打断连续，也不计次；交过一次会打断连续，但间断未交平衡仍按最近 ${e.gapWindow} 次里的未交次数计\n" else "· 请假、未登记不打断连续，也不计次；只要交过一次（已交 / 优秀 / 迟交）就打断，重新从第 1 次算\n") +
                                     "· 本轮累计未交超过 ${e.heavyAfter} 次后，底数变为 ${e.heavyBase.fmt()}（${e.sample(e.heavyBase)}）\n" +

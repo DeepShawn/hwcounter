@@ -565,7 +565,7 @@ object PdfReport {
                 }
                 if (e.gapBalance) {
                     p.text("· 中间请假、未登记的不打断连续，也不计次；交过一次会打断连续。", 10f)
-                    p.text("· 间断未交平衡：隔几次不交一次也会逐次加重——这一次按“连续未交次数”和“最近 ${e.gapWindow} 次作业里的未交次数”中较大的那个算。例如隔一次不交一次，依次扣 ${(1..5).map { k -> e.penalty(minOf(k, (e.gapWindow + 1) / 2), k).fmt() }.joinToString("、")} 分……", 10f)
+                    p.text("· 间断未交平衡：隔几次不交一次也会逐次加重——这一次按“连续未交次数”和“最近 ${e.gapWindow} 次作业里的未交次数”中较大的那个算，间断未交最多按第 ${e.gapMax} 次算。例如隔一次不交一次，依次扣 ${(1..5).map { k -> e.penalty(e.countOf(1, minOf(k, (e.gapWindow + 1) / 2)), k).fmt() }.joinToString("、")} 分……", 10f)
                 } else p.text("· 中间请假、未登记的不打断连续，也不计次；只要交过一次，就打断，下次未交重新从第 1 次算。", 10f)
                 p.text("· 同一轮内累计未交超过 ${e.heavyAfter} 次后，改为 ${e.sample(e.heavyBase).removeSuffix("…")} 分……", 10f)
                 if (e.cap > 0) p.text("· 单次最多扣 ${e.cap.fmt()} 分。", 10f)

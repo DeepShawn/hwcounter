@@ -14,7 +14,7 @@ export const STATUS_KEYS = Object.keys(STATUS);
 /** 分段倍率的默认分段：第 1–2 次 ×1、第 3–4 次 ×1.5、第 5 次起 ×2 */
 export const defaultTiers = () => [{ from: 1, factor: 1 }, { from: 3, factor: 1.5 }, { from: 5, factor: 2 }];
 /** mode：1 正常加倍（2、4、8…），2 第 2 次起加倍（2、2、4、8…），3 分段倍率（在 tierBase = 1 或 2 的基础上按 tierBy 计次分段乘倍率） */
-export const defaultEscalation = () => ({ enabled: true, base: 2, heavyBase: 3, heavyAfter: 6, cap: 30, mode: 2, tierBase: 2, tierBy: 'streak', tiers: defaultTiers(), gapBalance: true, gapWindow: 8 });
+export const defaultEscalation = () => ({ enabled: true, base: 2, heavyBase: 3, heavyAfter: 6, cap: 30, mode: 2, tierBase: 2, tierBy: 'streak', tiers: defaultTiers(), gapBalance: true, gapWindow: 6, gapMax: 3 });
 export const defaultStreakBonus = () => ({ enabled: true, after: 5, bonus: 1, lateCounts: false });
 /** 作业复审：不合格记一次未交（参与连续 / 累计），这一次扣分 × multiplier；没复审的默认合格 */
 export const defaultReview = () => ({ enabled: true, multiplier: 2 });
@@ -158,7 +158,8 @@ export function examDelta(rules, e, sid) {
  * 3 分段倍率：在 1 或 2（tierBase）基础上按次数分段乘倍率（tiers），次数按连续（tierBy = 'streak'）或本轮累计（'total'）算；
  * 请假、未登记不打断也不计次，交过一次即重算；本轮累计超 heavyAfter 次后底数为 heavyBase；
  * 单次上限 cap 在乘完分段倍率后封顶；每次积分重置开始新一轮。
- * 间断未交平衡（gapBalance，默认开启）：次数取连续未交次数和最近 gapWindow（默认 8）次有记录的作业里的未交次数中较大的（请假、未登记不算）。
+ * 间断未交平衡（gapBalance，默认开启）：次数取连续未交次数和最近 gapWindow（默认 6）次有记录的作业里的未交次数中较大的（请假、未登记不算），
+ * 间断未交最多按第 gapMax（默认 3）次算。
  */
 /** 连续第 n 次未交的扣分（不含分段倍率和上限）：shape 1：b、b²、b³……；shape 2：b、b、b²、b³…… */
 export const escalationAmount = (b, n, shape = 2) => (shape === 1 ? b ** Math.max(1, n) : b ** Math.max(1, Math.max(1, n) - 1));
@@ -204,7 +205,7 @@ export function escalationSample(e0, b, k = 4) {
 /** 一句话说明 */
 export function escalationText(e0) {
   const e = { ...defaultEscalation(), ...(e0 || {}) };
-  const gap = e.gapBalance ? `；间断未交平衡：次数取连续未交次数和最近 ${e.gapWindow} 次作业里的未交次数中较大的（请假、未登记不算）` : '';
+  const gap = e.gapBalance ? `；间断未交平衡：次数取连续未交次数和最近 ${e.gapWindow} 次作业里的未交次数中较大的（请假、未登记不算），间断未交最多按第 ${e.gapMax} 次算` : '';
   if (e.mode === 1) return `正常加倍：连续未交依次扣 ${escalationSeq(e.base, 1)}` + gap;
   if (e.mode === 3) return `分段倍率（在${escalationModeLabel(escalationShape(e))}基础上）：${tiersText(e)}，依次扣 ${escalationSample(e)}` + gap;
   return `第 2 次起加倍：连续未交依次扣 ${escalationSeq(e.base, 2)}` + gap;
@@ -230,7 +231,7 @@ export function autoPoints(c, rules, sid) {
     if (s === 'MISSING') {
       streak++; total++; run = 0;
       record(true);
-      const n = esc.gapBalance ? Math.max(streak, recent.filter(Boolean).length) : streak;
+      const n = esc.gapBalance ? Math.max(streak, Math.min(recent.filter(Boolean).length, Math.max(1, esc.gapMax))) : streak;
       let base;
       if (!esc.enabled) base = ruleOf(rules, s);
       else base = -escalationPenalty(esc, n, total);

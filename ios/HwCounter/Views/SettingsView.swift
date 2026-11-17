@@ -98,10 +98,13 @@ struct SettingsView: View {
                     Toggle(isOn: escBinding(\.gapBalance)) {
                         VStack(alignment: .leading) {
                             Text("间断未交平衡")
-                            Text(e.gapBalance ? "隔几次不交一次也会逐次加重：次数取连续未交次数和最近 \(e.gapWindow) 次作业里的未交次数中较大的（请假、未登记不算）" : "已关闭：只看连续未交，交过一次就从第 1 次重新算").font(.caption).foregroundStyle(.secondary)
+                            Text(e.gapBalance ? "隔几次不交一次也会逐次加重：次数取连续未交次数和最近 \(e.gapWindow) 次作业里的未交次数中较大的（请假、未登记不算），间断未交最多按第 \(e.gapMax) 次算" : "已关闭：只看连续未交，交过一次就从第 1 次重新算").font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    if e.gapBalance { Stepper("看最近 \(e.gapWindow) 次作业", value: escBinding(\.gapWindow), in: 2...30) }
+                    if e.gapBalance {
+                        Stepper("看最近 \(e.gapWindow) 次作业", value: escBinding(\.gapWindow), in: 2...30)
+                        Stepper("间断最多按第 \(e.gapMax) 次算", value: escBinding(\.gapMax), in: 1...20)
+                    }
                 }
                 Toggle(isOn: Binding(get: { store.data.rules.review.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.review.enabled = v; d.rules = r } })) {
                     VStack(alignment: .leading) {

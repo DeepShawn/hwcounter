@@ -11,14 +11,16 @@ const esc = (o) => ({ ...rules, escalation: { ...defaultEscalation(), ...o } });
 const sum = (l) => l.reduce((x, y) => x + y, 0);
 const M = 'MISSING', S = 'SUBMITTED', L = 'LEAVE';
 
-test('默认开启、看最近 8 次', () => {
+test('默认开启、看最近 6 次、间断最多按第 3 次算', () => {
   assert.equal(defaultEscalation().gapBalance, true);
-  assert.equal(defaultEscalation().gapWindow, 8);
+  assert.equal(defaultEscalation().gapWindow, 6);
+  assert.equal(defaultEscalation().gapMax, 3);
 });
 
 test('隔一次不交一次也逐次加重', () => {
   const c = cls(M, S, M, S, M, S, M, S, M, S);
-  assert.deepEqual(misses(c), [-2, -2, -4, -8, -8]);
+  assert.deepEqual(misses(c), [-2, -2, -4, -4, -4]);
+  assert.deepEqual(misses(c, esc({ gapWindow: 8, gapMax: 4 })), [-2, -2, -4, -8, -8]);
   assert.deepEqual(misses(c, esc({ gapBalance: false })), [-2, -2, -2, -2, -2]);
 });
 
@@ -26,6 +28,7 @@ test('未交率更高的间断未交不会比连续未交扣得少', () => {
   const a = cls(M, M, M, M, S, S, S, S, S, S, S, S);
   const b = cls(M, S, M, S, M, S, M, S, M, S, M, S);
   assert.equal(sum(misses(a)), -16);
+  assert.equal(sum(misses(b)), -20);
   assert.ok(sum(misses(b)) < sum(misses(a)));
   const off = esc({ gapBalance: false });
   assert.ok(sum(misses(b, off)) > sum(misses(a, off)));

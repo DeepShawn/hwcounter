@@ -103,9 +103,12 @@ export function TradePanel({ kit, c, data, openSettings, openAccounts }) {
     if (!a.session) { setTd(null); return undefined; }
     (async () => {
       try {
+        // 并行读取（原来一个接一个，要多等几次网络往返）
+        const pricesP = api.select('hw_prices?select=symbol,name,kind,price,active,updated_at&order=kind,name');
+        const ranksP = api.rpc('hw_leaderboard');
+        pricesP.catch(() => {}); ranksP.catch(() => {}); // hw_me 失败时不留未处理的 Promise
         const me = await api.rpc('hw_me');
-        const prices = await api.select('hw_prices?select=symbol,name,kind,price,active,updated_at&order=kind,name');
-        const ranks = await api.rpc('hw_leaderboard');
+        const [prices, ranks] = await Promise.all([pricesP, ranksP]);
         let rest = {};
         if (me.role === 'member') {
           const u = encodeURIComponent(me.user_id);

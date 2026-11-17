@@ -452,9 +452,10 @@ struct MissingEscalation: Equatable {
     static let defaultTiers = [EscalationTier(from: 1, factor: 1), EscalationTier(from: 3, factor: 1.5), EscalationTier(from: 5, factor: 2)]
     var enabled = true, base = 2.0, heavyBase = 3.0, heavyAfter = 6, cap = 30.0
     var mode = 2, tierBase = 2, tierBy = "streak", tiers = MissingEscalation.defaultTiers
-    /// 间断未交平衡（默认开启）：次数取连续未交次数和最近 gapWindow 次有记录的作业里的未交次数中较大的（请假、未登记不算）
-    var gapBalance = true, gapWindow = 8
-    func countOf(streak: Int, recent: Int) -> Int { gapBalance ? max(streak, recent) : streak }
+    /// 间断未交平衡（默认开启）：次数取连续未交次数和最近 gapWindow 次有记录的作业里的未交次数中较大的（请假、未登记不算），
+    /// 间断未交最多按第 gapMax 次算（真正连续未交不受限制）
+    var gapBalance = true, gapWindow = 6, gapMax = 3
+    func countOf(streak: Int, recent: Int) -> Int { gapBalance ? max(streak, min(recent, max(1, gapMax))) : streak }
     /// 实际使用的加倍方式（1 或 2）
     var shape: Int { mode == 1 ? 1 : mode == 3 ? (tierBase == 1 ? 1 : 2) : 2 }
     func tierFactor(_ n: Int) -> Double {
@@ -490,7 +491,7 @@ struct MissingEscalation: Equatable {
         return parts.joined(separator: "、") + "（按\(tierByLabel)）"
     }
     func describe() -> String {
-        let gap = gapBalance ? "；间断未交平衡：次数取连续未交次数和最近 \(gapWindow) 次作业里的未交次数中较大的（请假、未登记不算）" : ""
+        let gap = gapBalance ? "；间断未交平衡：次数取连续未交次数和最近 \(gapWindow) 次作业里的未交次数中较大的（请假、未登记不算），间断未交最多按第 \(gapMax) 次算" : ""
         switch mode {
         case 1: return "正常加倍：连续未交依次扣 \(MissingEscalationAmount.seq(base, 1))" + gap
         case 3: return "分段倍率（在\(MissingEscalationAmount.label(shape))基础上）：\(tiersText())，依次扣 \(sample())" + gap
@@ -739,6 +740,7 @@ struct AppData: Codable, Equatable {
                 x.escalation.tierBy = e["tierBy"]?.string ?? x.escalation.tierBy
                 x.escalation.gapBalance = e["gapBalance"]?.bool ?? x.escalation.gapBalance
                 x.escalation.gapWindow = e["gapWindow"]?.int ?? x.escalation.gapWindow
+                x.escalation.gapMax = e["gapMax"]?.int ?? x.escalation.gapMax
                 if case .array(let arr)? = e["tiers"] {
                     x.escalation.tiers = arr.compactMap { t in
                         guard let f = t["from"]?.int, let k = t["factor"]?.double else { return nil }
@@ -768,7 +770,7 @@ struct AppData: Codable, Equatable {
             e["heavyBase"] = .number(newValue.escalation.heavyBase); e["heavyAfter"] = .number(Double(newValue.escalation.heavyAfter)); e["cap"] = .number(newValue.escalation.cap)
             e["mode"] = .number(Double(newValue.escalation.mode)); e["tierBase"] = .number(Double(newValue.escalation.tierBase))
             e["tierBy"] = .string(newValue.escalation.tierBy)
-            e["gapBalance"] = .bool(newValue.escalation.gapBalance); e["gapWindow"] = .number(Double(newValue.escalation.gapWindow))
+            e["gapBalance"] = .bool(newValue.escalation.gapBalance); e["gapWindow"] = .number(Double(newValue.escalation.gapWindow)); e["gapMax"] = .number(Double(newValue.escalation.gapMax))
             e["tiers"] = .array(newValue.escalation.tiers.map { .object(["from": .number(Double($0.from)), "factor": .number($0.factor)]) })
             r["escalation"] = e
             var b = r["streakBonus"] ?? .object([:])

@@ -61,6 +61,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Search
 import com.deepshawn.hwcounter.ui.components.MiuixPage
 import com.deepshawn.hwcounter.ui.components.group
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -102,7 +103,8 @@ private fun TradePanel(vm: AppViewModel, data: AppData, c: SchoolClass) {
     val scope = rememberCoroutineScope()
     val colors = MiuixTheme.colorScheme
     val st by vm.sync.state.collectAsState()
-    var td by remember { mutableStateOf<TradeData?>(null) }
+    // 先显示上次读到的数据（离开再回来不再空白等待），后台刷新
+    var td by remember { mutableStateOf(if (st.email != null) TradeCache.data else null) }
     var err by remember { mutableStateOf("") }
     var tick by remember { mutableIntStateOf(0) }
     fun order(p: Trade.Price?, side: String) = kit.nav.push(Route.TradeOrder(p?.symbol, side))
@@ -111,14 +113,11 @@ private fun TradePanel(vm: AppViewModel, data: AppData, c: SchoolClass) {
     val member = st.member
 
     LaunchedEffect(st.email, tick, tradeTick.intValue) {
-        if (!loggedIn) { td = null; return@LaunchedEffect }
+        if (!loggedIn) { td = null; TradeCache.clear(); return@LaunchedEffect }
+        TradeCache.data?.let { td = it }
         err = ""
-        runCatching {
-            val cl = vm.sync.client
-            val me = Trade.me(cl)
-            if (me.isMember) TradeData(me, Trade.prices(cl), Trade.positions(cl, me.userId), Trade.orders(cl, me.userId), Trade.fills(cl, me.userId), Trade.cashLog(cl, me.userId), Trade.leaderboard(cl))
-            else TradeData(me, Trade.prices(cl), ranks = Trade.leaderboard(cl), fills = Trade.fills(cl, limit = 30))
-        }.onSuccess { td = it }.onFailure { err = it.message ?: "读取失败" }
+        runCatching { TradeCache.load(vm.sync.client) }
+            .onSuccess { td = it }.onFailure { err = it.message ?: "读取失败" }
     }
 
     Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -316,6 +315,34 @@ private fun Leaderboard(ranks: List<Trade.Rank>, me: String?) {
 /** 截图测试用：不连网，直接用这份行情 */
 internal var tradeFake: TradeData? = null
 
+/**
+ * 炒股数据的内存缓存：页面之间来回切换时先显示上次的数据，后台再刷新；
+ * 读取时各个请求并行发出（原来一个接一个，要等 7 次网络往返）。
+ */
+internal object TradeCache {
+    @Volatile var data: TradeData? = null
+
+    suspend fun load(cl: com.deepshawn.hwcounter.cloud.CloudClient): TradeData = kotlinx.coroutines.coroutineScope {
+        val prices = async { Trade.prices(cl) }
+        val ranks = async { Trade.leaderboard(cl) }
+        val me = Trade.me(cl)
+        val d = if (me.isMember) {
+            val pos = async { Trade.positions(cl, me.userId) }
+            val ord = async { Trade.orders(cl, me.userId) }
+            val fil = async { Trade.fills(cl, me.userId) }
+            val cash = async { Trade.cashLog(cl, me.userId) }
+            TradeData(me, prices.await(), pos.await(), ord.await(), fil.await(), cash.await(), ranks.await())
+        } else {
+            val fil = async { Trade.fills(cl, limit = 30) }
+            TradeData(me, prices.await(), ranks = ranks.await(), fills = fil.await())
+        }
+        data = d
+        d
+    }
+
+    fun clear() { data = null }
+}
+
 /** 下单后让炒股页重新读取 */
 internal val tradeTick = androidx.compose.runtime.mutableIntStateOf(0)
 
@@ -342,11 +369,18 @@ fun TradeOrderScreen(vm: AppViewModel, data: AppData, symbol: String?, initialSi
 
     LaunchedEffect(Unit) {
         tradeFake?.let { td = it; return@LaunchedEffect }
+        // 有缓存就立刻显示（炒股页刚读过），同时在后台并行刷新行情和持仓
+        TradeCache.data?.let { td = it }
         runCatching {
             val cl = vm.sync.client
-            val me = Trade.me(cl)
-            TradeData(me, Trade.prices(cl), Trade.positions(cl, me.userId))
-        }.onSuccess { td = it }.onFailure { err = it.message ?: "读取失败" }
+            kotlinx.coroutines.coroutineScope {
+                val prices = async { Trade.prices(cl) }
+                val me = Trade.me(cl)
+                val pos = async { Trade.positions(cl, me.userId) }
+                TradeData(me, prices.await(), pos.await())
+            }
+        }.onSuccess { fresh -> td = TradeData(fresh.me, fresh.prices, fresh.positions, td?.orders.orEmpty(), td?.fills.orEmpty(), td?.cash.orEmpty(), td?.ranks.orEmpty()) }
+            .onFailure { if (td == null) err = it.message ?: "读取失败" }
     }
     val d = td
     val prices = d?.prices.orEmpty().filter { it.active && (c == null || inClass(c, it.symbol)) }
@@ -516,8 +550,11 @@ fun TradeOrderScreen(vm: AppViewModel, data: AppData, symbol: String?, initialSi
                         runCatching { Trade.place(vm.sync.client, p.symbol, side, qty, if (limitMode == 1) limit else null) }
                             .onSuccess { r ->
                                 kit.toast(when (r.status) { "filled" -> "已成交，价格 ${r.price?.let { m2(it) } ?: ""}"; "open" -> "已挂单，到价自动成交"; else -> "未成交：${r.reason}" })
-                                tradeTick.intValue++
-                                if (r.status == "filled" || r.status == "open") kit.nav.pop()
+                                if (r.status == "filled" || r.status == "open") {
+                                    // 立刻返回；炒股页先显示缓存，同时并行刷新账户、持仓、委托
+                                    kit.nav.pop()
+                                    tradeTick.intValue++
+                                }
                             }
                             .onFailure { kit.toast(it.message ?: "下单失败") }
                         busy = false

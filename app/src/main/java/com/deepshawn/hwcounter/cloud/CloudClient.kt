@@ -58,7 +58,13 @@ class CloudClient(
 
     private data class Resp(val code: Int, val body: String)
 
-    private fun http(method: String, path: String, body: String? = null, bearer: String? = null, extra: Map<String, String> = emptyMap()): Resp {
+    /** 复用的连接可能已被服务器关掉：读取类请求（GET）失败时换新连接再试一次；写入类请求不重试，免得重复下单 */
+    private fun http(method: String, path: String, body: String? = null, bearer: String? = null, extra: Map<String, String> = emptyMap()): Resp =
+        try { http1(method, path, body, bearer, extra) } catch (e: CloudException) {
+            if (method == "GET") http1(method, path, body, bearer, extra) else throw e
+        }
+
+    private fun http1(method: String, path: String, body: String? = null, bearer: String? = null, extra: Map<String, String> = emptyMap()): Resp {
         val conn = URL(CloudConfig.URL + path).openConnection() as HttpURLConnection
         try {
             conn.requestMethod = method
@@ -77,10 +83,11 @@ class CloudClient(
             val text = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
             return Resp(code, text)
         } catch (e: java.io.IOException) {
-            throw CloudException("网络连接失败：${e.message ?: "请检查网络"}")
-        } finally {
+            // 出错的连接不再复用
             conn.disconnect()
+            throw CloudException("网络连接失败：${e.message ?: "请检查网络"}")
         }
+        // 正常读完响应后不调用 disconnect()：连接留在连接池里复用，下一次请求省掉 TLS 握手（炒股连续请求快很多）
     }
 
     /** 把 Supabase 的英文错误翻成老师看得懂的话 */
