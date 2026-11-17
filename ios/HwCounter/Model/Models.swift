@@ -967,6 +967,16 @@ extension SchoolClass {
             .sorted { ($0.createdAt, $0.id) > ($1.createdAt, $1.id) }
     }
 
+    /// 这次作业这位同学的计分说明，如“本次 -8（抄袭第 1 次 ×2 × 复审不合格 ×2 = ×4）”
+    func assignmentPointNote(_ rules: Rules, _ aid: String, _ sid: String) -> String {
+        guard let a = assignments.first(where: { $0.id == aid }), let v = autoPoints(rules, sid)[aid], v != 0 else { return "" }
+        var parts: [String] = []; var total = 1.0
+        if rules.plagiarism.enabled, let n = plagiarismTimes(rules, sid)[aid] { let f = rules.plagiarism.factor(n); parts.append("抄袭第 \(n) 次 ×\(fmtNum(f))"); total *= f }
+        if rules.review.enabled && a.failedReview(sid) { parts.append("复审不合格 ×\(fmtNum(rules.review.multiplier))"); total *= rules.review.multiplier }
+        let why = parts.count >= 2 ? parts.joined(separator: " × ") + " = ×\(fmtNum(total))" : parts.first ?? ""
+        return "本次 \(v > 0 ? "+" : "")\(fmtNum(v))" + (why.isEmpty ? "" : "（\(why)）")
+    }
+
     /// 某位同学每次涉及抄袭是本轮第几次（作业 id → 次数），与计分同一口径
     func plagiarismTimes(_ rules: Rules, _ sid: String) -> [String: Int] {
         var out: [String: Int] = [:]

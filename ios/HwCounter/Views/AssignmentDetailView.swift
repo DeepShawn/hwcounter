@@ -427,6 +427,10 @@ struct StudentStatusSheet: View {
                         .buttonStyle(.plain)
                         .disabled(store.readOnly)
                     }
+                    if let c = store.data.currentClass {
+                        let note = c.assignmentPointNote(store.data.rules, assignmentId, student.id)
+                        if !note.isEmpty { Text(note).bold().foregroundStyle(note.contains(" -") ? Color.red : Color.accentColor) }
+                    }
                     if let a, let c = store.data.currentClass, a.plagiarized(student.id) {
                         HStack {
                             Text("🕵️ " + plagiarismLine(c, a, student.id)).foregroundStyle(plagiarismColor).bold()

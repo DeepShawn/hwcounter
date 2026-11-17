@@ -104,6 +104,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.deepshawn.hwcounter.data.assignmentPointNote
 import com.deepshawn.hwcounter.data.autoPointsAll
 import com.deepshawn.hwcounter.data.missingText
 import com.deepshawn.hwcounter.data.AppData
@@ -898,6 +899,8 @@ fun StudentSheet(vm: AppViewModel, data: AppData, c: SchoolClass, a: Assignment,
                 }
                 PlagiarismButton(a.plagiarized(s.id)) { pick = true }
             }
+            val note = remember(c, data.settings.rules, a.id, s.id) { c.assignmentPointNote(data.settings.rules, a.id, s.id) }
+            if (note.isNotEmpty()) Text(note, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (note.contains(" -")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
             if (a.plagiarized(s.id)) {
                 Row(Modifier.padding(top = 8.dp).fillMaxWidth().clip(MaterialTheme.shapes.medium).background(PlagiarismColor.copy(alpha = 0.1f)).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("🕵️ " + plagiarismLine(c, a, s.id), color = PlagiarismColor, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
