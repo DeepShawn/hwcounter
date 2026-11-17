@@ -256,6 +256,8 @@ object Analytics {
         val progress: Progress? = null,
         /** 范围内的考试场次 */
         val examCount: Int = 0,
+        /** 信誉分（当前）与本时段的信誉分加减分 */
+        val credit: CreditSummary? = null,
     )
 
     /** 兼容旧接口：按范围选出作业和上一时段 */
@@ -418,6 +420,7 @@ object Analytics {
             tiers = tiers(withData), streakers = withData.filter { it.handStreak >= 3 }.sortedByDescending { it.handStreak }.take(8),
             risk = risk(c), weakSubjects = weakSubjects(c, list, byId),
             rateMedian = median, rateStd = std, rounds = rounds(c), progress = progress(c, rules), examCount = examsIn.size,
+            credit = Credit.classSummary(c, rules, now) { inWindow(w, it) },
         )
         return base.copy(insights = insights(base, corrPairs))
     }
@@ -692,6 +695,15 @@ object Analytics {
         else -> r.range.label
     }
 
+    /** 报告里信誉分的几行文字（文字报告、PDF 共用） */
+    fun creditLines(cs: CreditSummary): List<String> = listOfNotNull(
+        "信誉分：全班平均 ${cs.average.fmt()}；" + cs.levels.joinToString("，") { "${it.first} ${it.second} 人" },
+        cs.top.takeIf { it.isNotEmpty() }?.let { l -> "信誉最高：" + l.joinToString("、") { "${it.student.name} ${it.index.fmt()}" } },
+        cs.bottom.takeIf { it.isNotEmpty() }?.let { l -> "信誉偏低：" + l.joinToString("；") { "${it.student.name} ${it.index.fmt()}" + (it.weak.firstOrNull()?.let { w -> "（${w.label}：${w.detail}）" } ?: "") } },
+        cs.groups.takeIf { it.isNotEmpty() }?.let { l -> "小组信誉分：" + l.joinToString("，") { "${it.first} ${it.second.fmt()}" } },
+        if (cs.rules.active) "信誉分加减分（${cs.rules.periodLabel}，个人${CreditRules.modeLabel(cs.rules.personal)}、小组${CreditRules.modeLabel(cs.rules.group)}）：本时段合计 ${cs.pointsTotal.signed()}（加 ${cs.pointsPlus.fmt()}、扣 ${cs.pointsMinus.fmt()}）" else "信誉分加减分：不计入积分",
+    )
+
     /** 文字版分析报告 */
     fun text(c: SchoolClass, r: Report, now: Long = System.currentTimeMillis(), exam: ExamReport? = null): String = buildString {
         val k = r.kpi
@@ -733,6 +745,7 @@ object Analytics {
         val src = r.sources
         appendLine("积分来源：作业自动 ${src.homework.signed()}，手动加分 +${src.manualPlus.fmt()}，手动扣分 ${src.manualMinus.fmt()}，考试 ${src.exam.signed()}")
         if (r.reasons.isNotEmpty()) appendLine("加减分原因：" + r.reasons.take(6).joinToString("；") { "${it.reason} ${it.count} 次（${it.total.signed()}）" })
+        r.credit?.takeIf { it.results.isNotEmpty() }?.let { cs -> creditLines(cs).forEach { appendLine(it) } }
         if (r.buckets.isNotEmpty()) appendLine("按${r.bucketUnit}汇总交齐率：" + r.buckets.joinToString("，") { "${it.label} ${pct(it.rate)}" })
         if (r.rounds.size > 1) appendLine("各轮对比：" + r.rounds.joinToString("；") { "${it.label} ${it.kpi.assignments} 次 交齐 ${pct(it.kpi.handInRate)}" + (it.examPct?.let { e -> " 考试 ${pct(e)}" } ?: "") })
         if (exam != null && exam.exams.isNotEmpty()) {

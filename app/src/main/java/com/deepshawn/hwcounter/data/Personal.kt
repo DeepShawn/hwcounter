@@ -143,6 +143,8 @@ object Personal {
         val group: String, val groupRank: Int?, val groupSize: Int, val groupAvgRate: Double?,
         val strengths: List<String>, val concerns: List<String>, val suggestions: List<String>,
         val timeline: List<Pair<Assignment, HwStatus>>,
+        /** 信誉分（越优秀越高）、近 8 周走势、所在小组的小组信誉分 */
+        val credit: Credit.Result? = null, val creditTrend: List<Double> = emptyList(), val groupCredit: Double? = null,
     )
 
     private fun pct(x: Double) = "${(x * 100).roundToInt()}%"
@@ -212,8 +214,10 @@ object Personal {
             ScorePoint(t, s[sid] ?: rules.initial, ordered.indexOfFirst { it.key == sid } + 1)
         }
         val ledger = c.ledger(rules, sid).filter { it.counted && it.kind != LedgerRow.Kind.RECHARGE }
+        fun isCredit(r: LedgerRow) = r.key.startsWith("cp") || r.key.startsWith("cg")
         val sources = linkedMapOf(
-            "作业" to ledger.filter { it.kind == LedgerRow.Kind.AUTO }.sumOf { it.delta },
+            "作业" to ledger.filter { it.kind == LedgerRow.Kind.AUTO && !isCredit(it) }.sumOf { it.delta },
+            "信誉分" to ledger.filter { isCredit(it) }.sumOf { it.delta },
             "手动" to ledger.filter { it.kind == LedgerRow.Kind.MANUAL }.sumOf { it.delta },
             "考试" to ledger.filter { it.kind == LedgerRow.Kind.EXAM }.sumOf { it.delta },
             "结算" to ledger.filter { it.kind == LedgerRow.Kind.SETTLE }.sumOf { it.delta },
@@ -280,6 +284,15 @@ object Personal {
         if (taken.size >= 2 && taken.last().pct != null && taken.last().pct!! in 0.55..0.6) suggestions += "差一点及格，稍加辅导就能过线"
         if (strengths.isNotEmpty() && concerns.isEmpty()) suggestions += "保持现状，可以适当表扬"
         if (attention.level == Attention.Level.HIGH) suggestions += "关注度很高，建议本周内重点跟进"
+        val creditAll = Credit.all(c, now)
+        val credit = creditAll.firstOrNull { it.student.id == sid }
+        if (credit != null && credit.hasData) {
+            if (credit.level == Credit.Level.A) strengths += "信誉分 ${credit.index.fmt()}（优秀）"
+            if (credit.level == Credit.Level.D) concerns += "信誉分只有 ${credit.index.fmt()}（较差）" + (credit.weak.firstOrNull()?.let { "，${it.label}偏弱" } ?: "")
+            if (credit.parts.any { it.key == "integrity" && it.value < 1 }) suggestions += "最近有复审不合格或抄袭，注意诚信教育"
+        }
+        val creditTrend = (7 downTo 0).map { k -> Credit.all(c, now - k * 7L * 86_400_000L).firstOrNull { it.student.id == sid }?.takeIf { it.hasData }?.index ?: 0.0 }
+        val groupCredit = if (group.isBlank()) null else Credit.groups(c, now, creditAll)[group]
 
         return Report(
             st, score, rank, n, if (n <= 1) 1.0 else 1 - (rank - 1).toDouble() / (n - 1),
@@ -292,6 +305,7 @@ object Personal {
             group, groupRank, c.students.count { it.group == group && group.isNotBlank() }, if (group.isBlank()) null else groupRates[group],
             strengths, concerns, suggestions,
             mine.asReversed(),
+            credit, creditTrend, groupCredit,
         )
     }
 
@@ -299,7 +313,8 @@ object Personal {
     fun text(c: SchoolClass, r: Report): String = buildString {
         val s = r.student
         appendLine("${s.name}（${s.no}）个人分析报告 · ${c.name}")
-        appendLine("积分 ${r.score.fmt()}，全班第 ${r.rank}/${r.of} 名；关注度指数 ${r.attention.index.roundToInt()}（${r.attention.level.label}）")
+        appendLine("积分 ${r.score.fmt()}，全班第 ${r.rank}/${r.of} 名；关注度指数 ${r.attention.index.roundToInt()}（${r.attention.level.label}）" +
+            (r.credit?.takeIf { it.hasData }?.let { "；信誉分 ${it.index.fmt()}（${it.level.label}）" } ?: "") + (r.groupCredit?.let { "；小组信誉分 ${it.fmt()}" } ?: ""))
         appendLine()
         appendLine("一、作业：应交 ${r.expected} 次，已交 ${r.counts[HwStatus.SUBMITTED]}、优秀 ${r.counts[HwStatus.EXCELLENT]}、迟交 ${r.counts[HwStatus.LATE]}、未交 ${r.counts[HwStatus.MISSING]}、请假 ${r.counts[HwStatus.LEAVE]}")
         r.stats.forEach { appendLine("· ${it.label} ${it.text}（全班 ${it.classText}）") }
@@ -314,6 +329,10 @@ object Personal {
         }
         appendLine(); appendLine("四、关注度构成")
         r.attention.parts.forEach { appendLine("· ${it.label} ${it.points.roundToInt()} 分：${it.detail}") }
+        r.credit?.takeIf { it.hasData }?.let { cr ->
+            appendLine(); appendLine("五、信誉分构成（越高越好）")
+            cr.parts.forEach { appendLine("· ${it.label}（权重 ${(it.weight * 100).roundToInt()}%）得分率 ${(it.value * 100).roundToInt()}%：${it.detail}") }
+        }
         if (r.strengths.isNotEmpty()) { appendLine(); appendLine("优点：" + r.strengths.joinToString("；")) }
         if (r.concerns.isNotEmpty()) appendLine("需要注意：" + r.concerns.joinToString("；"))
         if (r.suggestions.isNotEmpty()) appendLine("建议：" + r.suggestions.joinToString("；"))
