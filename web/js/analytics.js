@@ -3,7 +3,7 @@
 import {
   summary, studentStats, autoPoints, ruleOf, examDelta, leaderOf, leaderPeriods, groupRankPeriods, latestRecharges,
   rechargeStart, rechargeCounts, startOfDay, fmtNum, signed, defaultGroupRank, copiedFrom, copiedBy, plagiarized, compareStudentNumbers,
-  defaultPlagiarism, plagiarismFactor,
+  defaultPlagiarism, plagiarismFactor, UNKNOWN_PROVIDER, unknownProvider,
 } from './model.js';
 
 const DAY = 86_400_000;
@@ -860,7 +860,7 @@ export function groupDuel(c, a, b) {
 /** 有抄袭记录的作业，最新的在前（关系图按作业切换用） */
 export function plagiarismAssignments(c) {
   const ids = new Set(c.students.map((s) => s.id));
-  return c.assignments.filter((a) => Object.keys(a.plagiarism || {}).some((r) => ids.has(r) && copiedFrom(a, r).some((p) => ids.has(p) && a.statuses[p] === 'MISSING')))
+  return c.assignments.filter((a) => Object.keys(a.plagiarism || {}).some((r) => ids.has(r) && copiedFrom(a, r).some((p) => p === UNKNOWN_PROVIDER || (ids.has(p) && a.statuses[p] === 'MISSING'))))
     .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
 }
 
@@ -891,14 +891,16 @@ export function plagiarismReport(c, rules, only = null) {
   for (const a of sorted) for (const rid of Object.keys(a.plagiarism || {})) {
     const r = byId[rid]; if (!r) continue;
     const ps = copiedFrom(a, rid).filter((id) => a.statuses[id] === 'MISSING').map((id) => byId[id]).filter(Boolean);
-    if (!ps.length) continue;
-    cases.push({ assignment: a, receiver: r, providers: ps });
+    const unknown = unknownProvider(a, rid);
+    if (!ps.length && !unknown) continue;
+    cases.push({ assignment: a, receiver: r, providers: ps, unknown, providerText: [...ps.map((p) => p.name), ...(unknown ? ['提供者不明'] : [])].join('、') });
     for (const p of ps) { const k = `${p.id}\u0000${r.id}`; if (!edges.has(k)) edges.set(k, { provider: p, receiver: r, assignments: [] }); edges.get(k).assignments.push(a); }
   }
-  const involved = [...new Set([...edges.values()].flatMap((e) => [e.provider.id, e.receiver.id]))];
+  // 提供者不明的抄袭者也算涉及（关系图里单独一个点）
+  const involved = [...new Set([...[...edges.values()].flatMap((e) => [e.provider.id, e.receiver.id]), ...cases.filter((k) => k.unknown).map((k) => k.receiver.id)])];
   const last = latestRecharges(c);
   const nodes = involved.map((id) => {
-    const copied = sorted.filter((a) => copiedFrom(a, id).some((p) => a.statuses[p] === 'MISSING')).length;
+    const copied = sorted.filter((a) => copiedFrom(a, id).some((p) => p === UNKNOWN_PROVIDER || a.statuses[p] === 'MISSING')).length;
     const provided = sorted.filter((a) => copiedBy(a, id).length > 0).length;
     const pts = autoPoints(c, rules, id); const list = sorted.filter((a) => plagiarized(a, id));
     const role = copied > 0 && provided > 0 ? '既抄又提供' : copied > 0 ? '抄袭者' : '提供者';

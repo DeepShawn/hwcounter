@@ -270,11 +270,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 抄袭：抄袭者抄了提供者的，双方都记为未交（扣分翻倍，累犯加重） */
     fun markPlagiarism(assignmentId: String, receivers: Collection<String>, providers: Collection<String>) = editAssignment(assignmentId) { a ->
         val p = a.plagiarism.toMutableMap()
-        for (r in receivers) {
-            val list = (p[r].orEmpty() + providers).filter { it != r }.distinct()
-            if (list.isNotEmpty()) p[r] = list
-        }
-        a.copy(statuses = a.statuses + (receivers + providers).associateWith { HwStatus.MISSING }, plagiarism = p)
+        // 提供者就是这次选的人；一个都没选 = 提供者不明
+        val real = providers.filter { it != UNKNOWN_PROVIDER }.distinct()
+        for (r in receivers) p[r] = real.filter { it != r }.ifEmpty { listOf(UNKNOWN_PROVIDER) }
+        a.copy(statuses = a.statuses + (receivers + real).associateWith { HwStatus.MISSING }, plagiarism = p)
     }
 
     /** 取消这些同学的抄袭标记（状态保持“未交”，需要时再改） */

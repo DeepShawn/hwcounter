@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from '../vendor
 import htm from '../vendor/htm.module.js';
 import {
   STATUS, normalizeData, summary, studentStats, compareStudentNumbers, autoPoints, ruleOf, fmtNum, signed, fmtDate,
-  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, defaultReview, leaderPeriods, leaderOf, groupRankPoints,
+  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, defaultReview, plagiarismDesc, leaderPeriods, leaderOf, groupRankPoints,
 } from './model.js';
 import { api } from './cloud.js';
 import { StatsPage, PlagGraph } from './statspage.js';
@@ -99,12 +99,8 @@ function Ring({ value, size = 84, stroke = 8, color = 'var(--accent)', children 
 const Tile = ({ label, value, color, onClick }) => html`<div class=${'tile' + (onClick ? ' tap' : '')} onClick=${onClick}><b style=${color ? { color } : null}>${value}</b><span>${label}</span></div>`;
 const Pill = ({ k }) => { const s = SV(k); return html`<span class="pill" style=${{ color: s.color, background: s.color + '1f' }}>${s.label}</span>`; };
 const Empty = ({ emoji = '📭', text }) => html`<div class="empty"><div>${emoji}</div>${text}</div>`;
-/** 这次作业里这位同学的抄袭关系（“抄袭 甲” / “提供给 乙 抄”） */
-const plagLine = (c, a, sid) => {
-  const names = (ids) => ids.map((id) => c.students.find((x) => x.id === id)?.name).filter(Boolean).join('、');
-  const from = copiedFrom(a, sid); const by = copiedBy(a, sid);
-  return [from.length && `抄袭 ${names(from)}`, by.length && `提供给 ${names(by)} 抄`].filter(Boolean).join('；');
-};
+/** 这次作业里这位同学的抄袭关系（“抄袭 甲” / “抄袭（提供者不明）” / “提供给 乙 抄”） */
+const plagLine = (c, a, sid) => plagiarismDesc(c, a, sid);
 const sortStudents = (list) => [...list].sort((a, b) => compareStudentNumbers(a.no, b.no) || a.name.localeCompare(b.name, 'zh'));
 
 // ---------------- 计算 ----------------
@@ -223,7 +219,7 @@ function AssignView({ c, rules, id, back, open, prefs, setPrefs }) {
     </section>
     ${plag && plag.cases.length > 0 && html`<${Title}>🕵️ 本次抄袭关系图 · ${plag.copiers} 人抄袭、${plag.providers} 人提供</${Title}>
       <section class="grp an-pad"><${PlagGraph} r=${plag} open=${open} />
-        <div class="cell-sub" style=${{ paddingTop: '6px' }}>${plag.edges.map((e) => `${e.provider.name} → ${e.receiver.name}`).join('　')}</div></section>`}
+        <div class="cell-sub" style=${{ paddingTop: '6px' }}>${[...plag.cases.filter((k) => k.unknown).map((k) => `提供者不明 → ${k.receiver.name}`), ...plag.edges.map((e) => `${e.provider.name} → ${e.receiver.name}`)].join('　')}</div></section>`}
     <div class="chips">${chips.map(([k, l]) => html`<button class=${'chip' + (filter === k ? ' on' : '')} onClick=${() => setFilter(k)}>${l}</button>`)}</div>
     <div class="row-between"><${Title}>同学 · ${shown.length} 人</${Title}><${Seg} items=${[['grid', '网格'], ['list', '列表']]} value=${prefs.layout} onChange=${(v) => setPrefs({ layout: v })} /></div>
     ${prefs.layout === 'list'

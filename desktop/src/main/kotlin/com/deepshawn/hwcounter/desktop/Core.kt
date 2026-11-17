@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import com.deepshawn.hwcounter.data.AppData
 import com.deepshawn.hwcounter.data.Assignment
 import com.deepshawn.hwcounter.data.HwStatus
+import com.deepshawn.hwcounter.data.plagiarismDesc
 import com.deepshawn.hwcounter.data.SchoolClass
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -104,12 +105,8 @@ fun handRate(c: SchoolClass, sid: String, list: List<Assignment> = c.assignments
     return if (need == 0) null else got.toDouble() / need
 }
 
-/** 这次作业里这位同学的抄袭关系（“抄袭 甲” / “提供给 乙 抄”） */
-fun plagLine(c: SchoolClass, a: Assignment, sid: String): String {
-    fun names(ids: List<String>) = ids.mapNotNull { id -> c.students.firstOrNull { it.id == id }?.name }.joinToString("、")
-    val from = a.copiedFrom(sid); val by = a.copiedBy(sid)
-    return listOfNotNull(from.takeIf { it.isNotEmpty() }?.let { "抄袭 ${names(it)}" }, by.takeIf { it.isNotEmpty() }?.let { "提供给 ${names(it)} 抄" }).joinToString("；")
-}
+/** 这次作业里这位同学的抄袭关系（与手机端同样的文字，含“提供者不明”） */
+fun plagLine(c: SchoolClass, a: Assignment, sid: String): String = c.plagiarismDesc(a, sid)
 
 fun pct(x: Double?): String = if (x == null || !x.isFinite()) "—" else "${Math.round(x * 100)}%"
 fun pct(x: Float): String = pct(x.toDouble())

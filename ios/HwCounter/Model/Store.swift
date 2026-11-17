@@ -215,12 +215,11 @@ final class Store: ObservableObject {
     /// 抄袭：抄袭者抄了提供者的，双方都记为未交（扣分翻倍，累犯加重）
     func markPlagiarism(_ aid: String, receivers: [String], providers: [String]) {
         editAssignment(aid) { a in
-            for r in receivers {
-                var l = a.plagiarism[r] ?? []
-                for p in providers where p != r && !l.contains(p) { l.append(p) }
-                if !l.isEmpty { a.plagiarism[r] = l }
-            }
-            for id in receivers + providers { a.statuses[id] = HwStatus.MISSING.rawValue }
+            // 提供者就是这次选的人；一个都没选 = 提供者不明
+            var real: [String] = []
+            for p in providers where p != unknownProviderId && !real.contains(p) { real.append(p) }
+            for r in receivers { let l = real.filter { $0 != r }; a.plagiarism[r] = l.isEmpty ? [unknownProviderId] : l }
+            for id in receivers + real { a.statuses[id] = HwStatus.MISSING.rawValue }
         }
     }
     /// 取消抄袭标记（状态保持未交）

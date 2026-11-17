@@ -105,4 +105,18 @@ class PlagiarismTest {
         assertEquals("本次 -8（抄袭第 1 次 ×2 × 复审不合格 ×2 = ×4）", c.assignmentPointNote(r, "a0", "b"))
         assertEquals("本次 -4（抄袭第 1 次 ×2）", c.assignmentPointNote(r, "a0", "a"))
     }
+
+    @Test fun unknownProvider() {
+        // a1：丁抄袭但提供者不明
+        val c = cls().let { c -> c.copy(assignments = c.assignments.map { if (it.id == "a1") it.copy(statuses = it.statuses + ("d" to HwStatus.MISSING), plagiarism = mapOf("d" to listOf(UNKNOWN_PROVIDER))) else it }) }
+        val r = ScoreRules(); val a = c.assignments.first { it.id == "a1" }
+        assertEquals(-4.0, c.autoPointDetails(r, "d").getValue("a1").points, 1e-9)
+        assertTrue(a.plagiarized("d")); assertTrue(a.unknownProvider("d"))
+        assertEquals("抄袭（提供者不明）", c.plagiarismDesc(a, "d"))
+        val g = PlagiarismGraph.report(c, r, "a1")
+        assertEquals(1, g.cases.size); assertTrue(g.cases[0].unknown); assertEquals("提供者不明", g.cases[0].providerText)
+        assertTrue(g.edges.isEmpty()); assertEquals(listOf("d"), g.nodes.map { it.student.id }); assertEquals(1, g.nodes[0].copied)
+        assertEquals(listOf("a2", "a1", "a0"), PlagiarismGraph.assignments(c).map { it.id })
+        assertTrue(c.ledger(r, "d").first { it.assignmentId == "a1" }.title.contains("抄袭（提供者不明）"))
+    }
 }

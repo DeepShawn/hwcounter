@@ -60,6 +60,7 @@ import com.deepshawn.hwcounter.data.Student
 import com.deepshawn.hwcounter.data.compareStudentNumbers
 import com.deepshawn.hwcounter.data.fmt
 import com.deepshawn.hwcounter.data.fmtDay
+import com.deepshawn.hwcounter.data.plagiarismDesc
 import com.deepshawn.hwcounter.ui.components.Avatar
 import com.deepshawn.hwcounter.ui.components.EmptyState
 import com.deepshawn.hwcounter.ui.components.HCard
@@ -93,7 +94,7 @@ fun ScoreRules.plagiarismText(): String =
 @Composable
 fun ProviderPickerDialog(c: SchoolClass, a: Assignment, receivers: Collection<String>, rules: ScoreRules, onDismiss: () -> Unit, onConfirm: (List<String>) -> Unit) {
     var q by remember { mutableStateOf("") }
-    var picked by remember(receivers) { mutableStateOf(receivers.flatMap { a.copiedFrom(it) }.toSet()) }
+    var picked by remember(receivers) { mutableStateOf(receivers.flatMap { a.copiedFrom(it) }.filter { it != com.deepshawn.hwcounter.data.UNKNOWN_PROVIDER }.toSet()) }
     val names = c.students.filter { it.id in receivers }.joinToString("、") { it.name }
     val list = c.students.filter { it.id !in receivers && (q.isBlank() || it.name.contains(q.trim()) || it.no.contains(q.trim())) }
         .sortedWith { x, y -> compareStudentNumbers(x.no, y.no) }
@@ -102,7 +103,7 @@ fun ProviderPickerDialog(c: SchoolClass, a: Assignment, receivers: Collection<St
         title = { androidx.compose.material3.Text("$names 抄了谁的？") },
         text = {
             Column {
-                androidx.compose.material3.Text(rules.plagiarismText(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                androidx.compose.material3.Text("不知道抄了谁的可以不选，直接记为抄袭（提供者不明）。\n" + rules.plagiarismText(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.padding(4.dp))
                 OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { androidx.compose.material3.Text("搜索姓名或学号") }, modifier = Modifier.fillMaxWidth())
                 LazyColumn(Modifier.heightIn(max = 340.dp)) {
@@ -121,17 +122,13 @@ fun ProviderPickerDialog(c: SchoolClass, a: Assignment, receivers: Collection<St
                 }
             }
         },
-        confirmButton = { TextButton(enabled = picked.isNotEmpty(), onClick = { onConfirm(picked.toList()) }) { androidx.compose.material3.Text("记为抄袭（${picked.size} 位提供者）") } },
+        confirmButton = { TextButton(onClick = { onConfirm(picked.toList()) }) { androidx.compose.material3.Text(if (picked.isEmpty()) "记为抄袭（提供者不明）" else "记为抄袭（${picked.size} 位提供者）") } },
         dismissButton = { TextButton(onClick = onDismiss) { androidx.compose.material3.Text("取消") } },
     )
 }
 
-/** 这次作业里这位同学的抄袭关系（“抄袭 甲” / “提供给 乙 抄”） */
-fun plagiarismLine(c: SchoolClass, a: Assignment, sid: String): String {
-    fun names(ids: List<String>) = ids.mapNotNull { id -> c.students.firstOrNull { it.id == id }?.name }.joinToString("、")
-    val from = a.copiedFrom(sid); val by = a.copiedBy(sid)
-    return listOfNotNull(from.takeIf { it.isNotEmpty() }?.let { "抄袭 ${names(it)}" }, by.takeIf { it.isNotEmpty() }?.let { "提供给 ${names(it)} 抄" }).joinToString("；")
-}
+/** 这次作业里这位同学的抄袭关系（“抄袭 甲” / “抄袭（提供者不明）” / “提供给 乙 抄”） */
+fun plagiarismLine(c: SchoolClass, a: Assignment, sid: String): String = c.plagiarismDesc(a, sid)
 
 // ---------------- 统计页“抄袭”栏目 ----------------
 
@@ -205,6 +202,15 @@ fun LazyListScope.plagiarismSections(
     group(if (one != null) "本次抄袭关系（提供者 → 抄袭者）" else "抄袭关系（提供者 → 抄袭者）", key = "pl-edges") {
         val colors = MiuixTheme.colorScheme
         Column(Modifier.padding(vertical = 6.dp)) {
+            // 提供者不明：按抄袭者汇总
+            r.cases.filter { it.unknown }.groupBy { it.receiver }.forEach { (rc, list) ->
+                Row(Modifier.fillMaxWidth().clickable { onOpen(rc.id) }.padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("提供者不明", color = colors.onSurfaceVariantSummary)
+                    Text("  →  ", color = colors.onSurfaceVariantSummary)
+                    Text(rc.name, fontWeight = FontWeight.Medium, color = CopierColor, modifier = Modifier.weight(1f))
+                    if (one == null) Text("${list.size} 次", fontWeight = FontWeight.Bold)
+                }
+            }
             r.edges.forEach { e ->
                 Row(Modifier.fillMaxWidth().clickable { onOpen(e.receiver.id) }.padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(e.provider.name, fontWeight = FontWeight.Medium, color = ProviderColor)
@@ -261,7 +267,7 @@ fun LazyListScope.plagiarismSections(
             r.cases.take(20).forEach { k ->
                 Row(Modifier.fillMaxWidth().clickable { onSel(k.assignment.id) }.padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("${k.receiver.name} 抄袭 ${k.providers.joinToString("、") { it.name }}", fontWeight = FontWeight.Medium)
+                        Text("${k.receiver.name} 抄袭 ${k.providerText}", fontWeight = FontWeight.Medium)
                         Text("${fmtDay(k.assignment.createdAt)} · ${k.assignment.subject} ${k.assignment.title}".trim(), fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
                     }
                     Text("看图 ›", fontSize = 12.sp, color = PlagiarismColor)
@@ -352,6 +358,13 @@ fun AssignmentPlagiarismCard(r: PlagiarismGraph.Report, onOpen: (String) -> Unit
             if (open) {
                 Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
                     Box(Modifier.widthIn(max = 360.dp).fillMaxWidth()) { PlagiarismGraphView(r, onOpen) }
+                }
+                r.cases.filter { it.unknown }.forEach { k ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("提供者不明", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                        Text("  →  ", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                        Text(k.receiver.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = CopierColor)
+                    }
                 }
                 r.edges.forEach { e ->
                     Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -31,6 +31,16 @@ export const failedReview = (a, sid) => (a.reviewFailed || []).includes(sid) && 
 export const copiedFrom = (a, sid) => (a.statuses[sid] === 'MISSING' ? (a.plagiarism || {})[sid] || [] : []);
 export const copiedBy = (a, sid) => (a.statuses[sid] !== 'MISSING' ? [] : Object.entries(a.plagiarism || {}).filter(([r, ps]) => ps.includes(sid) && a.statuses[r] === 'MISSING').map(([r]) => r));
 export const plagiarized = (a, sid) => copiedFrom(a, sid).length > 0 || copiedBy(a, sid).length > 0;
+/** 抄袭的提供者不明时，提供者列表里放这个占位 id（不是任何同学），与安卓、iPad 一致 */
+export const UNKNOWN_PROVIDER = '?';
+export const unknownProvider = (a, sid) => copiedFrom(a, sid).includes(UNKNOWN_PROVIDER);
+/** 这次作业里这位同学的抄袭关系：“抄袭 甲” / “抄袭（提供者不明）” / “提供给 乙 抄” */
+export function plagiarismDesc(c, a, sid) {
+  const names = (ids) => ids.map((id) => c.students.find((x) => x.id === id)?.name).filter(Boolean).join('、');
+  const from = copiedFrom(a, sid).filter((x) => x !== UNKNOWN_PROVIDER); const by = copiedBy(a, sid);
+  const copied = from.length ? `抄袭 ${names(from)}` : unknownProvider(a, sid) ? '抄袭（提供者不明）' : null;
+  return [copied, by.length && `提供给 ${names(by)} 抄`].filter(Boolean).join('；');
+}
 /** 正分向上取整、负分向下取整（与安卓 roundAway 一致） */
 export const roundAway = (x) => (x > 0 ? Math.ceil(x - 1e-9) : x < 0 ? Math.floor(x + 1e-9) : 0);
 /** 单笔加减分保留原值；取整只作用在最终显示的总积分上 */

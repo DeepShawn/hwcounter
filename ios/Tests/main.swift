@@ -515,6 +515,10 @@ do {
     var noReview = R; noReview.review.enabled = false
     check(both.autoPoints(R, "b")["a0"] == -8 && both.autoPoints(R, "a")["a0"] == -4 && both.autoPoints(noReview, "b")["a0"] == -4, "抄袭与复审不合格叠加")
     check(both.assignmentPointNote(R, "a0", "b") == "本次 -8（抄袭第 1 次 ×2 × 复审不合格 ×2 = ×4）", "作业页计分说明")
+    // 提供者不明
+    var unk = c; unk.assignments[1].statuses["d"] = M; unk.assignments[1].plagiarism = ["d": [unknownProviderId]]
+    let gu = unk.plagiarismReport(R, only: "a1")
+    check(unk.autoPoints(R, "d")["a1"] == -4 && unk.assignments[1].unknownProvider("d") && plagiarismLine(unk, unk.assignments[1], "d") == "抄袭（提供者不明）" && gu.cases.count == 1 && gu.cases[0].unknown && gu.edges.isEmpty && gu.nodes.map(\.student.id) == ["d"], "抄袭：提供者不明")
 }
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

@@ -25,7 +25,7 @@ struct ProviderPickerSheet: View {
             .sorted { compareStudentNumbers($0.no, $1.no) < 0 }
         NavigationStack {
             List {
-                Section { Text(store.data.rules.plagiarism.text).font(.caption).foregroundStyle(.secondary) }
+                Section { Text("不知道抄了谁的可以不选，直接记为抄袭（提供者不明）。\n" + store.data.rules.plagiarism.text).font(.caption).foregroundStyle(.secondary) }
                 Section("选出提供作业的同学（可多选）") {
                     ForEach(list) { s in
                         Button {
@@ -46,14 +46,14 @@ struct ProviderPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("记为抄袭") {
+                    Button(picked.isEmpty ? "记为抄袭（提供者不明）" : "记为抄袭") {
                         store.markPlagiarism(assignmentId, receivers: receivers, providers: Array(picked))
-                        store.say("已记为抄袭：\(receivers.count) 人抄袭、\(picked.count) 人提供，双方都记未交")
+                        store.say(picked.isEmpty ? "已记为抄袭（提供者不明）：\(receivers.count) 人记未交" : "已记为抄袭：\(receivers.count) 人抄袭、\(picked.count) 人提供，双方都记未交")
                         onDone(); dismiss()
-                    }.disabled(picked.isEmpty)
+                    }
                 }
             }
-            .onAppear { picked = Set(receivers.flatMap { a?.copiedFrom($0) ?? [] }) }
+            .onAppear { picked = Set(receivers.flatMap { a?.copiedFrom($0) ?? [] }.filter { $0 != unknownProviderId }) }
         }
     }
 }
@@ -72,6 +72,13 @@ struct AssignmentPlagiarismSection: View {
                 Text("\(r.copiers) 人抄袭 · \(r.providers) 人提供").font(.caption).foregroundStyle(.secondary)
             }
             PlagiarismGraph(r: r).frame(height: 300)
+            ForEach(Array(r.cases.filter(\.unknown).enumerated()), id: \.offset) { _, k in
+                HStack(spacing: 6) {
+                    Text("提供者不明").foregroundStyle(.secondary)
+                    Text("→").foregroundStyle(.secondary)
+                    Text(k.receiver.name).foregroundStyle(copierColor).bold()
+                }.font(.subheadline)
+            }
             ForEach(Array(r.edges.enumerated()), id: \.offset) { _, e in
                 HStack(spacing: 6) {
                     Text(e.provider.name).foregroundStyle(providerColor).bold()
@@ -83,12 +90,6 @@ struct AssignmentPlagiarismSection: View {
     }
 }
 
-/// 这次作业里这位同学的抄袭关系（“抄袭 甲” / “提供给 乙 抄”）
-func plagiarismLine(_ c: SchoolClass, _ a: Assignment, _ sid: String) -> String {
-    func names(_ ids: [String]) -> String { ids.compactMap { id in c.students.first { $0.id == id }?.name }.joined(separator: "、") }
-    let from = a.copiedFrom(sid), by = a.copiedBy(sid)
-    return [from.isEmpty ? nil : "抄袭 \(names(from))", by.isEmpty ? nil : "提供给 \(names(by)) 抄"].compactMap { $0 }.joined(separator: "；")
-}
 
 /// 侧边栏“抄袭关系”：按作业切换关系图（每次作业一张图，也可看全部作业汇总）；概况、关系图、关系列表、涉及的同学、抄袭圈、最近记录
 struct PlagiarismView: View {
@@ -137,6 +138,15 @@ struct PlagiarismView: View {
                             }.font(.caption)
                         }
                         Section(one == nil ? "抄袭关系（提供者 → 抄袭者）" : "本次抄袭关系（提供者 → 抄袭者）") {
+                            ForEach(Array(Dictionary(grouping: r.cases.filter(\.unknown), by: { $0.receiver.id }).values.sorted { $0.count > $1.count }.enumerated()), id: \.offset) { _, list in
+                                HStack {
+                                    Text("提供者不明").foregroundStyle(.secondary)
+                                    Text("→").foregroundStyle(.secondary)
+                                    Text(list[0].receiver.name).foregroundStyle(copierColor).bold()
+                                    Spacer()
+                                    if one == nil { Text("\(list.count) 次").bold() }
+                                }
+                            }
                             ForEach(Array(r.edges.enumerated()), id: \.offset) { _, e in
                                 HStack {
                                     Text(e.provider.name).foregroundStyle(providerColor).bold()
@@ -178,7 +188,7 @@ struct PlagiarismView: View {
                                     Button { sel = k.assignment.id } label: {
                                         HStack {
                                             VStack(alignment: .leading, spacing: 2) {
-                                                Text("\(k.receiver.name) 抄袭 \(k.providers.map(\.name).joined(separator: "、"))").bold().foregroundStyle(.primary)
+                                                Text("\(k.receiver.name) 抄袭 \(k.providerText)").bold().foregroundStyle(.primary)
                                                 Text("\(fmtDate(k.assignment.date)) · \(k.assignment.subject) \(k.assignment.title)").font(.caption).foregroundStyle(.secondary)
                                             }
                                             Spacer()
