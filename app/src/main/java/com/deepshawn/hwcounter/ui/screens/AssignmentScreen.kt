@@ -491,6 +491,11 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     )
                 }
             }
+            // 本次作业的抄袭关系图（每次作业各自一张图）
+            if (a.plagiarism.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }, key = "plag-graph") {
+                val pr = remember(c, settings.rules, a.id) { com.deepshawn.hwcounter.data.PlagiarismGraph.report(c, settings.rules, a.id) }
+                if (pr.cases.isNotEmpty()) AssignmentPlagiarismCard(pr) { kit.nav.push(Route.StudentDetail(it)) }
+            }
             // 过滤 + 布局
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column {

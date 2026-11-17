@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultRules, defaultPlagiarism, plagiarismFactor, autoPoints, studentStats, normalizeData, rechargeScores, plagiarized } from '../../web/js/model.js';
-import { plagiarismReport } from '../../web/js/analytics.js';
+import { plagiarismReport, plagiarismAssignments } from '../../web/js/analytics.js';
 
 const DAY = 86400000; const S = 'SUBMITTED'; const M = 'MISSING';
 function cls() {
@@ -46,4 +46,17 @@ test('关系图', () => {
   assert.equal(b.copied, 2); assert.equal(b.points, -12);
   assert.deepEqual(g.clusters.map((x) => x.map((s) => s.id)), [['a', 'b', 'c']]);
   assert.equal(g.copiers, 2); assert.equal(g.providers, 1);
+});
+
+test('关系图按作业：每次作业一张图', () => {
+  const c = cls();
+  assert.deepEqual(plagiarismAssignments(c).map((a) => a.id), ['a2', 'a0']);
+  const g0 = plagiarismReport(c, R, 'a0'); const g2 = plagiarismReport(c, R, 'a2');
+  assert.deepEqual(g0.edges.map((e) => [`${e.provider.id}→${e.receiver.id}`, e.count]), [['a→b', 1]]);
+  assert.deepEqual(g2.edges.map((e) => [`${e.provider.id}→${e.receiver.id}`, e.count]), [['a→b', 1], ['a→c', 1]]);
+  const a0 = g0.nodes.find((n) => n.student.id === 'a'); const a2 = g2.nodes.find((n) => n.student.id === 'a');
+  assert.deepEqual([a0.points, a0.roundTimes, a0.factor], [-4, 1, 2]);
+  assert.deepEqual([a2.points, a2.roundTimes, a2.factor], [-8, 2, 4]);
+  assert.equal(g2.copiers, 2); assert.equal(g2.providers, 1);
+  assert.equal(plagiarismReport(c, R, 'a3').cases.length, 0);
 });

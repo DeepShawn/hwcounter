@@ -947,6 +947,8 @@ struct PlagiarismCase { var assignment: Assignment; var receiver: Student; var p
 struct PlagiarismEdge { var provider: Student; var receiver: Student; var assignments: [Assignment]; var count: Int { assignments.count } }
 struct PlagiarismNode {
     var student: Student; var copied: Int; var provided: Int; var points: Double; var roundTimes: Int
+    /// 单次作业的图里：这次扣分的倍数（全部作业汇总时为 0）
+    var factor: Double = 0
     var total: Int { copied + provided }
     var role: String { copied > 0 && provided > 0 ? "既抄又提供" : copied > 0 ? "抄袭者" : "提供者" }
 }
@@ -959,9 +961,31 @@ struct PlagiarismReport {
 
 extension SchoolClass {
     /// 抄袭记录、提供者 → 抄袭者的关系边、每人的次数与扣分、抄袭圈
-    func plagiarismReport(_ rules: Rules) -> PlagiarismReport {
+    /// 有抄袭记录的作业，最新的在前（关系图按作业切换用）
+    func plagiarismAssignments() -> [Assignment] {
+        let ids = Set(students.map(\.id))
+        return assignments.filter { a in a.plagiarism.keys.contains { r in ids.contains(r) && a.copiedFrom(r).contains { ids.contains($0) && a.status($0) == .MISSING } } }
+            .sorted { ($0.createdAt, $0.id) > ($1.createdAt, $1.id) }
+    }
+
+    /// 某位同学每次涉及抄袭是本轮第几次（作业 id → 次数），与计分同一口径
+    func plagiarismTimes(_ rules: Rules, _ sid: String) -> [String: Int] {
+        var out: [String: Int] = [:]
+        guard rules.plagiarism.enabled else { return out }
+        let resets = recharges.filter { $0.studentIds.contains(sid) }.sorted { ($0.start, $0.time, $0.id) < ($1.start, $1.time, $1.id) }
+        var round: String? = nil, plag = 0
+        for a in assignments.sorted(by: { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }) {
+            let r = resets.last { $0.counts(a.createdAt) }?.id
+            if r != round { round = r; plag = 0 }
+            if a.status(sid) == .MISSING && a.plagiarized(sid) { plag += 1; out[a.id] = plag }
+        }
+        return out
+    }
+
+    /// only 不为空时只看这一次作业（每次作业各有一张关系图）
+    func plagiarismReport(_ rules: Rules, only: String? = nil) -> PlagiarismReport {
         let byId = Dictionary(students.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        let sorted = assignments.sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
+        let sorted = assignments.sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }.filter { only == nil || $0.id == only }
         var cases: [PlagiarismCase] = []
         var edgeKeys: [String] = []; var edges: [String: PlagiarismEdge] = [:]
         for a in sorted {
@@ -986,7 +1010,12 @@ extension SchoolClass {
             let provided = sorted.filter { !$0.copiedBy(id).isEmpty }.count
             let pts = autoPoints(rules, id)
             let list = sorted.filter { $0.plagiarized(id) }
-            return PlagiarismNode(student: s, copied: copied, provided: provided, points: list.reduce(0) { $0 + (pts[$1.id] ?? 0) },
+            let sum = list.reduce(0) { $0 + (pts[$1.id] ?? 0) }
+            if let only {
+                let n = plagiarismTimes(rules, id)[only] ?? 0
+                return PlagiarismNode(student: s, copied: copied, provided: provided, points: sum, roundTimes: n, factor: n > 0 ? rules.plagiarism.factor(n) : 0)
+            }
+            return PlagiarismNode(student: s, copied: copied, provided: provided, points: sum,
                                   roundTimes: list.filter { a in last[id].map { $0.counts(a.createdAt) } ?? true }.count)
         }.sorted { x, y in x.total != y.total ? x.total > y.total : x.points != y.points ? x.points < y.points : compareStudentNumbers(x.student.no, y.student.no) < 0 }
         var adj: [String: Set<String>] = [:]

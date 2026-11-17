@@ -160,6 +160,12 @@ fun AssignPage(x: Ctx, id: String) {
                 a.countedBooks?.let { Text("数本数：$it 本", fontSize = 13.sp, color = sub()) }
             }
         }
+        // 这次作业自己的抄袭关系图（每次作业各自一张图）
+        val plag = remember(c, x.rules, id) { if (a.plagiarism.isEmpty()) null else com.deepshawn.hwcounter.data.PlagiarismGraph.report(c, x.rules, id) }
+        if (plag != null && plag.cases.isNotEmpty()) Group("🕵️ 本次抄袭关系图 · ${plag.copiers} 人抄袭、${plag.providers} 人提供") {
+            Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { PlagGraph(plag) { x.open(Route.Student(it)) } }
+            Text(plag.edges.joinToString("　") { "${it.provider.name} → ${it.receiver.name}" }, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp), fontSize = 13.sp, color = sub())
+        }
         FlowRow(Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip("全部 ${c.students.size}", filter == null) { filter = null }
             ORDER.forEach { k -> val n = keys.values.count { it == k }; if (n > 0) Chip("${k.label} $n", filter == k) { filter = k } }

@@ -49,6 +49,13 @@ struct AssignmentDetailView: View {
                             .buttonStyle(.bordered).disabled(c.students.isEmpty)
                     }
                 }
+                if !a.plagiarism.isEmpty {
+                    let pr = c.plagiarismReport(store.data.rules, only: a.id)
+                    if !pr.cases.isEmpty {
+                        AssignmentPlagiarismSection(r: pr).padding(12)
+                            .background(plagiarismColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                    }
+                }
                 HStack {
                     if c.seating != nil {
                         Toggle(isOn: Binding(get: { seatMode ?? true }, set: { seatMode = $0; pick = [] })) { Label("座位表", systemImage: "rectangle.grid.3x2") }

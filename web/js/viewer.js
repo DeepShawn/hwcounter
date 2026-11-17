@@ -8,7 +8,8 @@ import {
   latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, leaderPeriods, leaderOf, groupRankPoints,
 } from './model.js';
 import { api } from './cloud.js';
-import { StatsPage } from './statspage.js';
+import { StatsPage, PlagGraph } from './statspage.js';
+import { plagiarismReport } from './analytics.js';
 
 const html = htm.bind(h);
 
@@ -200,6 +201,8 @@ function AssignView({ c, rules, id, back, open, prefs, setPrefs }) {
   const a = c.assignments.find((x) => x.id === id);
   const [filter, setFilter] = useState('ALL');
   const pts = useMemo(() => (a ? Object.fromEntries(c.students.map((s) => [s.id, autoPoints(c, rules, s.id)[a.id] || 0])) : {}), [c, rules, id]);
+  // 这次作业自己的抄袭关系图（每次作业各自一张图）
+  const plag = useMemo(() => (a && Object.keys(a.plagiarism || {}).length ? plagiarismReport(c, rules, a.id) : null), [c, rules, id]);
   if (!a) return html`<${Page} title="作业" onBack=${back}><${Empty} text="这次作业已被删除" /></${Page}>`;
   const sm = summary(c, a);
   const keys = c.students.map((s) => view(a, s.id));
@@ -216,6 +219,9 @@ function AssignView({ c, rules, id, back, open, prefs, setPrefs }) {
         ${a.countedBooks != null && html`<div class="cell-sub">数本数：${a.countedBooks} 本</div>`}
       </div>
     </section>
+    ${plag && plag.cases.length > 0 && html`<${Title}>🕵️ 本次抄袭关系图 · ${plag.copiers} 人抄袭、${plag.providers} 人提供</${Title}>
+      <section class="grp an-pad"><${PlagGraph} r=${plag} open=${open} />
+        <div class="cell-sub" style=${{ paddingTop: '6px' }}>${plag.edges.map((e) => `${e.provider.name} → ${e.receiver.name}`).join('　')}</div></section>`}
     <div class="chips">${chips.map(([k, l]) => html`<button class=${'chip' + (filter === k ? ' on' : '')} onClick=${() => setFilter(k)}>${l}</button>`)}</div>
     <div class="row-between"><${Title}>同学 · ${shown.length} 人</${Title}><${Seg} items=${[['grid', '网格'], ['list', '列表']]} value=${prefs.layout} onChange=${(v) => setPrefs({ layout: v })} /></div>
     ${prefs.layout === 'list'
