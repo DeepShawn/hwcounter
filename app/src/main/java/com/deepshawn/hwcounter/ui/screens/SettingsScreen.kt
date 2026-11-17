@@ -58,6 +58,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -153,6 +154,14 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
         when (section) {
             "account" -> {
                 item(key = "cloud") { CloudSection(vm) }
+                item(key = "accounts") {
+                    val st by vm.sync.state.collectAsState()
+                    if (st.email != null && st.member == null) Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        top.yukonga.miuix.kmp.basic.Card {
+                            SuperArrow(title = "用户与邀请码", summary = "生成一次性邀请码、管理用户、发放模拟币（炒股模拟）", onClick = { kit.nav.push(com.deepshawn.hwcounter.ui.Route.Accounts) })
+                        }
+                    }
+                }
             }
             "scoring" -> {
                 group("计分规则", key = "rules") {
@@ -343,6 +352,47 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                             RuleRow("考试权重 %", gr.wExam * 100, 5.0) { v -> if (v >= 0) gk { it.copy(wExam = v / 100) } }
                             Text(
                                 "· 综合分 = 交齐率 + 少扣分（人均作业扣分，扣分最多的组为 0、零扣分为 1）+ 优秀率 + 考试得分率，按权重加权；这一段没有考试或按每次作业排名时，考试权重按比例分给其他项\n· 综合分相同名次并列；最后一名只在 3 组以上时才有\n· 整组每位同学都加减（包括请假的同学）；每人积分重置后只算重置之后的段\n· 修改后历史积分自动重算",
+                                fontSize = 11.sp, lineHeight = 17.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp),
+                            )
+                        }
+                    }
+                }
+                group("信誉分加减分", key = "credit") {
+                    val cr = s.rules.credit
+                    fun ck(f: (com.deepshawn.hwcounter.data.CreditRules) -> com.deepshawn.hwcounter.data.CreditRules) = rules { it.copy(credit = f(it.credit)) }
+                    val modes = com.deepshawn.hwcounter.data.CreditRules.MODES
+                    val modeItems = modes.map { com.deepshawn.hwcounter.data.CreditRules.modeLabel(it) }
+                    Text(
+                        "信誉分 0–100，越优秀越高：交齐 25%、按时 15%、优秀 10%、连续交 10%、诚信（复审不合格、抄袭）20%、进步 5%、考试 15%。小组信誉分 = 组员平均。",
+                        fontSize = 12.sp, lineHeight = 18.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    SuperDropdown(
+                        items = modeItems, selectedIndex = modes.indexOf(cr.personal).coerceAtLeast(0), title = "个人信誉分",
+                        summary = if (cr.personal == "none") "不计入积分" else "按个人信誉分${cr.periodLabel}给本人${com.deepshawn.hwcounter.data.CreditRules.modeLabel(cr.personal)}",
+                        onSelectedIndexChange = { i -> ck { it.copy(personal = modes[i]) } },
+                    )
+                    SuperDropdown(
+                        items = modeItems, selectedIndex = modes.indexOf(cr.group).coerceAtLeast(0), title = "小组信誉分",
+                        summary = if (cr.group == "none") "不计入积分" else "按小组信誉分${cr.periodLabel}给全组每人${com.deepshawn.hwcounter.data.CreditRules.modeLabel(cr.group)}",
+                        onSelectedIndexChange = { i -> ck { it.copy(group = modes[i]) } },
+                    )
+                    if (cr.active) {
+                        val periods = listOf("assignment", "day", "week", "month")
+                        SuperDropdown(
+                            items = listOf("每次作业", "每天", "每周", "每月"), selectedIndex = periods.indexOf(cr.period).coerceAtLeast(2), title = "结算周期",
+                            onSelectedIndexChange = { i -> ck { it.copy(period = periods[i]) } },
+                        )
+                        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                            RuleRow("优秀线（≥）", cr.excellentAt, 5.0) { v -> if (v in 0.0..100.0) ck { it.copy(excellentAt = v) } }
+                            RuleRow("　优秀加分", cr.excellentPts, 0.5) { v -> ck { it.copy(excellentPts = v) } }
+                            RuleRow("良好线（≥）", cr.goodAt, 5.0) { v -> if (v in 0.0..100.0) ck { it.copy(goodAt = v) } }
+                            RuleRow("　良好加分", cr.goodPts, 0.5) { v -> ck { it.copy(goodPts = v) } }
+                            RuleRow("偏低线（<）", cr.poorBelow, 5.0) { v -> if (v in 0.0..100.0) ck { it.copy(poorBelow = v) } }
+                            RuleRow("　偏低扣分", cr.poorPts, 0.5) { v -> ck { it.copy(poorPts = v) } }
+                            RuleRow("很差线（<）", cr.badBelow, 5.0) { v -> if (v in 0.0..100.0) ck { it.copy(badBelow = v) } }
+                            RuleRow("　很差扣分", cr.badPts, 0.5) { v -> ck { it.copy(badPts = v) } }
+                            Text(
+                                "· 现在：${cr.bandsText()}，其余 0\n· 每段在这段最后一次作业时算信誉分；这一段有作业记录的同学（小组：有组员有记录）才计入\n· 只加不扣：扣分的段记 0；只扣不加：加分的段记 0；不计入：只显示信誉分，不影响积分\n· 每人积分重置后只算重置之后的段；修改后历史积分自动重算",
                                 fontSize = 11.sp, lineHeight = 17.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp),
                             )
                         }
@@ -698,7 +748,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsIndex(vm: App
         SuperArrow(
             title = "作业计分",
             summary = "初始 ${r.initial.fmt()} 分 · " + (if (r.escalation.enabled) "未交${r.escalation.modeLabel}" else "未交 ${r.missing.signed()}") +
-                " · 复审" + (if (r.review.enabled) "不合格 ×${r.review.multiplier.fmt()}" else "已关闭") + (if (r.plagiarism.enabled) " · 抄袭 ×${r.plagiarism.multiplier.fmt()}${if (r.plagiarism.escalate) "起累犯加重" else ""}" else "") + (if (r.leader.enabled) " · 组长${r.leader.periodLabel}奖惩${if (r.leader.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.leader.mode) + "）" else ""}" else "") + (if (r.groupRank.enabled) " · 小组${r.groupRank.periodLabel}排名${if (r.groupRank.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.groupRank.mode) + "）" else ""}" else "") + if (r.streakBonus.enabled) " · 连续交奖励" else "",
+                " · 复审" + (if (r.review.enabled) "不合格 ×${r.review.multiplier.fmt()}" else "已关闭") + (if (r.plagiarism.enabled) " · 抄袭 ×${r.plagiarism.multiplier.fmt()}${if (r.plagiarism.escalate) "起累犯加重" else ""}" else "") + (if (r.leader.enabled) " · 组长${r.leader.periodLabel}奖惩${if (r.leader.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.leader.mode) + "）" else ""}" else "") + (if (r.groupRank.enabled) " · 小组${r.groupRank.periodLabel}排名${if (r.groupRank.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.groupRank.mode) + "）" else ""}" else "") + (if (r.credit.active) " · 信誉分（个人${com.deepshawn.hwcounter.data.CreditRules.modeLabel(r.credit.personal)}、小组${com.deepshawn.hwcounter.data.CreditRules.modeLabel(r.credit.group)}）" else "") + if (r.streakBonus.enabled) " · 连续交奖励" else "",
             onClick = { open("scoring") },
         )
         SuperArrow(title = "考试计分", summary = if (r.exam.enabled) "按得分率分 ${r.exam.bands.size} 档自动加减积分" else "已关闭", onClick = { open("exam") })

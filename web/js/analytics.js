@@ -3,7 +3,7 @@
 import {
   summary, studentStats, autoPoints, ruleOf, examDelta, leaderOf, leaderPeriods, groupRankPeriods, latestRecharges,
   rechargeStart, rechargeCounts, startOfDay, fmtNum, signed, defaultGroupRank, copiedFrom, copiedBy, plagiarized, compareStudentNumbers,
-  defaultPlagiarism, plagiarismFactor, UNKNOWN_PROVIDER, unknownProvider,
+  defaultPlagiarism, plagiarismFactor, UNKNOWN_PROVIDER, unknownProvider, creditAll, creditGroups,
 } from './model.js';
 
 const DAY = 86_400_000;
@@ -735,6 +735,50 @@ export function groupStockBoard(c, rules, span, now = Date.now(), win = 10) {
     return sum(sorted.filter((x) => x.createdAt >= a && x.createdAt < b), (x) => ms.filter((m) => st(x, m.id) !== 'NONE').length)
       + sum((c.exams || []).filter((e) => e.date >= a && e.date < b), (e) => ms.filter((m) => e.scores?.[m.id] != null).length); };
   return buildBoard(span, from, step, now, events, valueAt, volumeOf, names);
+}
+
+// ---------------- 信誉分、小组关注度行情（与安卓 MetricStock.kt 同口径） ----------------
+const recordVolume = (c, a, b, ids) => sum(c.assignments.filter((x) => x.createdAt >= a && x.createdAt < b), (x) => Object.entries(x.statuses).filter(([id, k]) => k !== 'NONE' && (!ids || ids.has(id))).length)
+  + sum((c.exams || []).filter((e) => e.date >= a && e.date < b), (e) => Object.keys(e.scores || {}).filter((id) => !ids || ids.has(id)).length);
+const recordEvents = (c) => [...new Set([...c.assignments.map((a) => a.createdAt), ...(c.exams || []).map((e) => e.date)])].sort((a, b) => a - b);
+const avgOf = (m) => (k) => { const v = Object.values(m); return k == null ? (v.length ? avg(v) : 0) : m[k] ?? 0; };
+/** 个人 · 信誉分（越高越好） */
+export function creditStockBoard(c, span, now = Date.now()) {
+  const [from, step] = stockWindow(c, span, now);
+  const ids = c.students.map((s) => s.id);
+  const valueAt = (t) => avgOf(Object.fromEntries(creditAll(c, t).filter((r) => r.hasData).map((r) => [r.student.id, r.index])));
+  return buildBoard(span, from, step, now, recordEvents(c), valueAt, (a, b, id) => recordVolume(c, a, b, id == null ? null : new Set([id])), ids);
+}
+/** 小组 · 信誉分 */
+export function groupCreditBoard(c, span, now = Date.now()) {
+  const groups = namedGroups(c); const names = Object.keys(groups);
+  if (!names.length) return null;
+  const [from, step] = stockWindow(c, span, now);
+  const valueAt = (t) => avgOf(creditGroups(c, t));
+  const volumeOf = (a, b, g) => recordVolume(c, a, b, new Set((g == null ? Object.values(groups).flat() : groups[g]).map((m) => m.id)));
+  return buildBoard(span, from, step, now, recordEvents(c), valueAt, volumeOf, names);
+}
+/** 各组在某一刻的关注度（组员平均） */
+export function groupAttentionAt(c, rules, t = Date.now(), groups = namedGroups(c)) {
+  const by = Object.fromEntries(attention(c, rules, t).map((x) => [x.student.id, x.index]));
+  return Object.fromEntries(Object.entries(groups).map(([g, ms]) => [g, avg(ms.map((m) => by[m.id] ?? 0))]));
+}
+/** 小组 · 关注度（越高越需要关注） */
+export function groupAttentionBoard(c, rules, span, now = Date.now()) {
+  const groups = namedGroups(c); const names = Object.keys(groups);
+  if (!names.length) return null;
+  const [from, step] = stockWindow(c, span, now);
+  const valueAt = (t) => avgOf(groupAttentionAt(c, rules, t, groups));
+  const volumeOf = (a, b, g) => recordVolume(c, a, b, new Set((g == null ? Object.values(groups).flat() : groups[g]).map((m) => m.id)));
+  return buildBoard(span, from, step, now, [...recordEvents(c), ...c.scores.map((e) => e.time)].sort((a, b) => a - b), valueAt, volumeOf, names);
+}
+/** 行情板块：0 个人关注度、1 小组综合、2 个人信誉分、3 小组信誉分、4 小组关注度 */
+export function boardOf(c, rules, kind, span, now = Date.now()) {
+  if (kind === 1) return groupStockBoard(c, rules, span, now);
+  if (kind === 2) return creditStockBoard(c, span, now);
+  if (kind === 3) return groupCreditBoard(c, span, now);
+  if (kind === 4) return groupAttentionBoard(c, rules, span, now);
+  return stockBoard(c, rules, span, now);
 }
 
 // ---------------- 小组分析 ----------------

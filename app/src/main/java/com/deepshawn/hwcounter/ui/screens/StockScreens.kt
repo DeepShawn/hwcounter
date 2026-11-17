@@ -102,9 +102,45 @@ class StockUi {
     /** 排序：0 关注度，1 涨幅，2 跌幅，3 学号 */
     var sort by mutableIntStateOf(0)
     var kline by mutableStateOf(false)
-    /** 0 个人（关注度），1 小组（综合分） */
+    /** 0 个人，1 小组 */
     var kind by mutableIntStateOf(0)
+    /** 0 关注度，1 信誉分，2 小组综合分 */
+    var metric by mutableIntStateOf(0)
+    /** 股票栏目第二级：0 行情，1 炒股 */
+    var level2 by mutableIntStateOf(0)
 }
+
+/** 后台计算任一板块的行情：metric 0 关注度 / 1 信誉分 / 2 小组综合；kind 0 个人 / 1 小组 */
+@Composable
+fun rememberStockBoard(c: SchoolClass, rules: ScoreRules, span: AttentionStock.Span, metric: Int, kind: Int): AttentionStock.Board? {
+    var board by remember { mutableStateOf<AttentionStock.Board?>(null) }
+    LaunchedEffect(c, rules, span, metric, kind) {
+        board = withContext(Dispatchers.Default) {
+            runCatching {
+                when {
+                    metric == 2 -> com.deepshawn.hwcounter.data.GroupStock.board(c, rules, span)
+                    metric == 1 && kind == 0 -> com.deepshawn.hwcounter.data.MetricStock.personalCredit(c, span)
+                    metric == 1 -> com.deepshawn.hwcounter.data.MetricStock.groupCredit(c, span)
+                    kind == 1 -> com.deepshawn.hwcounter.data.MetricStock.groupAttention(c, rules, span)
+                    else -> AttentionStock.board(c, rules, span)
+                }
+            }.getOrNull()
+        }
+    }
+    return board
+}
+
+/** 信誉分等级颜色 */
+fun creditColor(l: com.deepshawn.hwcounter.data.Credit.Level) = when (l) {
+    com.deepshawn.hwcounter.data.Credit.Level.A -> Color(0xFF16A34A)
+    com.deepshawn.hwcounter.data.Credit.Level.B -> Color(0xFF2F6BFF)
+    com.deepshawn.hwcounter.data.Credit.Level.C -> Color(0xFFE8A400)
+    com.deepshawn.hwcounter.data.Credit.Level.D -> Color(0xFFDC2626)
+    com.deepshawn.hwcounter.data.Credit.Level.NONE -> Color(0xFF9CA3AF)
+}
+
+/** 个股列表里每位同学的指数、等级、主要原因 */
+data class StockInfo(val index: Double?, val level: String, val color: Color, val reason: String?)
 
 @Composable
 fun rememberStockUi() = remember { StockUi() }
@@ -323,10 +359,10 @@ private fun MiniChart(q: AttentionStock.Quote, color: Color, modifier: Modifier)
 
 /** 涨跌胶囊（点按切换 涨跌额 / 涨跌幅 / 等级） */
 @Composable
-private fun Pill(q: AttentionStock.Quote, level: Attention.Level?, ui: StockUi, sc: StockColors) {
+private fun Pill(q: AttentionStock.Quote, level: StockInfo?, ui: StockUi, sc: StockColors) {
     val (text, bg) = when (ui.pill) {
         1 -> pctOf(q) to sc.of(q.change)
-        2 -> (level?.label ?: "—") to (level?.let { levelColor(it) } ?: sc.flat)
+        2 -> (level?.level ?: "—") to (level?.color ?: sc.flat)
         else -> s2(q.change) to sc.of(q.change)
     }
     Box(
@@ -338,13 +374,13 @@ private fun Pill(q: AttentionStock.Quote, level: Attention.Level?, ui: StockUi, 
 /** 滚动行情条 */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TickerTape(c: SchoolClass, b: AttentionStock.Board, sc: StockColors, onOpen: (String) -> Unit) {
+private fun TickerTape(c: SchoolClass, b: AttentionStock.Board, sc: StockColors, code: String = "ATTN", onOpen: (String) -> Unit) {
     val colors = MiuixTheme.colorScheme
     val items = c.students.mapNotNull { s -> b.stocks[s.id]?.let { s to it } }.sortedByDescending { abs(it.second.change) }.take(20)
     if (items.isEmpty()) return
     val mod = if (motionOn() && android.os.Build.FINGERPRINT != "robolectric") Modifier.basicMarquee(iterations = Int.MAX_VALUE, velocity = 36.dp) else Modifier.horizontalScroll(rememberScrollState())
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(10.dp)).background(colors.secondaryContainer.copy(alpha = 0.6f)).padding(vertical = 7.dp).then(mod)) {
-        (listOf(Triple("ATTN", b.market, null as Student?)) + items.map { Triple(ticker(it.first), it.second, it.first) }).forEach { (t, q, s) ->
+        (listOf(Triple(code, b.market, null as Student?)) + items.map { Triple(ticker(it.first), it.second, it.first) }).forEach { (t, q, s) ->
             Spacer(Modifier.width(14.dp))
             Row(if (s != null) Modifier.clickable { onOpen(s.id) } else Modifier, verticalAlignment = Alignment.CenterVertically) {
             Text(t, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
@@ -362,22 +398,32 @@ private fun TickerTape(c: SchoolClass, b: AttentionStock.Board, sc: StockColors,
 
 private val spans = AttentionStock.Span.entries
 
-/** 统计页“关注”栏目的股票模式 */
+/** 统计页“股票 → 行情”：关注度 / 信誉分 / 小组综合分，个人 / 小组 */
 fun LazyListScope.stockSections(
     c: SchoolClass,
     board: AttentionStock.Board?,
     ui: StockUi,
     attention: List<Attention.Result>,
-    groupBoard: AttentionStock.Board? = null,
+    credit: List<com.deepshawn.hwcounter.data.Credit.Result> = emptyList(),
     onOpenGroup: (String) -> Unit = {},
     onOpen: (String) -> Unit,
 ) {
     if (c.students.isEmpty()) { item { EmptyState("📈", "还没有学生", "") }; return }
-    item(key = "stk-kind") { HTabs(listOf("个人 · 关注度", "小组 · 综合分"), ui.kind, { ui.kind = it }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), height = 36.dp) }
-    if (ui.kind == 1) { groupStockSections(c, groupBoard, ui, onOpenGroup); return }
+    item(key = "stk-metric") {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            HTabs(listOf("关注度", "信誉分", "小组综合"), ui.metric, { ui.metric = it }, height = 36.dp)
+            if (ui.metric != 2) HTabs(listOf("个人", "小组"), ui.kind, { ui.kind = it }, height = 34.dp)
+        }
+    }
+    if (ui.metric == 2 || ui.kind == 1) { groupStockSections(c, board, ui, onOpenGroup, if (ui.metric == 2) 2 else ui.metric); return }
+    val isCredit = ui.metric == 1
+    val code = if (isCredit) "CRDT" else "ATTN"
+    val infos: Map<String, StockInfo> = if (isCredit) credit.associate { r ->
+        r.student.id to StockInfo(r.index.takeIf { r.hasData }, r.level.label, creditColor(r.level), r.weak.firstOrNull()?.label?.let { "${it}偏弱" } ?: r.strong.firstOrNull()?.label?.let { "${it}好" })
+    } else attention.associate { a -> a.student.id to StockInfo(a.index, a.level.label, levelColor(a.level), a.top.firstOrNull()?.label) }
     item(key = "stk-span") { HTabs(spans.map { it.label }, spans.indexOf(ui.span), { ui.span = spans[it] }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), height = 36.dp) }
     if (board == null) { item(key = "stk-loading") { Text("正在计算行情…", Modifier.fillMaxWidth().padding(32.dp), textAlign = TextAlign.Center, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }; return }
-    item(key = "stk-tape") { Column(Modifier.padding(vertical = 6.dp)) { TickerTape(c, board, stockColors(), onOpen) } }
+    item(key = "stk-tape") { Column(Modifier.padding(vertical = 6.dp)) { TickerTape(c, board, stockColors(), code, onOpen) } }
     item(key = "stk-market") {
         val sc = stockColors()
         val colors = MiuixTheme.colorScheme
@@ -385,9 +431,9 @@ fun LazyListScope.stockSections(
         HCard(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("ATTN", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(code, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.width(6.dp))
-                    Text("关注指数 · 全班平均", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                    Text(if (isCredit) "信誉指数 · 全班平均" else "关注指数 · 全班平均", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
                     Spacer(Modifier.weight(1f))
                     if (board.span != ui.span) Text("计算中…", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
                 }
@@ -405,7 +451,9 @@ fun LazyListScope.stockSections(
                         "上涨" to "${board.up} 家", "下跌" to "${board.down} 家",
                     ),
                 )
-                Text("指数越高越需要关注：上涨表示情况变差，下跌表示在好转。成交量为这段时间的记录条数（作业登记、加减分、考试成绩）。", fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 8.dp))
+                Text(
+                    if (isCredit) "信誉分越高越好：由交齐、按时、优秀、连续交、诚信（复审、抄袭）、进步、考试加权算出，上涨表示在变好。成交量为这段时间的记录条数（作业登记、考试成绩）。"
+                    else "指数越高越需要关注：上涨表示情况变差，下跌表示在好转。成交量为这段时间的记录条数（作业登记、加减分、考试成绩）。", fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 8.dp))
             }
         }
     }
@@ -434,36 +482,36 @@ fun LazyListScope.stockSections(
         Column {
             SmallTitle("自选股 · 点胶囊切换涨跌额 / 涨跌幅 / 等级")
             Row(Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("关注度", "涨幅", "跌幅", "学号").forEachIndexed { i, t -> Chip2(t, ui.sort == i, { ui.sort = i }) }
+                listOf(if (isCredit) "信誉分" else "关注度", "涨幅", "跌幅", "学号").forEachIndexed { i, t -> Chip2(t, ui.sort == i, { ui.sort = i }) }
             }
         }
     }
-    val byId = attention.associateBy { it.student.id }
-    val rows = c.students.mapNotNull { s -> board.stocks[s.id]?.let { Triple(s, it, byId[s.id]) } }.let { l ->
+    val rows = c.students.mapNotNull { s -> board.stocks[s.id]?.let { Triple(s, it, infos[s.id]) } }.let { l ->
         when (ui.sort) {
             1 -> l.sortedByDescending { it.second.change }
             2 -> l.sortedBy { it.second.change }
             3 -> l.sortedWith(compareBy({ it.first.no.toIntOrNull() ?: Int.MAX_VALUE }, { it.first.no }))
-            else -> l.sortedByDescending { it.third?.index ?: it.second.last }
+            else -> l.sortedByDescending { it.third?.index ?: if (isCredit) -1.0 else it.second.last }
         }
     }
     itemsIndexed(rows, key = { _, r -> "stk" + r.first.id }) { i, (s, q, a) ->
+        val metric = if (isCredit) 1 else 0
         val sc = stockColors()
         val colors = MiuixTheme.colorScheme
         Row(
-            Modifier.listCell(i, rows.size).clickable { onOpen(s.id) }.padding(horizontal = 14.dp, vertical = 11.dp),
+            Modifier.listCell(i, rows.size).clickable { onOpen(s.id + "#" + metric) }.padding(horizontal = 14.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
                 Text(ticker(s), fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1)
-                Text(s.name + (a?.top?.firstOrNull()?.let { " · ${it.label}" } ?: ""), fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(s.name + (a?.reason?.let { " · $it" } ?: ""), fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             MiniChart(q, sc.of(q.change), Modifier.width(70.dp).height(30.dp))
             Spacer(Modifier.width(12.dp))
             Column(horizontalAlignment = Alignment.End) {
-                Text(p2(a?.index ?: q.last), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(a?.index?.let { p2(it) } ?: if (isCredit) "—" else p2(q.last), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Spacer(Modifier.height(3.dp))
-                Pill(q, a?.level, ui, sc)
+                Pill(q, a, ui, sc)
             }
         }
     }
@@ -472,16 +520,22 @@ fun LazyListScope.stockSections(
 // ---------------- 个股详情 ----------------
 
 @Composable
-fun StockDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
+fun StockDetailScreen(vm: AppViewModel, data: AppData, studentId: String, metric: Int = 0) {
     val kit = LocalKit.current
     val colors = MiuixTheme.colorScheme
     val c = vm.currentClass(data) ?: return
     val rules = data.settings.rules
     val ui = rememberStockUi()
-    val board = rememberBoard(c, rules, ui.span)
+    val isCredit = metric == 1
+    val board = rememberStockBoard(c, rules, ui.span, if (isCredit) 1 else 0, 0)
     val attention = remember(c, rules) { Attention.all(c, rules) }
+    val credits = remember(c) { com.deepshawn.hwcounter.data.Credit.all(c) }
     val a = attention.firstOrNull { it.student.id == studentId } ?: run { EmptyState("👤", "找不到这位同学", ""); return }
+    val cr = credits.firstOrNull { it.student.id == studentId }
     val s = a.student
+    val idxNow = if (isCredit) (cr?.index ?: 0.0) else a.index
+    val lvLabel = if (isCredit) (cr?.level?.label ?: "暂无") else a.level.label
+    val lvColor = if (isCredit) creditColor(cr?.level ?: com.deepshawn.hwcounter.data.Credit.Level.NONE) else levelColor(a.level)
     val score = remember(c, rules, studentId) { c.studentStats(rules).firstOrNull { it.student.id == studentId }?.score?.let { rules.shown(it) } }
     val sc = stockColors()
     var sel by remember(board) { mutableStateOf<Int?>(null) }
@@ -492,15 +546,15 @@ fun StockDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
             HCard(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("关注度 · ${s.name}", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                        Text((if (isCredit) "信誉分 · " else "关注度 · ") + s.name, fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
                         Spacer(Modifier.width(6.dp))
-                        val col = levelColor(a.level)
-                        Text(a.level.label, fontSize = 10.sp, color = col, modifier = Modifier.clip(CircleShape).background(col.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 1.dp))
+                        val col = lvColor
+                        Text(lvLabel, fontSize = 10.sp, color = col, modifier = Modifier.clip(CircleShape).background(col.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 1.dp))
                         Spacer(Modifier.weight(1f))
                         if (board != null && board.span != ui.span) Text("计算中…", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
                     }
                     Spacer(Modifier.height(6.dp))
-                    if (q == null) Text(p2(a.index), fontSize = 34.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    if (q == null) Text(p2(idxNow), fontSize = 34.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     else QuoteHeader(q, sel, board.span, sc)
                     Spacer(Modifier.height(8.dp))
                     HTabs(spans.map { it.label }, spans.indexOf(ui.span), { ui.span = spans[it] }, height = 34.dp)
@@ -513,21 +567,39 @@ fun StockDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
         if (q != null && board != null) {
             group("关键数据", key = "stats") {
                 Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    val rank = attention.indexOfFirst { it.student.id == studentId } + 1
+                    val rank = if (isCredit) credits.indexOfFirst { it.student.id == studentId } + 1 else attention.indexOfFirst { it.student.id == studentId } + 1
                     val mk = board.market
                     KeyStats(
                         listOf(
                             "开盘" to p2(q.base), "最高" to p2(q.high),
                             "前收" to p2(q.prevClose), "最低" to p2(q.low),
                             "振幅" to if (q.base < 1) "—" else "%.2f%%".format((q.high - q.low) / q.base * 100), "成交量" to "${q.volume}",
-                            "积分（市值）" to (score?.fmt() ?: "—"), "关注排名" to "$rank / ${attention.size}",
+                            "积分（市值）" to (score?.fmt() ?: "—"), (if (isCredit) "信誉排名" else "关注排名") to "$rank / ${attention.size}",
                             "同期大盘" to "${s2(mk.change)}", "相对大盘" to s2(q.change - mk.change),
                         ),
                     )
                 }
             }
         }
-        group("成分 · 关注度构成", key = "parts") {
+        if (isCredit) group("成分 · 信誉分构成（越高越好）", key = "cparts") {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (cr == null || !cr.hasData) Text("还没有作业记录和考试成绩", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                cr?.parts?.sortedByDescending { it.weight }?.forEach { p ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(p.label, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                            Text(p.detail, fontSize = 11.sp, color = colors.onSurfaceVariantSummary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("${(p.value * 100).roundToInt()}%", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, fontFamily = FontFamily.Monospace, color = if (p.value >= 0.9) Color(0xFF16A34A) else if (p.value < 0.6) Color(0xFFDC2626) else colors.onSurface)
+                            Text("权重 ${(p.weight * 100).roundToInt()}% · ${p2(p.points)} 分", fontSize = 10.sp, color = colors.onSurfaceVariantSummary)
+                        }
+                    }
+                }
+            }
+        }
+        if (!isCredit) group("成分 · 关注度构成", key = "parts") {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 a.parts.sortedByDescending { it.points }.forEach { p ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -582,7 +654,15 @@ private fun groupsOf(c: SchoolClass) = c.students.filter { it.group.isNotBlank()
 /** 小组名次（按最新综合分） */
 private fun ranksOf(b: AttentionStock.Board): Map<String, Int> = b.stocks.mapValues { (_, q) -> 1 + b.stocks.values.count { it.last > q.last + 1e-9 } }
 
-fun LazyListScope.groupStockSections(c: SchoolClass, board: AttentionStock.Board?, ui: StockUi, onOpenGroup: (String) -> Unit) {
+/** 小组板块的代码、名称、说明：metric 0 关注度、1 信誉分、2 综合分 */
+private fun groupMeta(metric: Int) = when (metric) {
+    0 -> Triple("GATT", "小组关注指数 · 各组平均", "小组关注度 = 组员关注度的平均（0–100）。越高越需要关注：上涨表示小组情况变差。")
+    1 -> Triple("GCRD", "小组信誉指数 · 各组平均", "小组信誉分 = 组员信誉分的平均（0–100）。越高越好：上涨表示小组在变好。")
+    else -> Triple("GRP", "小组综合指数 · 各组平均", "综合分 = 最近 10 次作业的交齐率、少扣分、优秀率和考试得分率加权（与小组对抗排名同一口径）× 100。综合分越高越好：上涨表示小组在变好。")
+}
+
+fun LazyListScope.groupStockSections(c: SchoolClass, board: AttentionStock.Board?, ui: StockUi, onOpenGroup: (String) -> Unit, metric: Int = 2) {
+    val (gcode, gtitle, gnote) = groupMeta(metric)
     if (groupsOf(c).isEmpty()) { item(key = "gst-empty") { EmptyState("👥", "还没有小组", "在名单里给同学填写小组（每组至少 2 人）") }; return }
     item(key = "gst-span") { HTabs(spans.map { it.label }, spans.indexOf(ui.span), { ui.span = spans[it] }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), height = 36.dp) }
     if (board == null) { item(key = "gst-loading") { Text("正在计算行情…", Modifier.fillMaxWidth().padding(32.dp), textAlign = TextAlign.Center, color = MiuixTheme.colorScheme.onSurfaceVariantSummary) }; return }
@@ -593,9 +673,9 @@ fun LazyListScope.groupStockSections(c: SchoolClass, board: AttentionStock.Board
         HCard(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("GRP", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(gcode, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(Modifier.width(6.dp))
-                    Text("小组综合指数 · 各组平均", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                    Text(gtitle, fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
                     Spacer(Modifier.weight(1f))
                     if (board.span != ui.span) Text("计算中…", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
                 }
@@ -613,7 +693,7 @@ fun LazyListScope.groupStockSections(c: SchoolClass, board: AttentionStock.Board
                         "上涨" to "${board.up} 组", "下跌" to "${board.down} 组",
                     ),
                 )
-                Text("综合分 = 最近 10 次作业的交齐率、少扣分、优秀率和考试得分率加权（与小组对抗排名同一口径）× 100。综合分越高越好：上涨表示小组在变好。", fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 8.dp))
+                Text(gnote, fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 8.dp))
             }
         }
     }
@@ -625,7 +705,7 @@ fun LazyListScope.groupStockSections(c: SchoolClass, board: AttentionStock.Board
         val colors = MiuixTheme.colorScheme
         val members = groupsOf(c)[g].orEmpty()
         val leader = c.leaderOf(g)
-        Row(Modifier.listCell(i, rows.size).clickable { onOpenGroup(g) }.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.listCell(i, rows.size).clickable { onOpenGroup(g + "#" + metric) }.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(g, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1)
                 Text("${members.size} 人" + (leader?.let { " · 组长 ${it.name}" } ?: ""), fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -651,17 +731,18 @@ fun LazyListScope.groupStockSections(c: SchoolClass, board: AttentionStock.Board
 }
 
 @Composable
-fun GroupStockDetailScreen(vm: AppViewModel, data: AppData, group: String) {
+fun GroupStockDetailScreen(vm: AppViewModel, data: AppData, group: String, metric: Int = 2) {
     val kit = LocalKit.current
     val colors = MiuixTheme.colorScheme
     val c = vm.currentClass(data) ?: return
     val rules = data.settings.rules
     val ui = rememberStockUi()
-    val board = rememberGroupBoard(c, rules, ui.span)
+    val board = rememberStockBoard(c, rules, ui.span, metric, 1)
     val sc = stockColors()
     var sel by remember(board) { mutableStateOf<Int?>(null) }
     val q = board?.stocks?.get(group)
     val members = groupsOf(c)[group].orEmpty()
+    val metricName = when (metric) { 0 -> "小组关注度"; 1 -> "小组信誉分"; else -> "小组综合分" }
     val leader = c.leaderOf(group)
     val report = remember(c, rules) { com.deepshawn.hwcounter.data.GroupAnalysis.report(c, rules) }
     val team = report.teams.firstOrNull { it.name == group }
@@ -670,7 +751,7 @@ fun GroupStockDetailScreen(vm: AppViewModel, data: AppData, group: String) {
             HCard(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("小组综合分 · ${members.size} 人" + (leader?.let { " · 组长 ${it.name}" } ?: ""), fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                        Text("$metricName · ${members.size} 人" + (leader?.let { " · 组长 ${it.name}" } ?: ""), fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
                         Spacer(Modifier.weight(1f))
                         if (board != null && board.span != ui.span) Text("计算中…", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
                     }

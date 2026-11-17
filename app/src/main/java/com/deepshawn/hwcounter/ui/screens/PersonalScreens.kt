@@ -237,6 +237,25 @@ fun PersonalReportScreen(vm: AppViewModel, data: AppData, studentId: String) {
                 }
             }
         }
+        r.credit?.takeIf { it.hasData }?.let { cr ->
+            group("信誉分 ${cr.index.fmt()}（${cr.level.label}）" + (r.groupCredit?.let { " · 小组 ${it.fmt()}" } ?: ""), key = "credit") {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("越优秀越高（0–100）", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
+                    if (r.creditTrend.count { it > 0 } >= 2) TrendLine(r.creditTrend.map { (it / 100).toFloat() }, r.creditTrend.indices.map { if (it == r.creditTrend.lastIndex) "本周" else "${r.creditTrend.size - 1 - it}周前" },
+                        r.creditTrend.mapIndexed { i, v -> "${if (i == r.creditTrend.lastIndex) "现在" else "${r.creditTrend.size - 1 - i} 周前"} 信誉分 ${v.roundToInt()}" }, height = 110.dp)
+                    cr.parts.forEach { p ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(p.label, Modifier.width(64.dp), fontSize = 13.sp)
+                            Box(Modifier.weight(1f).height(8.dp).clip(CircleShape).background(colors.secondaryContainer)) {
+                                Box(Modifier.fillMaxWidth(p.value.toFloat().coerceIn(0.02f, 1f)).height(8.dp).clip(CircleShape).background(creditColor(com.deepshawn.hwcounter.data.Credit.levelOf(p.value * 100))))
+                            }
+                            Text("${(p.value * 100).roundToInt()}%", Modifier.width(44.dp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End)
+                        }
+                        Text(p.detail + " · 权重 ${(p.weight * 100).roundToInt()}%", fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 64.dp))
+                    }
+                }
+            }
+        }
         // 作业概况
         group("作业概况（应交 ${r.expected} 次）", key = "hw") {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

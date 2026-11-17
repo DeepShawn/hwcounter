@@ -1,5 +1,7 @@
 package com.deepshawn.hwcounter.export
 
+import com.deepshawn.hwcounter.data.CreditRules
+
 import com.deepshawn.hwcounter.data.Analytics
 import com.deepshawn.hwcounter.data.HwStatus
 import com.deepshawn.hwcounter.data.SchoolClass
@@ -140,6 +142,22 @@ object AnalysisExport {
             widths = listOf(12.0, 10.0, 8.0, 12.0, 8.0, 12.0, 12.0, 14.0)
             rowCells(header("小组", "组长", "人数", "交齐率%", "缺交", "平均积分", "积分变化", "考试平均得分率%"))
             r.groupStats.forEach { g -> row(g.name, g.leader?.name ?: "", g.size, pct(g.rate), g.missing, g.avgScore.fmt(), g.scoreDelta.fmt(), g.examPct?.let { pct(it) } ?: "") }
+        }
+        r.credit?.takeIf { it.results.isNotEmpty() }?.let { cs ->
+            x.sheet("信誉分") {
+                widths = listOf(12.0, 10.0, 10.0, 8.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 30.0)
+                rowCells(header("学号", "姓名", "小组", "等级", "信誉分", "交齐%", "按时%", "优秀%", "连续交%", "诚信%", "考试%", "偏弱项"))
+                cs.results.forEach { c ->
+                    fun part(k: String) = c.parts.firstOrNull { it.key == k }?.let { pct(it.value) } ?: ""
+                    row(c.student.no, c.student.name, c.student.group, c.level.label, if (c.hasData) c.index.fmt() else "", part("rate"), part("ontime"), part("excellent"), part("streak"), part("integrity"), part("exam"), c.weak.joinToString("；") { "${it.label}：${it.detail}" })
+                }
+                row()
+                rowCells(header("小组", "小组信誉分"))
+                cs.groups.forEach { (g, v) -> row(g, v.fmt()) }
+                row()
+                row("全班平均", cs.average.fmt())
+                row("信誉分加减分", if (cs.rules.active) "个人${CreditRules.modeLabel(cs.rules.personal)}、小组${CreditRules.modeLabel(cs.rules.group)}，本时段合计 ${cs.pointsTotal.fmt()}" else "不计入积分")
+            }
         }
         x.sheet("积分") {
             widths = listOf(12.0, 10.0, 10.0, 12.0, 8.0)

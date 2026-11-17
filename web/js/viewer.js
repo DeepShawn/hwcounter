@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from '../vendor
 import htm from '../vendor/htm.module.js';
 import {
   STATUS, normalizeData, summary, studentStats, compareStudentNumbers, autoPoints, ruleOf, fmtNum, signed, fmtDate,
-  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, defaultReview, plagiarismDesc, leaderPeriods, leaderOf, groupRankPoints,
+  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, defaultReview, plagiarismDesc, leaderPeriods, leaderOf, groupRankPoints, creditPoints, creditLevel,
 } from './model.js';
 import { api } from './cloud.js';
 import { StatsPage, PlagGraph } from './statspage.js';
@@ -143,6 +143,7 @@ function ledger(c, rules, sid) {
     if (d) rows.push({ key: 'e' + e.id, t: e.date, d, title: `考试「${e.title}」${(e.absent || []).includes(sid) ? '缺考' : fmtNum(e.scores?.[sid] ?? 0) + ' 分'}`, kind: '考试', counts: !last || rechargeCounts(last, e.date) });
   }
   for (const x of groupRankPoints(c, rules)[sid] || []) rows.push({ key: 'g' + x.period.key, t: x.period.time, d: x.points, title: `小组排名（${x.standing.group}）${x.period.label}第 ${x.standing.rank} 名（综合 ${Math.round(x.standing.score * 100)}）`, kind: '小组排名', counts: !last || rechargeCounts(last, x.period.time) });
+  for (const x of creditPoints(c, rules)[sid] || []) rows.push({ key: (x.group ? 'cg' : 'cp') + x.period.key, t: x.period.time, d: x.points, title: x.group ? `信誉分 ${x.period.label}：小组（${x.group}）信誉 ${fmtNum(x.credit)}（${creditLevel(x.credit)}）` : `信誉分 ${x.period.label}：个人信誉 ${fmtNum(x.credit)}（${creditLevel(x.credit)}）`, kind: '信誉分', counts: !last || rechargeCounts(last, x.period.time) });
   for (const p of leaderPeriods(c, rules)[sid] || []) if (p.points) rows.push({ key: 'l' + p.key, t: p.time, d: p.points, title: `组长（${p.group}）${p.label}：${p.parts.map(([t, v]) => `${t} ${signed(v)}`).join('；')}`, kind: '组长', counts: !last || rechargeCounts(last, p.time) });
   for (const r of c.recharges || []) if ((r.studentIds || []).includes(sid)) rows.push({ key: 'r' + r.id, t: r.effectiveAt ?? r.time, d: null, title: `积分重置为 ${fmtNum(r.target)}${r.note ? ' · ' + r.note : ''}`, kind: '重置', counts: true });
   return rows.sort((x, y) => y.t - x.t);
