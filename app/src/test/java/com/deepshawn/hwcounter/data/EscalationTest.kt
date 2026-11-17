@@ -63,6 +63,47 @@ class EscalationTest {
         assertEquals(100.0 - 8, score(c, FLAT), 1e-9)
     }
 
+    @Test fun modeOneIsNormalDoubling() {
+        // 第一种：正常加倍 2、4、8、16，封顶 30
+        val r = rules.copy(escalation = MissingEscalation(mode = 1))
+        val c = cls(M, M, M, M, M)
+        assertEquals(listOf(-2.0, -4.0, -8.0, -16.0, -30.0), c.assignments.map { c.autoPoints(r, "s1").getValue(it.id) })
+        assertEquals("2、4、8、16…", MissingEscalation.seq(2.0, 1))
+        // 交过一次重新算；请假不打断
+        val c2 = cls(M, L, M, S, M)
+        assertEquals(listOf(-2.0, 0.0, -4.0, 0.0, -2.0), c2.assignments.map { c2.autoPoints(r, "s1").getValue(it.id) })
+    }
+
+    @Test fun modeThreeTieredMultipliers() {
+        // 第三种：在第二种（2、2、4、8、16、32）上分段：第 1–2 次 ×1、第 3–4 次 ×1.5、第 5 次起 ×2
+        val e = MissingEscalation(mode = 3, cap = 0.0)
+        val r = rules.copy(escalation = e)
+        val c = cls(M, M, M, M, M, M)
+        assertEquals(listOf(-2.0, -2.0, -6.0, -12.0, -32.0, -64.0), c.assignments.map { c.autoPoints(r, "s1").getValue(it.id) })
+        assertEquals("第 1–2 次 ×1、第 3–4 次 ×1.5、第 5 次起 ×2（按连续未交次数）", e.tiersText())
+        // 在第一种（2、4、8、16）上分段，默认上限 30 在乘完倍率后封顶
+        val r1 = rules.copy(escalation = MissingEscalation(mode = 3, tierBase = 1))
+        assertEquals(listOf(-2.0, -4.0, -12.0, -24.0, -30.0), cls(M, M, M, M, M).let { x -> x.assignments.map { x.autoPoints(r1, "s1").getValue(it.id) } })
+        // 自定义分段：第 2 次起 ×3
+        val r2 = rules.copy(escalation = MissingEscalation(mode = 3, tiers = listOf(EscalationTier(2, 3.0))))
+        assertEquals(listOf(-2.0, -6.0, -12.0), cls(M, M, M).let { x -> x.assignments.map { x.autoPoints(r2, "s1").getValue(it.id) } })
+        assertEquals("第 1 次 ×1、第 2 次起 ×3（按连续未交次数）", r2.escalation.tiersText())
+    }
+
+    @Test fun modeThreeByTotalCount() {
+        // 按本轮累计次数分段：交过一次后连续次数重新算，但累计次数继续，倍率按累计次数
+        val r = rules.copy(escalation = MissingEscalation(mode = 3, tierBy = "total"))
+        val c = cls(M, S, M, S, M, S, M)
+        val p = c.assignments.map { c.autoPoints(r, "s1").getValue(it.id) }.filterIndexed { i, _ -> i % 2 == 0 }
+        assertEquals(listOf(-2.0, -2.0, -3.0, -3.0), p)
+        // 按连续次数：每次都是连续第 1 次，×1
+        val r2 = rules.copy(escalation = MissingEscalation(mode = 3))
+        assertEquals(listOf(-2.0, -2.0, -2.0, -2.0), c.assignments.map { c.autoPoints(r2, "s1").getValue(it.id) }.filterIndexed { i, _ -> i % 2 == 0 })
+        // 流水里写明分段倍率
+        val rows = c.ledger(r, "s1").filter { it.kind == LedgerRow.Kind.AUTO }
+        assertTrue(rows.any { it.title.contains("分段 ×1.5") })
+    }
+
     @Test fun ledgerShowsEscalatedAmounts() {
         val c = cls(M, L, M, M)
         val rows = c.ledger(rules, "s1").filter { it.kind == LedgerRow.Kind.AUTO }

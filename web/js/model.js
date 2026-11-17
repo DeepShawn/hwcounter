@@ -11,7 +11,10 @@ export const STATUS = {
 };
 export const STATUS_KEYS = Object.keys(STATUS);
 
-export const defaultEscalation = () => ({ enabled: true, base: 2, heavyBase: 3, heavyAfter: 6, cap: 30 });
+/** 分段倍率的默认分段：第 1–2 次 ×1、第 3–4 次 ×1.5、第 5 次起 ×2 */
+export const defaultTiers = () => [{ from: 1, factor: 1 }, { from: 3, factor: 1.5 }, { from: 5, factor: 2 }];
+/** mode：1 正常加倍（2、4、8…），2 第 2 次起加倍（2、2、4、8…），3 分段倍率（在 tierBase = 1 或 2 的基础上按 tierBy 计次分段乘倍率） */
+export const defaultEscalation = () => ({ enabled: true, base: 2, heavyBase: 3, heavyAfter: 6, cap: 30, mode: 2, tierBase: 2, tierBy: 'streak', tiers: defaultTiers() });
 export const defaultStreakBonus = () => ({ enabled: true, after: 5, bonus: 1, lateCounts: false });
 /** 作业复审：不合格记一次未交（参与连续 / 累计），这一次扣分 × multiplier；没复审的默认合格 */
 export const defaultReview = () => ({ enabled: true, multiplier: 2 });
@@ -147,14 +150,60 @@ export function examDelta(rules, e, sid) {
 }
 
 /**
- * 未交连续递增扣分（与安卓 Penalty.kt 同算法）：连续未交第 1、2 次扣 base，第 n 次（n≥2）扣 base^(n-1)（2、2、4、8…）；
- * 请假、未登记不打断也不计次，交过一次即重算；本轮累计超 heavyAfter 次后底数为 heavyBase（3、9、27…）；
- * 每次积分重置开始新一轮。返回 作业id → 分。
+ * 未交连续递增扣分（与安卓 Penalty.kt 同算法），三种方式（mode）：
+ * 1 正常加倍：连续未交第 n 次扣 base^n（2、4、8…）；2 第 2 次起加倍：第 1、2 次扣 base，之后 base^(n-1)（2、2、4、8…）；
+ * 3 分段倍率：在 1 或 2（tierBase）基础上按次数分段乘倍率（tiers），次数按连续（tierBy = 'streak'）或本轮累计（'total'）算；
+ * 请假、未登记不打断也不计次，交过一次即重算；本轮累计超 heavyAfter 次后底数为 heavyBase；
+ * 单次上限 cap 在乘完分段倍率后封顶；每次积分重置开始新一轮。
  */
-/** 连续第 n 次未交的扣分（不含上限）：b、b、b²、b³……（第 1、2 次相同，之后每次翻 b 倍） */
-export const escalationAmount = (b, n) => b ** Math.max(1, Math.max(1, n) - 1);
-/** 说明文字：“2、2、4、8…” */
-export const escalationSeq = (b) => [1, 2, 3, 4].map((n) => fmtNum(escalationAmount(b, n))).join('、') + '…';
+/** 连续第 n 次未交的扣分（不含分段倍率和上限）：shape 1：b、b²、b³……；shape 2：b、b、b²、b³…… */
+export const escalationAmount = (b, n, shape = 2) => (shape === 1 ? b ** Math.max(1, n) : b ** Math.max(1, Math.max(1, n) - 1));
+/** 说明文字：“2、2、4、8…”（shape 1 时“2、4、8、16…”） */
+export const escalationSeq = (b, shape = 2) => [1, 2, 3, 4].map((n) => fmtNum(escalationAmount(b, n, shape))).join('、') + '…';
+export const escalationModeLabel = (mode) => (mode === 1 ? '正常加倍' : mode === 3 ? '分段倍率' : '第 2 次起加倍');
+/** 实际使用的加倍方式（1 或 2） */
+export const escalationShape = (e) => (e.mode === 1 ? 1 : e.mode === 3 ? (e.tierBase === 1 ? 1 : 2) : 2);
+/** 第 n 次的分段倍率（不是分段方式时为 1） */
+export function tierFactor(e, n) {
+  if (e.mode !== 3) return 1;
+  let best = null;
+  for (const t of e.tiers || []) if (t.from <= n && (!best || t.from > best.from)) best = t;
+  return best ? best.factor : 1;
+}
+/** 本轮第 total 次未交、连续第 streak 次时应扣的分（正数） */
+export function escalationPenalty(e0, streak, total) {
+  const e = { ...defaultEscalation(), ...(e0 || {}) };
+  const b = total > e.heavyAfter ? e.heavyBase : e.base;
+  const p = escalationAmount(b, streak, escalationShape(e)) * tierFactor(e, e.tierBy === 'total' ? total : streak);
+  return e.cap > 0 ? Math.min(p, e.cap) : p;
+}
+/** 分段说明：“第 1–2 次 ×1、第 3–4 次 ×1.5、第 5 次起 ×2（按连续未交次数）” */
+export function tiersText(e0) {
+  const e = { ...defaultEscalation(), ...(e0 || {}) };
+  const t = [...(e.tiers || [])].sort((x, y) => x.from - y.from);
+  if (!t.length) return '未设分段（都 ×1）';
+  const parts = [];
+  if (t[0].from > 1) parts.push(`第 1${t[0].from > 2 ? `–${t[0].from - 1}` : ''} 次 ×1`);
+  t.forEach((x, i) => {
+    const to = i + 1 < t.length ? t[i + 1].from - 1 : null;
+    parts.push(to == null ? `第 ${x.from} 次起 ×${fmtNum(x.factor)}` : to <= x.from ? `第 ${x.from} 次 ×${fmtNum(x.factor)}` : `第 ${x.from}–${to} 次 ×${fmtNum(x.factor)}`);
+  });
+  return parts.join('、') + `（按${e.tierBy === 'total' ? '本轮累计未交次数' : '连续未交次数'}）`;
+}
+/** 从第 1 次起连续未交依次扣的分（含分段倍率和上限） */
+export function escalationSample(e0, b, k = 4) {
+  const e = { ...defaultEscalation(), ...(e0 || {}) };
+  const out = [];
+  for (let n = 1; n <= k; n++) { const p = escalationAmount(b ?? e.base, n, escalationShape(e)) * tierFactor(e, n); out.push(fmtNum(e.cap > 0 ? Math.min(p, e.cap) : p)); }
+  return out.join('、') + '…';
+}
+/** 一句话说明 */
+export function escalationText(e0) {
+  const e = { ...defaultEscalation(), ...(e0 || {}) };
+  if (e.mode === 1) return `正常加倍：连续未交依次扣 ${escalationSeq(e.base, 1)}`;
+  if (e.mode === 3) return `分段倍率（在${escalationModeLabel(escalationShape(e))}基础上）：${tiersText(e)}，依次扣 ${escalationSample(e)}`;
+  return `第 2 次起加倍：连续未交依次扣 ${escalationSeq(e.base, 2)}`;
+}
 
 export function autoPoints(c, rules, sid) {
   const esc = { ...defaultEscalation(), ...(rules.escalation || {}) };
@@ -174,7 +223,7 @@ export function autoPoints(c, rules, sid) {
       streak++; total++; run = 0;
       let base;
       if (!esc.enabled) base = ruleOf(rules, s);
-      else { const b = total > esc.heavyAfter ? esc.heavyBase : esc.base; let p = escalationAmount(b, streak); if (esc.cap > 0) p = Math.min(p, esc.cap); base = -p; }
+      else base = -escalationPenalty(esc, streak, total);
       // 抄袭与复审不合格可以叠加：两个倍数相乘
       const plagged = pg.enabled && plagiarized(a, sid); if (plagged) plag++;
       const f = plagged ? plagiarismFactor(pg, plag) : 1; const r = rv.enabled && failedReview(a, sid) ? rv.multiplier : 1;

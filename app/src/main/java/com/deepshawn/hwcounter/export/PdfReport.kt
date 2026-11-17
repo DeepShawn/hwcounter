@@ -542,19 +542,26 @@ object PdfReport {
                 listOf("优秀", rules.excellent.signed(), "作业被评为优秀"),
                 listOf("迟交", rules.late.signed(), "交了但晚于要求时间"),
                 listOf("请假", rules.leave.signed().let { if (rules.leave == 0.0) "0" else it }, "不计次，不影响连续记录"),
-                listOf("未交", if (e.enabled) "见第二条" else rules.missing.signed(), if (e.enabled) "连续未交加倍扣分" else "每次固定扣分"),
+                listOf("未交", if (e.enabled) "见第二条" else rules.missing.signed(), if (e.enabled) "连续未交${e.modeLabel}扣分" else "每次固定扣分"),
             ))
             if (e.enabled) {
                 p.heading("二、未交连续加倍扣分")
-                p.text("连续未交时，第 1 次扣 ${e.base.fmt()} 分，第 2 次也扣 ${e.base.fmt()} 分，第 3 次扣 ${MissingEscalation.amount(e.base, 3).fmt()} 分，第 4 次扣 ${MissingEscalation.amount(e.base, 4).fmt()} 分，以此类推（从第 2 次起每次翻倍）。", 10.5f)
+                when (e.mode) {
+                    1 -> p.text("连续未交时，第 1 次扣 ${e.base.fmt()} 分，第 2 次扣 ${MissingEscalation.amount(e.base, 2, 1).fmt()} 分，第 3 次扣 ${MissingEscalation.amount(e.base, 3, 1).fmt()} 分，以此类推（每次翻倍）。", 10.5f)
+                    3 -> {
+                        p.text("连续未交时，先按“${MissingEscalation.modeLabelOf(e.shape)}”算出扣分（${MissingEscalation.seq(e.base, e.shape)}），再按次数分段乘倍率：${e.tiersText()}。", 10.5f)
+                        p.text("· 合起来，连续未交依次扣 ${e.sample(k = 6).removeSuffix("…")} 分……", 10f)
+                    }
+                    else -> p.text("连续未交时，第 1 次扣 ${e.base.fmt()} 分，第 2 次也扣 ${e.base.fmt()} 分，第 3 次扣 ${MissingEscalation.amount(e.base, 3).fmt()} 分，第 4 次扣 ${MissingEscalation.amount(e.base, 4).fmt()} 分，以此类推（从第 2 次起每次翻倍）。", 10.5f)
+                }
                 p.text("· 中间请假、未登记的不打断连续，也不计次；只要交过一次，就打断，下次未交重新从第 1 次算。", 10f)
-                p.text("· 同一轮内累计未交超过 ${e.heavyAfter} 次后，改为 ${MissingEscalation.seq(e.heavyBase).removeSuffix("…")} 分……", 10f)
+                p.text("· 同一轮内累计未交超过 ${e.heavyAfter} 次后，改为 ${e.sample(e.heavyBase).removeSuffix("…")} 分……", 10f)
                 if (e.cap > 0) p.text("· 单次最多扣 ${e.cap.fmt()} 分。", 10f)
                 p.text("· 每次积分重置后进入新一轮，连续次数和累计次数清零，重新从 ${e.base.fmt()} 分开始。", 10f)
                 p.gap(4f)
-                val ex = (1..6).map { k -> val v = minOf(MissingEscalation.amount(e.base, k), if (e.cap > 0) e.cap else Double.MAX_VALUE); "第 $k 次 −${v.fmt()}" }
+                val ex = (1..6).map { k -> "第 $k 次 −${e.penalty(k, k).fmt()}" }
                 p.text("举例：连续未交 " + ex.joinToString("，") + "。", 10f, MUTED)
-                p.text("举例：未交、请假、未交 → 按连续两次计，各扣 ${e.base.fmt()} 分；未交、请假、未交、未交 → 第三次扣 ${MissingEscalation.amount(e.base, 3).fmt()} 分；未交、交、未交 → 各扣 ${e.base.fmt()} 分。", 10f, MUTED)
+                p.text("举例：未交、请假、未交 → 按连续两次计，第二次扣 ${e.penalty(2, 2).fmt()} 分；未交、请假、未交、未交 → 第三次扣 ${e.penalty(3, 3).fmt()} 分；未交、交、未交 → 都按连续第 1 次算${if (e.mode == 3 && e.tierBy == "total") "（分段按累计次数，第二次按第 2 段倍率）" else "，各扣 ${e.penalty(1, 1).fmt()} 分"}。", 10f, MUTED)
             }
             if (b.enabled) {
                 p.heading("三、连续交作业奖励")

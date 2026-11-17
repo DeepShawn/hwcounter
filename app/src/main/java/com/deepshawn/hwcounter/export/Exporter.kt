@@ -144,7 +144,7 @@ object Exporter {
             row("已交", rules.submitted)
             row("优秀", rules.excellent)
             row("迟交", rules.late)
-            row("未交", if (rules.escalation.enabled) "连续递增：${com.deepshawn.hwcounter.data.MissingEscalation.seq(rules.escalation.base)}（第 1、2 次 −${rules.escalation.base.fmt()}，之后每次翻倍）；本轮累计超 ${rules.escalation.heavyAfter} 次后底数 ${rules.escalation.heavyBase.fmt()}；请假不打断，交过即重算，每次重置重新开始" else rules.missing)
+            row("未交", if (rules.escalation.enabled) "${rules.escalation.describe()}；本轮累计超 ${rules.escalation.heavyAfter} 次后底数 ${rules.escalation.heavyBase.fmt()}；请假不打断，交过即重算，每次重置重新开始" else rules.missing)
             row("请假", rules.leave)
             row("连续交奖励", if (rules.streakBonus.enabled) "本轮连续按时交满 ${rules.streakBonus.after} 次后，之后每连续交一次 +${rules.streakBonus.bonus.fmt()}" + (if (rules.streakBonus.lateCounts) "（迟交也算）" else "（迟交打断）") else "关闭")
             row("取整", if (rules.roundPoints) "最终显示的积分取整：正分向上、负分向下（单笔加减分保留原值）" else "保留小数")

@@ -442,21 +442,68 @@ struct Seating: Codable, Equatable {
     }
 }
 
-/// 未交连续递增扣分（与安卓 Penalty.kt、网页 model.js 同算法）
+/// 分段倍率的一段：从第 from 次起 × factor
+struct EscalationTier: Equatable { var from: Int, factor: Double }
+
+/// 未交连续递增扣分（与安卓 Penalty.kt、网页 model.js 同算法），三种方式（mode）：
+/// 1 正常加倍（2、4、8…）；2 第 2 次起加倍（2、2、4、8…）；3 分段倍率：在 1 或 2（tierBase）基础上按次数分段乘倍率（tiers），
+/// 次数按连续未交次数（tierBy = "streak"）或本轮累计未交次数（"total"）算；单次上限在乘完倍率后再封顶
 struct MissingEscalation: Equatable {
+    static let defaultTiers = [EscalationTier(from: 1, factor: 1), EscalationTier(from: 3, factor: 1.5), EscalationTier(from: 5, factor: 2)]
     var enabled = true, base = 2.0, heavyBase = 3.0, heavyAfter = 6, cap = 30.0
+    var mode = 2, tierBase = 2, tierBy = "streak", tiers = MissingEscalation.defaultTiers
+    /// 实际使用的加倍方式（1 或 2）
+    var shape: Int { mode == 1 ? 1 : mode == 3 ? (tierBase == 1 ? 1 : 2) : 2 }
+    func tierFactor(_ n: Int) -> Double {
+        guard mode == 3 else { return 1 }
+        return tiers.filter { $0.from <= n }.max { $0.from < $1.from }?.factor ?? 1
+    }
+    func tierFactor(streak: Int, total: Int) -> Double { tierFactor(tierBy == "total" ? total : streak) }
     func penalty(streak: Int, total: Int) -> Double {
         let b = total > heavyAfter ? heavyBase : base
-        let p = MissingEscalationAmount.amount(b, streak)
+        let p = MissingEscalationAmount.amount(b, streak, shape) * tierFactor(streak: streak, total: total)
         return cap > 0 ? min(p, cap) : p
+    }
+    /// 从第 1 次起连续未交依次扣的分（含分段倍率和上限），如“2、2、6、12…”
+    func sample(_ b: Double? = nil, _ k: Int = 4) -> String {
+        (1...k).map { n -> String in
+            let p = MissingEscalationAmount.amount(b ?? base, n, shape) * tierFactor(n)
+            return fmtNum(cap > 0 ? min(p, cap) : p)
+        }.joined(separator: "、") + "…"
+    }
+    var modeLabel: String { MissingEscalationAmount.label(mode) }
+    var tierByLabel: String { tierBy == "total" ? "本轮累计未交次数" : "连续未交次数" }
+    /// “第 1–2 次 ×1、第 3–4 次 ×1.5、第 5 次起 ×2（按连续未交次数）”
+    func tiersText() -> String {
+        let t = tiers.sorted { $0.from < $1.from }
+        guard let first = t.first else { return "未设分段（都 ×1）" }
+        var parts: [String] = []
+        if first.from > 1 { parts.append("第 1\(first.from > 2 ? "–\(first.from - 1)" : "") 次 ×1") }
+        for (i, x) in t.enumerated() {
+            let to = i + 1 < t.count ? t[i + 1].from - 1 : nil
+            if let to = to { parts.append(to <= x.from ? "第 \(x.from) 次 ×\(fmtNum(x.factor))" : "第 \(x.from)–\(to) 次 ×\(fmtNum(x.factor))") }
+            else { parts.append("第 \(x.from) 次起 ×\(fmtNum(x.factor))") }
+        }
+        return parts.joined(separator: "、") + "（按\(tierByLabel)）"
+    }
+    func describe() -> String {
+        switch mode {
+        case 1: return "正常加倍：连续未交依次扣 \(MissingEscalationAmount.seq(base, 1))"
+        case 3: return "分段倍率（在\(MissingEscalationAmount.label(shape))基础上）：\(tiersText())，依次扣 \(sample())"
+        default: return "第 2 次起加倍：连续未交依次扣 \(MissingEscalationAmount.seq(base, 2))"
+        }
     }
 }
 
-/// 连续第 n 次未交的扣分（不含上限）：b、b、b²、b³……（第 1、2 次相同，之后每次翻 b 倍），与安卓、网页一致
+/// 连续第 n 次未交的扣分（不含分段倍率和上限），与安卓、网页一致：
+/// shape 1：b、b²、b³……；shape 2：b、b、b²、b³……（第 1、2 次相同，之后每次翻 b 倍）
 enum MissingEscalationAmount {
-    static func amount(_ b: Double, _ n: Int) -> Double { pow(b, Double(max(max(n, 1) - 1, 1))) }
-    /// 说明文字：“2、2、4、8…”
-    static func seq(_ b: Double) -> String { (1...4).map { fmtNum(amount(b, $0)) }.joined(separator: "、") + "…" }
+    static func amount(_ b: Double, _ n: Int, _ shape: Int = 2) -> Double {
+        shape == 1 ? pow(b, Double(max(n, 1))) : pow(b, Double(max(max(n, 1) - 1, 1)))
+    }
+    /// 说明文字：“2、2、4、8…”（shape 1 时“2、4、8、16…”）
+    static func seq(_ b: Double, _ shape: Int = 2) -> String { (1...4).map { fmtNum(amount(b, $0, shape)) }.joined(separator: "、") + "…" }
+    static func label(_ mode: Int) -> String { mode == 1 ? "正常加倍" : mode == 3 ? "分段倍率" : "第 2 次起加倍" }
 }
 
 /// 连续交作业奖励：本轮连续按时交满 after 次后，之后每连续交一次额外加 bonus
@@ -610,6 +657,15 @@ struct AppData: Codable, Equatable {
                 x.escalation.heavyBase = e["heavyBase"]?.double ?? x.escalation.heavyBase
                 x.escalation.heavyAfter = e["heavyAfter"]?.int ?? x.escalation.heavyAfter
                 x.escalation.cap = e["cap"]?.double ?? x.escalation.cap
+                x.escalation.mode = e["mode"]?.int ?? x.escalation.mode
+                x.escalation.tierBase = e["tierBase"]?.int ?? x.escalation.tierBase
+                x.escalation.tierBy = e["tierBy"]?.string ?? x.escalation.tierBy
+                if case .array(let arr)? = e["tiers"] {
+                    x.escalation.tiers = arr.compactMap { t in
+                        guard let f = t["from"]?.int, let k = t["factor"]?.double else { return nil }
+                        return EscalationTier(from: f, factor: k)
+                    }
+                }
             }
             if let e = r?["exam"] {
                 x.exam.enabled = e["enabled"]?.bool ?? x.exam.enabled
@@ -631,6 +687,9 @@ struct AppData: Codable, Equatable {
             var e = r["escalation"] ?? .object([:])
             e["enabled"] = .bool(newValue.escalation.enabled); e["base"] = .number(newValue.escalation.base)
             e["heavyBase"] = .number(newValue.escalation.heavyBase); e["heavyAfter"] = .number(Double(newValue.escalation.heavyAfter)); e["cap"] = .number(newValue.escalation.cap)
+            e["mode"] = .number(Double(newValue.escalation.mode)); e["tierBase"] = .number(Double(newValue.escalation.tierBase))
+            e["tierBy"] = .string(newValue.escalation.tierBy)
+            e["tiers"] = .array(newValue.escalation.tiers.map { .object(["from": .number(Double($0.from)), "factor": .number($0.factor)]) })
             r["escalation"] = e
             var b = r["streakBonus"] ?? .object([:])
             b["enabled"] = .bool(newValue.streakBonus.enabled); b["after"] = .number(Double(newValue.streakBonus.after))

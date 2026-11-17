@@ -501,7 +501,7 @@ private fun ScoreHero(stats: List<StudentStat>, base: Double, rules: com.deepsha
             HeroNumber("重置", "$recharges 次", Modifier.weight(1f))
         }
         Text(
-            "基准 ${base.fmt()} · 优秀 ${rules.excellent.signed()} · 迟交 ${rules.late.signed()} · " + (if (rules.escalation.enabled) "未交连续加倍" else "未交 ${rules.missing.signed()}"),
+            "基准 ${base.fmt()} · 优秀 ${rules.excellent.signed()} · 迟交 ${rules.late.signed()} · " + (if (rules.escalation.enabled) "未交${rules.escalation.modeLabel}" else "未交 ${rules.missing.signed()}"),
             color = colors.onSurfaceVariantSummary, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
