@@ -37,7 +37,7 @@ data class AppPalette(
 
 val Palettes = listOf(
     AppPalette("hyper", "澎湃蓝", "💧", Color(0xFF3482FF), Color(0xFF00B4FF), Color(0xFFFF9F0A), Color(0xFFF7F7F7), Color(0xFF000000), listOf(Color(0xFF3482FF), Color(0xFF6E5BFF))),
-    AppPalette("apple", "Apple 风格", "🍎", Color(0xFF007AFF), Color(0xFF5AC8FA), Color(0xFFFF9500), Color(0xFFF2F2F7), Color(0xFF000000), listOf(Color(0xFF007AFF), Color(0xFF5856D6))),
+    AppPalette("notion", "Notion 风格", "📝", Color(0xFF5645D4), Color(0xFF0075DE), Color(0xFFDD5B00), Color(0xFFF6F5F4), Color(0xFF191919), listOf(Color(0xFF5645D4), Color(0xFF7B3FF2))),
     AppPalette("mint", "薄荷清新", "🌿", Color(0xFF0FA38A), Color(0xFF3D8BFD), Color(0xFFFFB74D), Color(0xFFF4FBF8), Color(0xFF0F1715), listOf(Color(0xFF12C2A0), Color(0xFF2F8FEA))),
     AppPalette("academy", "学院蓝", "🎓", Color(0xFF2F5BEA), Color(0xFF00A6D6), Color(0xFFFF8A65), Color(0xFFF5F7FF), Color(0xFF0E1220), listOf(Color(0xFF3A6BFF), Color(0xFF6A3DF0))),
     AppPalette("sakura", "樱花粉", "🌸", Color(0xFFE2557B), Color(0xFFB370E0), Color(0xFFFFB300), Color(0xFFFFF6F8), Color(0xFF1C1215), listOf(Color(0xFFFF7EA5), Color(0xFFB57BFF))),
@@ -50,33 +50,36 @@ val Palettes = listOf(
     AppPalette("dynamic", "动态取色", "🎨", Color(0xFF6750A4), Color(0xFF625B71), Color(0xFF7D5260), Color(0xFFFFFBFE), Color(0xFF1C1B1F), listOf(Color(0xFF6750A4), Color(0xFF7D5260))),
 )
 
-// ---------------- Apple 风格：iOS 系统配色（系统蓝、分组灰底、白卡片、iOS 分隔线） ----------------
-fun appleLightColors() = top.yukonga.miuix.kmp.theme.lightColorScheme(
-    primary = Color(0xFF007AFF), primaryVariant = Color(0xFF007AFF), onPrimaryVariant = Color(0xFFA6CCFF),
-    error = Color(0xFFFF3B30), errorContainer = Color(0xFFFFEDEC),
-    disabledPrimary = Color(0xFFB3D7FF), disabledPrimaryButton = Color(0xFFB3D7FF), disabledPrimarySlider = Color(0xFFB3D7FF),
-    primaryContainer = Color(0xFF3395FF),
-    secondary = Color(0xFFE5E5EA), secondaryVariant = Color(0xFFEFEFF4), onSecondaryVariant = Color(0xFF1C1C1E),
-    secondaryContainer = Color(0xFFEEEEF0), onSecondaryContainer = Color(0xFF8E8E93), secondaryContainerVariant = Color(0xFFE5E5EA),
-    tertiaryContainer = Color(0xFFE5F1FF), onTertiaryContainer = Color(0xFF007AFF), tertiaryContainerVariant = Color(0xFFE5F1FF),
-    surface = Color(0xFFF2F2F7), surfaceVariant = Color.White, onSurfaceVariantSummary = Color(0x993C3C43), onSurfaceVariantActions = Color(0x4D3C3C43),
-    surfaceContainer = Color.White, surfaceContainerHigh = Color(0xFFE5E5EA), surfaceContainerHighest = Color(0xFFE5E5EA),
-    outline = Color(0xFFC6C6C8), dividerLine = Color(0xFFC6C6C8),
-    sliderKeyPointForeground = Color(0xFF007AFF), sliderBackground = Color(0x14787880),
+// ---------------- Notion 风格：暖灰底、白卡片、细边框、紫色主色（#5645D4）、深墨文字 ----------------
+fun notionLightColors() = top.yukonga.miuix.kmp.theme.lightColorScheme(
+    primary = Color(0xFF5645D4), primaryVariant = Color(0xFF4534B3), onPrimaryVariant = Color(0xFFD6CFF6),
+    error = Color(0xFFE03131), errorContainer = Color(0xFFFDECEC),
+    disabledPrimary = Color(0xFFD9D4F4), disabledPrimaryButton = Color(0xFFD9D4F4), disabledPrimarySlider = Color(0xFFD9D4F4),
+    primaryContainer = Color(0xFF6E5FDD),
+    secondary = Color(0xFFE5E3DF), secondaryVariant = Color(0xFFF0EEEC), onSecondaryVariant = Color(0xFF37352F),
+    secondaryContainer = Color(0xFFF0EEEC), onSecondaryContainer = Color(0xFFA4A097), secondaryContainerVariant = Color(0xFFE5E3DF),
+    tertiaryContainer = Color(0xFFE6E0F5), onTertiaryContainer = Color(0xFF5645D4), tertiaryContainerVariant = Color(0xFFE6E0F5),
+    background = Color.White, onBackground = Color(0xFF37352F),
+    surface = Color(0xFFF6F5F4), onSurface = Color(0xFF37352F), surfaceVariant = Color.White,
+    onSurfaceSecondary = Color(0xFF5D5B54), onSurfaceVariantSummary = Color(0xFF787671), onSurfaceVariantActions = Color(0xFFA4A097),
+    surfaceContainer = Color.White, onSurfaceContainer = Color(0xFF37352F), surfaceContainerHigh = Color(0xFFEDE9E4), surfaceContainerHighest = Color(0xFFE5E3DF),
+    outline = Color(0xFFC8C4BE), dividerLine = Color(0xFFE5E3DF),
+    sliderKeyPointForeground = Color(0xFF5645D4), sliderBackground = Color(0x14373530),
 )
-fun appleDarkColors() = top.yukonga.miuix.kmp.theme.darkColorScheme(
-    primary = Color(0xFF0A84FF), primaryVariant = Color(0xFF0A84FF), onPrimaryVariant = Color(0xFF7FBDFF),
-    error = Color(0xFFFF453A), errorContainer = Color(0xFF3A1110),
-    disabledPrimary = Color(0xFF1B3F66), disabledPrimaryButton = Color(0xFF1B3F66), disabledPrimarySlider = Color(0xFF1B3F66),
-    primaryContainer = Color(0xFF3A9BFF),
-    secondary = Color(0xFF3A3A3C), secondaryVariant = Color(0xFF2C2C2E), onSecondaryVariant = Color(0xFFE5E5EA),
-    secondaryContainer = Color(0xFF2C2C2E), onSecondaryContainer = Color(0xFF8E8E93), secondaryContainerVariant = Color(0xFF3A3A3C),
-    tertiaryContainer = Color(0xFF0B2A4A), onTertiaryContainer = Color(0xFF0A84FF), tertiaryContainerVariant = Color(0xFF2C2C2E),
-    background = Color(0xFF1C1C1E), surface = Color.Black, onSurface = Color.White, surfaceVariant = Color(0xFF1C1C1E),
-    onSurfaceVariantSummary = Color(0x99EBEBF5), onSurfaceVariantActions = Color(0x4DEBEBF5),
-    surfaceContainer = Color(0xFF1C1C1E), onSurfaceContainer = Color.White, surfaceContainerHigh = Color(0xFF2C2C2E), surfaceContainerHighest = Color(0xFF3A3A3C),
-    outline = Color(0xFF38383A), dividerLine = Color(0xFF38383A),
-    sliderKeyPointForeground = Color(0xFF0A84FF), sliderBackground = Color(0x29787880),
+fun notionDarkColors() = top.yukonga.miuix.kmp.theme.darkColorScheme(
+    primary = Color(0xFF7B6BE6), primaryVariant = Color(0xFF6E5FDD), onPrimaryVariant = Color(0xFFC9C1F5),
+    error = Color(0xFFFF6B6B), errorContainer = Color(0xFF3A1717),
+    disabledPrimary = Color(0xFF332C5C), disabledPrimaryButton = Color(0xFF332C5C), disabledPrimarySlider = Color(0xFF332C5C),
+    primaryContainer = Color(0xFF8C7EEA),
+    secondary = Color(0xFF373737), secondaryVariant = Color(0xFF2F2F2F), onSecondaryVariant = Color(0xFFEBEBEA),
+    secondaryContainer = Color(0xFF2A2A2A), onSecondaryContainer = Color(0xFF9B9A97), secondaryContainerVariant = Color(0xFF373737),
+    tertiaryContainer = Color(0xFF2B2546), onTertiaryContainer = Color(0xFFA99FF0), tertiaryContainerVariant = Color(0xFF2F2F2F),
+    background = Color(0xFF202020), onBackground = Color(0xFFEBEBEA),
+    surface = Color(0xFF191919), onSurface = Color(0xFFEBEBEA), surfaceVariant = Color(0xFF202020),
+    onSurfaceSecondary = Color(0xFFC7C6C4), onSurfaceVariantSummary = Color(0xFF9B9A97), onSurfaceVariantActions = Color(0xFF6F6E6B),
+    surfaceContainer = Color(0xFF202020), onSurfaceContainer = Color(0xFFEBEBEA), surfaceContainerHigh = Color(0xFF2F2F2F), surfaceContainerHighest = Color(0xFF373737),
+    outline = Color(0xFF3F3F3F), dividerLine = Color(0xFF2F2F2F),
+    sliderKeyPointForeground = Color(0xFF7B6BE6), sliderBackground = Color(0x29FFFFFF),
 )
 
 fun paletteOf(key: String) = Palettes.firstOrNull { it.key == key } ?: Palettes[0]
@@ -152,9 +155,9 @@ fun HwTheme(
     // 澎湃蓝 = miuix 原生配色；动态取色 = 系统壁纸取色（Android 12+）；其余主题用主色生成 Monet 色板
     val controller = remember(p.key, dark) {
         when {
-            p.key == "apple" -> top.yukonga.miuix.kmp.theme.ThemeController(
+            p.key == "notion" -> top.yukonga.miuix.kmp.theme.ThemeController(
                 if (dark) top.yukonga.miuix.kmp.theme.ColorSchemeMode.Dark else top.yukonga.miuix.kmp.theme.ColorSchemeMode.Light,
-                lightColors = appleLightColors(), darkColors = appleDarkColors(),
+                lightColors = notionLightColors(), darkColors = notionDarkColors(),
             )
             p.key == "hyper" -> top.yukonga.miuix.kmp.theme.ThemeController(
                 if (dark) top.yukonga.miuix.kmp.theme.ColorSchemeMode.Dark else top.yukonga.miuix.kmp.theme.ColorSchemeMode.Light,
@@ -188,7 +191,7 @@ fun HwTheme(
     top.yukonga.miuix.kmp.theme.MiuixTheme(controller = controller, smoothRounding = !ui.lowPerf) {
         val m = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
         val scheme = bridge(m, dark)
-        val gradient = if (p.key == "dynamic" || p.key == "hyper" || p.key == "apple") listOf(m.primary, m.primary.mix(Color(0xFF7A5CFF), 0.45f)) else p.gradient
+        val gradient = if (p.key == "dynamic" || p.key == "hyper") listOf(m.primary, m.primary.mix(Color(0xFF7A5CFF), 0.45f)) else p.gradient
         CompositionLocalProvider(
             LocalExtra provides Extra(p, gradient, dark, compact, corner),
             LocalUiPrefs provides ui,

@@ -54,7 +54,7 @@ import top.yukonga.miuix.kmp.theme.ThemeController
 data class Palette(val key: String, val name: String, val a: Color, val b: Color, val forceDark: Boolean = false)
 
 val Palettes = listOf(
-    Palette("hyper", "澎湃蓝", Color(0xFF3482FF), Color(0xFF6E5BFF)), Palette("apple", "Apple 风格", Color(0xFF007AFF), Color(0xFF5856D6)),
+    Palette("hyper", "澎湃蓝", Color(0xFF3482FF), Color(0xFF6E5BFF)), Palette("notion", "Notion 风格", Color(0xFF5645D4), Color(0xFF7B3FF2)),
     Palette("mint", "薄荷清新", Color(0xFF12C2A0), Color(0xFF2F8FEA)),
     Palette("academy", "学院蓝", Color(0xFF3A6BFF), Color(0xFF6A3DF0)), Palette("sakura", "樱花粉", Color(0xFFFF7EA5), Color(0xFFB57BFF)),
     Palette("sunset", "暖阳橙", Color(0xFFFFA62B), Color(0xFFFF5E62)), Palette("neon", "赛博霓虹", Color(0xFF7F5CFF), Color(0xFF00D4FF), forceDark = true),
@@ -71,7 +71,7 @@ fun HwTheme(prefs: Prefs, content: @Composable () -> Unit) {
     val sys = isSystemInDarkTheme()
     val dark = p.forceDark || when (prefs.dark) { 1 -> false; 2 -> true; else -> sys }
     val controller = remember(p.key, dark) {
-        if (p.key == "apple") ThemeController(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light, lightColors = appleLightColors(), darkColors = appleDarkColors())
+        if (p.key == "notion") ThemeController(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light, lightColors = notionLightColors(), darkColors = notionDarkColors())
         else if (p.key == "hyper") ThemeController(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light)
         else ThemeController(if (dark) ColorSchemeMode.MonetDark else ColorSchemeMode.MonetLight, keyColor = p.a)
     }
@@ -216,31 +216,34 @@ fun Swatch(p: Palette, on: Boolean, onClick: () -> Unit) {
     }
 }
 
-// ---------------- Apple 风格：iOS 系统配色（系统蓝、分组灰底、白卡片、iOS 分隔线） ----------------
-fun appleLightColors() = top.yukonga.miuix.kmp.theme.lightColorScheme(
-    primary = Color(0xFF007AFF), primaryVariant = Color(0xFF007AFF), onPrimaryVariant = Color(0xFFA6CCFF),
-    error = Color(0xFFFF3B30), errorContainer = Color(0xFFFFEDEC),
-    disabledPrimary = Color(0xFFB3D7FF), disabledPrimaryButton = Color(0xFFB3D7FF), disabledPrimarySlider = Color(0xFFB3D7FF),
-    primaryContainer = Color(0xFF3395FF),
-    secondary = Color(0xFFE5E5EA), secondaryVariant = Color(0xFFEFEFF4), onSecondaryVariant = Color(0xFF1C1C1E),
-    secondaryContainer = Color(0xFFEEEEF0), onSecondaryContainer = Color(0xFF8E8E93), secondaryContainerVariant = Color(0xFFE5E5EA),
-    tertiaryContainer = Color(0xFFE5F1FF), onTertiaryContainer = Color(0xFF007AFF), tertiaryContainerVariant = Color(0xFFE5F1FF),
-    surface = Color(0xFFF2F2F7), surfaceVariant = Color.White, onSurfaceVariantSummary = Color(0x993C3C43), onSurfaceVariantActions = Color(0x4D3C3C43),
-    surfaceContainer = Color.White, surfaceContainerHigh = Color(0xFFE5E5EA), surfaceContainerHighest = Color(0xFFE5E5EA),
-    outline = Color(0xFFC6C6C8), dividerLine = Color(0xFFC6C6C8),
-    sliderKeyPointForeground = Color(0xFF007AFF), sliderBackground = Color(0x14787880),
+// ---------------- Notion 风格：暖灰底、白卡片、细边框、紫色主色（#5645D4）、深墨文字 ----------------
+fun notionLightColors() = top.yukonga.miuix.kmp.theme.lightColorScheme(
+    primary = Color(0xFF5645D4), primaryVariant = Color(0xFF4534B3), onPrimaryVariant = Color(0xFFD6CFF6),
+    error = Color(0xFFE03131), errorContainer = Color(0xFFFDECEC),
+    disabledPrimary = Color(0xFFD9D4F4), disabledPrimaryButton = Color(0xFFD9D4F4), disabledPrimarySlider = Color(0xFFD9D4F4),
+    primaryContainer = Color(0xFF6E5FDD),
+    secondary = Color(0xFFE5E3DF), secondaryVariant = Color(0xFFF0EEEC), onSecondaryVariant = Color(0xFF37352F),
+    secondaryContainer = Color(0xFFF0EEEC), onSecondaryContainer = Color(0xFFA4A097), secondaryContainerVariant = Color(0xFFE5E3DF),
+    tertiaryContainer = Color(0xFFE6E0F5), onTertiaryContainer = Color(0xFF5645D4), tertiaryContainerVariant = Color(0xFFE6E0F5),
+    background = Color.White, onBackground = Color(0xFF37352F),
+    surface = Color(0xFFF6F5F4), onSurface = Color(0xFF37352F), surfaceVariant = Color.White,
+    onSurfaceSecondary = Color(0xFF5D5B54), onSurfaceVariantSummary = Color(0xFF787671), onSurfaceVariantActions = Color(0xFFA4A097),
+    surfaceContainer = Color.White, onSurfaceContainer = Color(0xFF37352F), surfaceContainerHigh = Color(0xFFEDE9E4), surfaceContainerHighest = Color(0xFFE5E3DF),
+    outline = Color(0xFFC8C4BE), dividerLine = Color(0xFFE5E3DF),
+    sliderKeyPointForeground = Color(0xFF5645D4), sliderBackground = Color(0x14373530),
 )
-fun appleDarkColors() = top.yukonga.miuix.kmp.theme.darkColorScheme(
-    primary = Color(0xFF0A84FF), primaryVariant = Color(0xFF0A84FF), onPrimaryVariant = Color(0xFF7FBDFF),
-    error = Color(0xFFFF453A), errorContainer = Color(0xFF3A1110),
-    disabledPrimary = Color(0xFF1B3F66), disabledPrimaryButton = Color(0xFF1B3F66), disabledPrimarySlider = Color(0xFF1B3F66),
-    primaryContainer = Color(0xFF3A9BFF),
-    secondary = Color(0xFF3A3A3C), secondaryVariant = Color(0xFF2C2C2E), onSecondaryVariant = Color(0xFFE5E5EA),
-    secondaryContainer = Color(0xFF2C2C2E), onSecondaryContainer = Color(0xFF8E8E93), secondaryContainerVariant = Color(0xFF3A3A3C),
-    tertiaryContainer = Color(0xFF0B2A4A), onTertiaryContainer = Color(0xFF0A84FF), tertiaryContainerVariant = Color(0xFF2C2C2E),
-    background = Color(0xFF1C1C1E), surface = Color.Black, onSurface = Color.White, surfaceVariant = Color(0xFF1C1C1E),
-    onSurfaceVariantSummary = Color(0x99EBEBF5), onSurfaceVariantActions = Color(0x4DEBEBF5),
-    surfaceContainer = Color(0xFF1C1C1E), onSurfaceContainer = Color.White, surfaceContainerHigh = Color(0xFF2C2C2E), surfaceContainerHighest = Color(0xFF3A3A3C),
-    outline = Color(0xFF38383A), dividerLine = Color(0xFF38383A),
-    sliderKeyPointForeground = Color(0xFF0A84FF), sliderBackground = Color(0x29787880),
+fun notionDarkColors() = top.yukonga.miuix.kmp.theme.darkColorScheme(
+    primary = Color(0xFF7B6BE6), primaryVariant = Color(0xFF6E5FDD), onPrimaryVariant = Color(0xFFC9C1F5),
+    error = Color(0xFFFF6B6B), errorContainer = Color(0xFF3A1717),
+    disabledPrimary = Color(0xFF332C5C), disabledPrimaryButton = Color(0xFF332C5C), disabledPrimarySlider = Color(0xFF332C5C),
+    primaryContainer = Color(0xFF8C7EEA),
+    secondary = Color(0xFF373737), secondaryVariant = Color(0xFF2F2F2F), onSecondaryVariant = Color(0xFFEBEBEA),
+    secondaryContainer = Color(0xFF2A2A2A), onSecondaryContainer = Color(0xFF9B9A97), secondaryContainerVariant = Color(0xFF373737),
+    tertiaryContainer = Color(0xFF2B2546), onTertiaryContainer = Color(0xFFA99FF0), tertiaryContainerVariant = Color(0xFF2F2F2F),
+    background = Color(0xFF202020), onBackground = Color(0xFFEBEBEA),
+    surface = Color(0xFF191919), onSurface = Color(0xFFEBEBEA), surfaceVariant = Color(0xFF202020),
+    onSurfaceSecondary = Color(0xFFC7C6C4), onSurfaceVariantSummary = Color(0xFF9B9A97), onSurfaceVariantActions = Color(0xFF6F6E6B),
+    surfaceContainer = Color(0xFF202020), onSurfaceContainer = Color(0xFFEBEBEA), surfaceContainerHigh = Color(0xFF2F2F2F), surfaceContainerHighest = Color(0xFF373737),
+    outline = Color(0xFF3F3F3F), dividerLine = Color(0xFF2F2F2F),
+    sliderKeyPointForeground = Color(0xFF7B6BE6), sliderBackground = Color(0x29FFFFFF),
 )

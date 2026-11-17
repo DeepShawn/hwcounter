@@ -420,57 +420,58 @@ button.ib:active { background: var(--chip); }
 .mono { font-family: ui-monospace, Menlo, monospace; }
 @media (prefers-reduced-motion: reduce) { .stk-tape-in { animation-duration: 0s !important; } .stk-tape { overflow-x: auto; } .stk-live, .stk-pulse { animation: none; } }
 
-/* ---------- Apple 风格主题：iOS 系统配色、0.5px 分隔线、分组圆角、分段控件、标签栏 ---------- */
-:root[data-style="apple"] {
-  --bg: #f2f2f7; --card: #ffffff; --fg: #000000; --sub: rgba(60, 60, 67, .6); --line: rgba(60, 60, 67, .29); --line2: rgba(60, 60, 67, .36);
-  --chip: rgba(118, 118, 128, .12); --track: rgba(120, 120, 128, .16); --glass: rgba(249, 249, 249, .94); --bar: rgba(249, 249, 249, .94);
-  --radius: 10px; --shadow: none;
-  --green: #34c759; --red: #ff3b30;
+/* ---------- Notion 风格主题：白页面 + 暖灰分区、1px 细边框的平面卡片（不用阴影）、紫色主色 #5645D4、
+   深墨文字 #37352F、8px 按钮、12px 卡片、4px 标签，不用胶囊按钮 ---------- */
+:root[data-style="notion"] {
+  --bg: #ffffff; --card: #ffffff; --fg: #37352f; --sub: #787671; --line: #ede9e4; --line2: #e5e3df;
+  --chip: #f6f5f4; --track: #e5e3df; --glass: rgba(255, 255, 255, .92); --bar: rgba(255, 255, 255, .96);
+  --radius: 12px; --shadow: none; --hair: #e5e3df; --hair-strong: #c8c4be; --surface: #f6f5f4;
 }
-:root[data-style="apple"][data-theme="dark"] {
-  --bg: #000000; --card: #1c1c1e; --fg: #ffffff; --sub: rgba(235, 235, 245, .6); --line: rgba(84, 84, 88, .65); --line2: rgba(84, 84, 88, .8);
-  --chip: rgba(118, 118, 128, .24); --track: rgba(120, 120, 128, .32); --glass: rgba(22, 22, 24, .94); --bar: rgba(22, 22, 24, .94);
+:root[data-style="notion"][data-theme="dark"] {
+  --bg: #191919; --card: #202020; --fg: #ebebea; --sub: #9b9a97; --line: #2f2f2f; --line2: #373737;
+  --chip: #2a2a2a; --track: #3a3a3a; --glass: rgba(25, 25, 25, .92); --bar: rgba(25, 25, 25, .96);
+  --hair: #2f2f2f; --hair-strong: #4a4a4a; --surface: #252525;
 }
-[data-style="apple"] body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif; letter-spacing: -.01em; }
-[data-style="apple"] .lt { font-size: 34px; font-weight: 700; letter-spacing: .2px; padding: 2px 20px 8px; }
-[data-style="apple"] .meta { padding: 0 20px 12px; }
-[data-style="apple"] .st { padding: 18px 32px 6px; font-size: 13px; font-weight: 400; text-transform: uppercase; letter-spacing: .02em; }
-[data-style="apple"] .grp { margin: 0 16px 16px; border-radius: 10px; }
-[data-style="apple"] .cell { min-height: 44px; padding: 10px 16px; }
-[data-style="apple"] .cell + .cell::before, [data-style="apple"] .cell-pad + .cell::before { left: 16px; right: 0; height: .5px; background: var(--line); transform: scaleY(1); }
-[data-style="apple"] .cell:has(.av) + .cell::before { left: 66px; }
-[data-style="apple"] .cell-title { font-size: 17px; font-weight: 400; }
-[data-style="apple"] .cell-sub { font-size: 13px; }
-[data-style="apple"] .cell.tap:active, [data-style="apple"] .tap:active { background: rgba(120, 120, 128, .2); }
-[data-style="apple"] .tile, [data-style="apple"] .stu { border-radius: 10px; }
-[data-style="apple"] .tiles, [data-style="apple"] .grid { margin-left: 16px; margin-right: 16px; }
-/* 分段控件：iOS 圆角矩形 */
-[data-style="apple"] .seg, [data-style="apple"] .an-tabs { border-radius: 9px; padding: 2px; height: 32px; background: var(--chip); }
-[data-style="apple"] .seg-thumb { top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / var(--n)); border-radius: 7px; box-shadow: 0 3px 8px rgba(0, 0, 0, .12), 0 3px 1px rgba(0, 0, 0, .04); }
-[data-style="apple"][data-theme="dark"] .seg-thumb { background: #636366; }
-[data-style="apple"] .seg button { font-size: 13px; color: var(--fg); border-radius: 7px; }
-[data-style="apple"] .seg button.on { font-weight: 600; }
-[data-style="apple"] .an-tabs button { height: 28px; border-radius: 7px; color: var(--fg); }
-[data-style="apple"] .an-tabs button.on { background: var(--card); box-shadow: 0 3px 8px rgba(0, 0, 0, .12); font-weight: 600; }
-[data-style="apple"][data-theme="dark"] .an-tabs button.on { background: #636366; }
-/* 胶囊筛选：iOS 风格 */
-[data-style="apple"] .chips { padding: 0 16px 4px; }
-[data-style="apple"] .chip { background: var(--chip); color: var(--fg); font-weight: 500; }
-[data-style="apple"] .chip.on { background: var(--accent); color: #fff; }
-/* 开关：iOS 绿色 */
-[data-style="apple"] .sw { width: 51px; height: 31px; }
-[data-style="apple"] .sw i::after { width: 27px; height: 27px; top: 2px; left: 2px; box-shadow: 0 3px 8px rgba(0, 0, 0, .15), 0 3px 1px rgba(0, 0, 0, .06); }
-[data-style="apple"] .sw input:checked + i { background: var(--green); }
-/* 顶栏：滚动后毛玻璃 + 0.5px 底线 */
-[data-style="apple"] .topbar.on { background: var(--glass); box-shadow: 0 .5px 0 var(--line); backdrop-filter: saturate(1.8) blur(20px); -webkit-backdrop-filter: saturate(1.8) blur(20px); }
-[data-style="apple"] .ib { color: var(--accent); }
-/* 底部标签栏：贴底、全宽、半透明，选中项为系统蓝 */
-[data-style="apple"] .tabbar { left: 0; right: 0; bottom: 0; transform: none; width: 100%; max-width: none; height: calc(50px + env(safe-area-inset-bottom)); padding: 0 0 env(safe-area-inset-bottom); border-radius: 0; background: var(--bar); box-shadow: 0 -.5px 0 var(--line); backdrop-filter: saturate(1.8) blur(20px); -webkit-backdrop-filter: saturate(1.8) blur(20px); }
-[data-style="apple"] .tab-pill { display: none; }
-[data-style="apple"] .tabbar button { font-size: 10px; font-weight: 500; border-radius: 0; color: #999; }
-[data-style="apple"] .tabbar button.on { color: var(--accent); }
-[data-style="apple"] main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
-[data-style="apple"] .more { background: var(--card); color: var(--accent); border-radius: 10px; font-weight: 400; font-size: 17px; }
-[data-style="apple"] .sheet { border-radius: 10px 10px 0 0; }
-[data-style="apple"] .btn1 { border-radius: 12px; }
-[data-style="apple"] .btn2 { border-radius: 12px; color: var(--accent); }
+[data-style="notion"] body { font-family: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif; line-height: 1.55; }
+[data-style="notion"] .lt { font-size: 36px; font-weight: 600; letter-spacing: -.5px; line-height: 1.2; padding: 6px 24px 6px; }
+[data-style="notion"] .meta { padding: 0 24px 14px; color: var(--sub); }
+[data-style="notion"] .st { padding: 20px 26px 8px; font-size: 14px; font-weight: 600; color: var(--fg); }
+/* 卡片：平面 + 1px 细边框 */
+[data-style="notion"] .grp, [data-style="notion"] .tile, [data-style="notion"] .stu, [data-style="notion"] .an-movers .grp { border: 1px solid var(--hair); box-shadow: none; }
+[data-style="notion"] .grp { border-radius: 12px; margin: 0 14px 14px; }
+[data-style="notion"] .tile { border-radius: 12px; }
+[data-style="notion"] .stu { border-radius: 12px; box-shadow: inset 0 -3px 0 var(--c); }
+[data-style="notion"] .cell + .cell::before, [data-style="notion"] .cell-pad + .cell::before { left: 0; right: 0; background: var(--line); }
+[data-style="notion"] .cell-title { font-weight: 500; font-size: 15.5px; }
+[data-style="notion"] .cell.tap:active, [data-style="notion"] .tap:active, [data-style="notion"] .an-row:active { background: var(--surface); }
+[data-style="notion"] .score, [data-style="notion"] .big-score b { color: var(--fg); }
+/* 头像、科目徽章：方一点 */
+[data-style="notion"] .subj { border-radius: 8px; }
+/* 分段选择：8px 矩形，选中项白底细边框 */
+[data-style="notion"] .seg, [data-style="notion"] .an-tabs { border-radius: 8px; padding: 3px; background: var(--surface); border: 1px solid var(--hair); }
+[data-style="notion"] .seg { height: 38px; }
+[data-style="notion"] .seg-thumb { top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n)); border-radius: 6px; background: var(--card); box-shadow: 0 1px 2px rgba(15, 15, 15, .06); outline: 1px solid var(--hair); }
+[data-style="notion"] .seg button, [data-style="notion"] .an-tabs button { border-radius: 6px; color: var(--sub); }
+[data-style="notion"] .seg button.on, [data-style="notion"] .an-tabs button.on { color: var(--fg); font-weight: 600; }
+[data-style="notion"] .an-tabs button.on { background: var(--card); box-shadow: 0 1px 2px rgba(15, 15, 15, .06); outline: 1px solid var(--hair); }
+/* 标签：4px 圆角的浅灰标签，选中为紫色 */
+[data-style="notion"] .chip { border-radius: 4px; background: var(--surface); color: var(--fg); font-weight: 500; padding: 5px 10px; border: 1px solid var(--hair); }
+[data-style="notion"] .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+[data-style="notion"] .pill, [data-style="notion"] .an-pill, [data-style="notion"] .an-tag { border-radius: 4px; }
+/* 按钮：8px 矩形，主按钮紫色，次按钮细边框 */
+[data-style="notion"] .btn1 { border-radius: 8px; background: var(--accent); }
+[data-style="notion"] .btn2 { border-radius: 8px; background: transparent; border: 1px solid var(--hair-strong); color: var(--fg); }
+[data-style="notion"] .more { border-radius: 8px; background: transparent; border: 1px solid var(--hair-strong); color: var(--fg); font-weight: 500; }
+[data-style="notion"] .sw input:checked + i { background: var(--accent); }
+/* 顶栏、底栏：平面白条 + 细线，不用阴影和悬浮胶囊 */
+[data-style="notion"] .topbar.on { background: var(--glass); box-shadow: 0 1px 0 var(--hair); }
+[data-style="notion"] .tabbar { left: 0; right: 0; bottom: 0; transform: none; width: 100%; max-width: none; height: calc(56px + env(safe-area-inset-bottom)); padding: 0 0 env(safe-area-inset-bottom); border-radius: 0; background: var(--bar); box-shadow: 0 -1px 0 var(--hair); }
+[data-style="notion"] .tab-pill { display: none; }
+[data-style="notion"] .tabbar button { border-radius: 0; color: var(--sub); font-size: 11px; }
+[data-style="notion"] .tabbar button.on { color: var(--fg); font-weight: 600; }
+[data-style="notion"] .tabbar button.on svg { color: var(--accent); }
+[data-style="notion"] main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+/* 弹层：12px 圆角 + 模态阴影 */
+[data-style="notion"] .sheet { border-radius: 12px 12px 0 0; box-shadow: rgba(15, 15, 15, .16) 0 16px 48px -8px; }
+[data-style="notion"] .stk-tape, [data-style="notion"] .stk-toggles .chip { border: 1px solid var(--hair); }
+[data-style="notion"] .pal i { border-radius: 8px; }

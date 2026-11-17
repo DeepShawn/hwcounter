@@ -8,9 +8,9 @@
 - 💻 Windows：下方 `HwCounter-Windows-*.msi`（安装版）或 `HwCounter-Windows-portable-*.zip`（免安装，解压后运行 HwCounter.exe），Windows 10/11 64 位；功能与网页版相同
 - 🌐 网页版：https://deepshawn.github.io/hwcounter/ （可“添加到主屏幕”离线使用）
 
-### 🍎 v2.16.0：新增「Apple 风格」主题
-- 设置 → 主题配色 新增「Apple 风格」（安卓、iPad、网页、Windows）：iOS 系统蓝（深色 #0A84FF）、分组灰底 #F2F2F7、白色卡片、iOS 分隔线；深色为纯黑底 + #1C1C1E 卡片
-- 网页版选 Apple 风格时界面也换成 iOS 样式：贴底全宽半透明标签栏、iOS 分段控件、绿色开关、0.5px 分隔线、10px 圆角分组、大标题与小写分组标题
+### 📝 v2.16.0：新增「Notion 风格」主题
+- 设置 → 主题配色 新增「Notion 风格」（安卓、iPad、网页、Windows）：暖灰与白、深墨文字 #37352F、紫色主色 #5645D4、细边框分隔；深色为 #191919 底 + #202020 卡片、浅紫主色
+- 网页版选 Notion 风格时界面也换成 Notion 样式：白页面 + 1px 细边框的平面卡片（不用阴影）、12px 卡片圆角、8px 矩形按钮与分段选择、4px 圆角标签、平面贴底底栏
 - 原有主题保持不变，可随时切换回去
 
 ### 🔎 v2.15.5：作业页直接显示本次扣分

@@ -20,7 +20,7 @@ const CACHE_KEY = 'hw.preview';
 const DEF_PREFS = { theme: 'hyper', dark: 0, animations: false, glass: true, layout: 'grid', classId: null };
 const loadPrefs = () => { try { return { ...DEF_PREFS, ...JSON.parse(localStorage.getItem(PREF_KEY) || '{}') }; } catch { return { ...DEF_PREFS }; } };
 const PALETTES = {
-  hyper: ['#3482ff', '#6e5bff', '澎湃蓝'], apple: ['#007aff', '#5856d6', 'Apple 风格'], mint: ['#12c2a0', '#2f8fea', '薄荷清新'], academy: ['#3a6bff', '#6a3df0', '学院蓝'], sakura: ['#ff7ea5', '#b57bff', '樱花粉'],
+  hyper: ['#3482ff', '#6e5bff', '澎湃蓝'], notion: ['#5645d4', '#7b3ff2', 'Notion 风格'], mint: ['#12c2a0', '#2f8fea', '薄荷清新'], academy: ['#3a6bff', '#6a3df0', '学院蓝'], sakura: ['#ff7ea5', '#b57bff', '樱花粉'],
   sunset: ['#ffa62b', '#ff5e62', '暖阳橙'], neon: ['#7f5cff', '#00d4ff', '赛博霓虹'], forest: ['#4c8c3f', '#1f5e54', '森林物语'],
   paper: ['#c79a63', '#8b5e34', '纸本手账'], grape: ['#9b59b6', '#3498db', '葡萄汽水'], ink: ['#37474f', '#90a4ae', '水墨极简'],
 };
@@ -510,12 +510,12 @@ function App() {
   useEffect(() => {
     const r = document.documentElement;
     r.dataset.theme = dark ? 'dark' : 'light';
-    // Apple 风格：iOS 系统配色、分隔线、圆角、分段控件和标签栏（见 style.css 的 [data-style="apple"]）
-    const apple = prefs.theme === 'apple';
-    if (apple) r.dataset.style = 'apple'; else delete r.dataset.style;
-    r.style.setProperty('--accent', apple && dark ? '#0a84ff' : p1); r.style.setProperty('--accent2', p2);
+    // Notion 风格：暖灰与白、细边框平面卡片、紫色主色、8px 按钮 / 12px 卡片 / 4px 标签（见 style.css 的 [data-style="notion"]）
+    const notion = prefs.theme === 'notion';
+    if (notion) r.dataset.style = 'notion'; else delete r.dataset.style;
+    r.style.setProperty('--accent', notion && dark ? '#7b6be6' : p1); r.style.setProperty('--accent2', p2);
     r.classList.toggle('motion', !!prefs.animations); r.classList.toggle('glass', !!prefs.glass);
-    document.querySelector('meta[name=theme-color]')?.setAttribute('content', dark ? '#000000' : apple ? '#f2f2f7' : '#f7f7f7');
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', dark ? (notion ? '#191919' : '#000000') : notion ? '#ffffff' : '#f7f7f7');
   }, [dark, p1, p2, prefs.theme, prefs.animations, prefs.glass]);
 
   // 浏览器返回键 = 返回上一页
