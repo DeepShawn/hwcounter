@@ -49,9 +49,52 @@ struct SettingsView: View {
                 }
                 Toggle(isOn: Binding(get: { store.data.rules.escalation.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.escalation.enabled = v; d.rules = r } })) {
                     VStack(alignment: .leading) {
-                        Text("未交连续加倍扣分")
-                        Text("连续未交依次扣 \(MissingEscalationAmount.seq(store.data.rules.escalation.base))（第 1、2 次相同，之后每次翻倍）；请假不打断，交过一次就重新算；本轮累计超过 \(store.data.rules.escalation.heavyAfter) 次后底数变为 \(fmtNum(store.data.rules.escalation.heavyBase))；每次积分重置后重新开始").font(.caption).foregroundStyle(.secondary)
+                        Text("连续未交自动扣分")
+                        Text("\(store.data.rules.escalation.describe())；请假不打断，交过一次就重新算；本轮累计超过 \(store.data.rules.escalation.heavyAfter) 次后底数变为 \(fmtNum(store.data.rules.escalation.heavyBase))；每次积分重置后重新开始").font(.caption).foregroundStyle(.secondary)
                     }
+                }
+                if store.data.rules.escalation.enabled {
+                    let e = store.data.rules.escalation
+                    Picker("扣分方式", selection: escBinding(\.mode)) {
+                        Text("① 正常加倍（\(MissingEscalationAmount.seq(e.base, 1))）").tag(1)
+                        Text("② 第 2 次起加倍（\(MissingEscalationAmount.seq(e.base, 2))）").tag(2)
+                        Text("③ 分段倍率（在 ① 或 ② 上分段乘倍率）").tag(3)
+                    }
+                    if e.mode == 3 {
+                        Picker("分段基于", selection: escBinding(\.tierBase)) {
+                            Text("① 正常加倍").tag(1)
+                            Text("② 第 2 次起加倍").tag(2)
+                        }
+                        Picker("分段按", selection: escBinding(\.tierBy)) {
+                            Text("连续未交次数").tag("streak")
+                            Text("本轮累计未交次数").tag("total")
+                        }
+                        let tiers = e.tiers.sorted { $0.from < $1.from }
+                        ForEach(Array(tiers.enumerated()), id: \.offset) { i, t in
+                            HStack {
+                                Stepper("第 \(i + 1) 段：从第 \(t.from) 次起", value: Binding(get: { t.from }, set: { v in
+                                    guard v >= 1, !tiers.enumerated().contains(where: { $0.offset != i && $0.element.from == v }) else { return }
+                                    setTiers(tiers.enumerated().map { $0.offset == i ? EscalationTier(from: v, factor: t.factor) : $0.element })
+                                }), in: 1...50)
+                                Stepper("×\(fmtNum(t.factor))", value: Binding(get: { t.factor }, set: { v in
+                                    setTiers(tiers.enumerated().map { $0.offset == i ? EscalationTier(from: t.from, factor: v) : $0.element })
+                                }), in: 0...20, step: 0.5).frame(maxWidth: 170)
+                                if tiers.count > 1 {
+                                    Button(role: .destructive) { setTiers(tiers.enumerated().filter { $0.offset != i }.map { $0.element }) } label: { Image(systemName: "minus.circle") }.buttonStyle(.borderless)
+                                }
+                            }
+                        }
+                        HStack {
+                            Button("添加一段") { let last = tiers.last; setTiers(tiers + [EscalationTier(from: (last?.from ?? 0) + 2, factor: (last?.factor ?? 1) + 0.5)]) }
+                            Spacer()
+                            Button("恢复默认分段") { setTiers(MissingEscalation.defaultTiers) }
+                        }.buttonStyle(.borderless)
+                        Text("当前：\(e.tiersText())；连续未交依次扣 \(e.sample(nil, 6))；分段倍率乘完后再按单次上限封顶").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Stepper("底数（第 1\(e.shape == 1 ? "" : "、2") 次扣）\(fmtNum(e.base))", value: escBinding(\.base), in: 1...10, step: 0.5)
+                    Stepper("累计超过 \(e.heavyAfter) 次后加重", value: escBinding(\.heavyAfter), in: 1...50)
+                    Stepper("加重后的底数 \(fmtNum(e.heavyBase))", value: escBinding(\.heavyBase), in: 1...10, step: 0.5)
+                    Stepper("单次最多扣 \(e.cap > 0 ? fmtNum(e.cap) : "不限")", value: escBinding(\.cap), in: 0...200, step: 1)
                 }
                 Toggle(isOn: Binding(get: { store.data.rules.review.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.review.enabled = v; d.rules = r } })) {
                     VStack(alignment: .leading) {
@@ -183,6 +226,15 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    /// 修改未交扣分规则的某一项
+    private func escBinding<T>(_ k: WritableKeyPath<MissingEscalation, T>) -> Binding<T> {
+        Binding(get: { store.data.rules.escalation[keyPath: k] }, set: { v in store.setSetting { d in var r = d.rules; r.escalation[keyPath: k] = v; d.rules = r } })
+    }
+
+    private func setTiers(_ t: [EscalationTier]) {
+        store.setSetting { d in var r = d.rules; r.escalation.tiers = t.sorted { $0.from < $1.from }; d.rules = r }
     }
 
     private func ruleRow(_ title: String, _ key: WritableKeyPath<Rules, Double>) -> some View {

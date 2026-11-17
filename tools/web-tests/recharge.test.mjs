@@ -129,6 +129,33 @@ test('未交连续递增扣分（与安卓 EscalationTest 一致）', () => {
   assert.deepEqual(pts(mk('MISSING', 'MISSING'), { ...r, escalation: { enabled: false } }), [-2, -2]);
 });
 
+import { tiersText } from '../../web/js/model.js';
+test('三种扣分方式：正常加倍 / 第 2 次起加倍 / 分段倍率（与安卓、iPad 一致）', () => {
+  const r = defaultRules();
+  const mk = (...m) => ({ id: 'c', name: '一班', recharges: [], scores: [], students: [{ id: 's1', no: '01', name: '张三' }], assignments: m.map((x, i) => ({ id: `a${i}`, title: `作业${i}`, createdAt: (i + 1) * 1000, statuses: { s1: x } })) });
+  const pts = (c, rr = r) => c.assignments.map((a) => autoPoints(c, rr, 's1')[a.id]);
+  const esc = (o) => ({ ...r, escalation: { ...r.escalation, ...o } });
+  // 第一种：2、4、8、16，封顶 30；交过重算、请假不打断
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING', 'MISSING', 'MISSING'), esc({ mode: 1 })), [-2, -4, -8, -16, -30]);
+  assert.equal(escalationSeq(2, 1), '2、4、8、16…');
+  assert.deepEqual(pts(mk('MISSING', 'LEAVE', 'MISSING', 'SUBMITTED', 'MISSING'), esc({ mode: 1 })), [-2, 0, -4, 0, -2]);
+  // 第三种：在第二种上分段 ×1、×1.5、×2
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING', 'MISSING', 'MISSING', 'MISSING'), esc({ mode: 3, cap: 0 })), [-2, -2, -6, -12, -32, -64]);
+  assert.equal(tiersText(esc({ mode: 3 }).escalation), '第 1–2 次 ×1、第 3–4 次 ×1.5、第 5 次起 ×2（按连续未交次数）');
+  // 在第一种上分段，乘完再封顶
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING', 'MISSING', 'MISSING'), esc({ mode: 3, tierBase: 1 })), [-2, -4, -12, -24, -30]);
+  // 自定义分段
+  const custom = esc({ mode: 3, tiers: [{ from: 2, factor: 3 }] });
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING'), custom), [-2, -6, -12]);
+  assert.equal(tiersText(custom.escalation), '第 1 次 ×1、第 2 次起 ×3（按连续未交次数）');
+  // 按本轮累计次数分段
+  const alt = mk('MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING', 'SUBMITTED', 'MISSING');
+  assert.deepEqual(pts(alt, esc({ mode: 3, tierBy: 'total' })).filter((_, i) => i % 2 === 0), [-2, -2, -3, -3]);
+  assert.deepEqual(pts(alt, esc({ mode: 3 })).filter((_, i) => i % 2 === 0), [-2, -2, -2, -2]);
+  // 旧数据没有 mode 字段：按第二种
+  assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING'), { ...r, escalation: { enabled: true, base: 2, heavyBase: 3, heavyAfter: 6, cap: 30 } }), [-2, -2, -4]);
+});
+
 import { roundAway, escalationSeq } from '../../web/js/model.js';
 test('连续交奖励与取整（与安卓 StreakBonusAndRoundingTest 一致）', () => {
   const r = defaultRules();

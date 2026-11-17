@@ -365,6 +365,20 @@ do {
     check(rp["a13"] == -3 && rp["a14"] == -2 && rp["a15"] == -2 && reset.stats(rules)[0].score == 96, "重置后新一轮从 2 开始")
     var capped = Rules(); capped.escalation.cap = 5
     check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING"]), capped) == [-2, -2, -4, -5], "单次最多扣分上限")
+    var m1 = Rules(); m1.escalation.mode = 1
+    check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING", "MISSING"]), m1) == [-2, -4, -8, -16, -30] && MissingEscalationAmount.seq(2, 1) == "2、4、8、16…", "第一种：正常加倍 2、4、8、16，封顶 30")
+    var m3 = Rules(); m3.escalation.mode = 3; m3.escalation.cap = 0
+    check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING", "MISSING", "MISSING"]), m3) == [-2, -2, -6, -12, -32, -64], "第三种：在第二种上分段 ×1、×1.5、×2")
+    check(m3.escalation.tiersText() == "第 1–2 次 ×1、第 3–4 次 ×1.5、第 5 次起 ×2（按连续未交次数）", "分段说明")
+    var m31 = Rules(); m31.escalation.mode = 3; m31.escalation.tierBase = 1
+    check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING", "MISSING"]), m31) == [-2, -4, -12, -24, -30], "第三种：在第一种上分段，乘完再封顶")
+    var m32 = Rules(); m32.escalation.mode = 3; m32.escalation.tiers = [EscalationTier(from: 2, factor: 3)]
+    check(pts(mk(["MISSING", "MISSING", "MISSING"]), m32) == [-2, -6, -12] && m32.escalation.tiersText() == "第 1 次 ×1、第 2 次起 ×3（按连续未交次数）", "自定义分段")
+    var mt = Rules(); mt.escalation.mode = 3; mt.escalation.tierBy = "total"
+    let alt = mk(["MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING"])
+    check(pts(alt, mt).enumerated().filter { $0.offset % 2 == 0 }.map(\.element) == [-2, -2, -3, -3], "按本轮累计次数分段")
+    var data = AppData(); var rr = data.rules; rr.escalation.mode = 3; rr.escalation.tierBy = "total"; rr.escalation.tiers = [EscalationTier(from: 4, factor: 2.5)]; data.rules = rr
+    check(data.rules.escalation == rr.escalation, "三种方式与分段可存取（与安卓、网页字段一致）")
 }
 // 连续交奖励与取整：与安卓 StreakBonusAndRoundingTest、网页同一组用例
 do {

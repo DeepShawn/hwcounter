@@ -171,21 +171,72 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                     val e = s.rules.escalation
                     fun esc(f: (com.deepshawn.hwcounter.data.MissingEscalation) -> com.deepshawn.hwcounter.data.MissingEscalation) = rules { it.copy(escalation = f(it.escalation)) }
                     SuperSwitch(
-                        checked = e.enabled, onCheckedChange = { v -> esc { it.copy(enabled = v) } }, title = "连续未交加倍扣分",
-                        summary = if (e.enabled) "连续未交第 1、2 次 −${e.base.fmt()}，第 3 次 −${com.deepshawn.hwcounter.data.MissingEscalation.amount(e.base, 3).fmt()}，第 4 次 −${com.deepshawn.hwcounter.data.MissingEscalation.amount(e.base, 4).fmt()}…（第 2 次起每次翻倍）；关闭后每次未交固定 ${s.rules.missing.signed()}" else "关闭：每次未交固定 ${s.rules.missing.signed()}",
+                        checked = e.enabled, onCheckedChange = { v -> esc { it.copy(enabled = v) } }, title = "连续未交自动扣分",
+                        summary = if (e.enabled) "${e.describe()}；关闭后每次未交固定 ${s.rules.missing.signed()}" else "关闭：每次未交固定 ${s.rules.missing.signed()}",
                     )
-                    if (e.enabled) Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
-                        RuleRow("底数（第 1、2 次扣）", e.base) { v -> if (v >= 1) esc { it.copy(base = v) } }
-                        RuleRow("累计超过几次后", e.heavyAfter.toDouble(), 1.0) { v -> if (v >= 1) esc { it.copy(heavyAfter = v.toInt()) } }
-                        RuleRow("加重后的底数", e.heavyBase) { v -> if (v >= 1) esc { it.copy(heavyBase = v) } }
-                        RuleRow("单次最多扣（0 不限）", e.cap, 1.0) { v -> if (v >= 0) esc { it.copy(cap = v) } }
-                        Text(
-                            "· 请假、未登记不打断连续，也不计次；只要交过一次（已交 / 优秀 / 迟交）就打断，重新从第 1 次算\n" +
-                                "· 本轮累计未交超过 ${e.heavyAfter} 次后，底数变为 ${e.heavyBase.fmt()}（${com.deepshawn.hwcounter.data.MissingEscalation.seq(e.heavyBase)}）\n" +
-                                "· 每次积分重置开始新一轮：连续次数和累计次数清零，底数回到 ${e.base.fmt()}\n" +
-                                "· 修改后历史积分自动重算",
-                            fontSize = 11.sp, lineHeight = 17.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp),
+                    if (e.enabled) {
+                        SuperDropdown(
+                            items = listOf(
+                                "① 正常加倍（${com.deepshawn.hwcounter.data.MissingEscalation.seq(e.base, 1)}）",
+                                "② 第 2 次起加倍（${com.deepshawn.hwcounter.data.MissingEscalation.seq(e.base, 2)}）",
+                                "③ 分段倍率（在 ① 或 ② 上分段乘倍率）",
+                            ),
+                            selectedIndex = (e.mode - 1).coerceIn(0, 2), title = "扣分方式",
+                            summary = when (e.mode) {
+                                1 -> "第 1 次 −${e.base.fmt()}，之后每次翻倍"
+                                3 -> "在${com.deepshawn.hwcounter.data.MissingEscalation.modeLabelOf(e.shape)}的基础上按次数分段乘倍率，可自行调整"
+                                else -> "第 1、2 次都 −${e.base.fmt()}，第 3 次起每次翻倍"
+                            },
+                            onSelectedIndexChange = { i -> esc { it.copy(mode = i + 1) } },
                         )
+                        if (e.mode == 3) {
+                            SuperDropdown(
+                                items = listOf("① 正常加倍", "② 第 2 次起加倍"), selectedIndex = if (e.shape == 1) 0 else 1, title = "分段基于",
+                                onSelectedIndexChange = { i -> esc { it.copy(tierBase = i + 1) } },
+                            )
+                            SuperDropdown(
+                                items = listOf("连续未交次数", "本轮累计未交次数"), selectedIndex = if (e.tierBy == "total") 1 else 0, title = "分段按",
+                                summary = if (e.tierBy == "total") "本轮第几次未交（交过也不清零，积分重置才清零）" else "连续第几次未交（交过一次就重新从第 1 次算）",
+                                onSelectedIndexChange = { i -> esc { it.copy(tierBy = if (i == 1) "total" else "streak") } },
+                            )
+                        }
+                        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                            if (e.mode == 3) {
+                                Text("分段倍率", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                                val tiers = e.tiers.sortedBy { it.from }
+                                fun setTiers(t: List<com.deepshawn.hwcounter.data.EscalationTier>) = esc { it.copy(tiers = t.sortedBy { x -> x.from }) }
+                                tiers.forEachIndexed { i, t ->
+                                    RuleRow("第 ${i + 1} 段：从第几次起", t.from.toDouble(), 1.0) { v ->
+                                        val n = v.toInt()
+                                        if (n >= 1 && tiers.withIndex().none { (j, x) -> j != i && x.from == n }) setTiers(tiers.mapIndexed { j, x -> if (j == i) x.copy(from = n) else x })
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(Modifier.weight(1f)) {
+                                            RuleRow("　倍率", t.factor, 0.5) { v -> if (v >= 0) setTiers(tiers.mapIndexed { j, x -> if (j == i) x.copy(factor = v) else x }) }
+                                        }
+                                        if (tiers.size > 1) TextButton(onClick = { setTiers(tiers.filterIndexed { j, _ -> j != i }) }) { Text("删除") }
+                                    }
+                                }
+                                TextButton(onClick = {
+                                    val last = tiers.lastOrNull()
+                                    setTiers(tiers + com.deepshawn.hwcounter.data.EscalationTier((last?.from ?: 0) + 2, (last?.factor ?: 1.0) + 0.5))
+                                }) { Text("＋ 添加一段") }
+                                TextButton(onClick = { esc { it.copy(tiers = com.deepshawn.hwcounter.data.MissingEscalation.DEFAULT_TIERS) } }) { Text("恢复默认分段（第 1–2 次 ×1、第 3–4 次 ×1.5、第 5 次起 ×2）") }
+                                Text("当前：${e.tiersText()}；连续未交依次扣 ${e.sample(k = 6)}", fontSize = 11.sp, lineHeight = 17.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(bottom = 6.dp))
+                            }
+                            RuleRow(if (e.shape == 1) "底数（第 1 次扣）" else "底数（第 1、2 次扣）", e.base) { v -> if (v >= 1) esc { it.copy(base = v) } }
+                            RuleRow("累计超过几次后", e.heavyAfter.toDouble(), 1.0) { v -> if (v >= 1) esc { it.copy(heavyAfter = v.toInt()) } }
+                            RuleRow("加重后的底数", e.heavyBase) { v -> if (v >= 1) esc { it.copy(heavyBase = v) } }
+                            RuleRow("单次最多扣（0 不限）", e.cap, 1.0) { v -> if (v >= 0) esc { it.copy(cap = v) } }
+                            Text(
+                                "· 请假、未登记不打断连续，也不计次；只要交过一次（已交 / 优秀 / 迟交）就打断，重新从第 1 次算\n" +
+                                    "· 本轮累计未交超过 ${e.heavyAfter} 次后，底数变为 ${e.heavyBase.fmt()}（${e.sample(e.heavyBase)}）\n" +
+                                    "· 每次积分重置开始新一轮：连续次数和累计次数清零，底数回到 ${e.base.fmt()}\n" +
+                                    (if (e.mode == 3) "· 分段倍率乘完后再按单次上限封顶；复审不合格、抄袭的倍数照常再乘\n" else "") +
+                                    "· 修改后历史积分自动重算",
+                                fontSize = 11.sp, lineHeight = 17.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp),
+                            )
+                        }
                     }
                 }
                 group("作业复审", key = "review") {
@@ -646,7 +697,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsIndex(vm: App
     group("计分与结算", key = "idx-score") {
         SuperArrow(
             title = "作业计分",
-            summary = "初始 ${r.initial.fmt()} 分 · " + (if (r.escalation.enabled) "未交递增扣分" else "未交 ${r.missing.signed()}") +
+            summary = "初始 ${r.initial.fmt()} 分 · " + (if (r.escalation.enabled) "未交${r.escalation.modeLabel}" else "未交 ${r.missing.signed()}") +
                 " · 复审" + (if (r.review.enabled) "不合格 ×${r.review.multiplier.fmt()}" else "已关闭") + (if (r.plagiarism.enabled) " · 抄袭 ×${r.plagiarism.multiplier.fmt()}${if (r.plagiarism.escalate) "起累犯加重" else ""}" else "") + (if (r.leader.enabled) " · 组长${r.leader.periodLabel}奖惩${if (r.leader.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.leader.mode) + "）" else ""}" else "") + (if (r.groupRank.enabled) " · 小组${r.groupRank.periodLabel}排名${if (r.groupRank.mode != "both") "（" + com.deepshawn.hwcounter.data.modeLabelOf(r.groupRank.mode) + "）" else ""}" else "") + if (r.streakBonus.enabled) " · 连续交奖励" else "",
             onClick = { open("scoring") },
         )
