@@ -13,6 +13,9 @@ import kotlin.math.pow
  * - 本轮累计未交超过 [heavyAfter] 次（默认 6 次）后，底数变为 [heavyBase]（默认 3）；
  * - 每次积分重置开始新一轮：连续次数、累计次数清零，底数回到 [base]。
  * - [cap] > 0 时，单次最多扣 cap 分（默认 30，分段倍率乘完后再封顶）。
+ * - [gapBalance]「间断未交平衡」（默认开启）：隔几次不交一次的同学，交过一次连续次数就清零，扣分一直停在最低档，
+ *   未交率更高反而比偶尔连续不交的人扣得少。开启后，这一次的次数取「连续未交次数」和「最近 [gapWindow] 次有记录的作业里的未交次数」中较大的那个
+ *   （请假、未登记不算记录），分段倍率按连续次数时也用这个次数。
  */
 @Serializable
 data class MissingEscalation(
@@ -29,7 +32,16 @@ data class MissingEscalation(
     val tierBy: String = "streak",
     /** 分段：从第 from 次起乘 factor（之前没有覆盖到的次数 ×1） */
     val tiers: List<EscalationTier> = DEFAULT_TIERS,
+    /** 间断未交平衡：次数取连续未交次数与最近 [gapWindow] 次里的未交次数中较大的 */
+    val gapBalance: Boolean = true,
+    val gapWindow: Int = 8,
 ) {
+    /** 这一次用来计算扣分的次数：连续第 [streak] 次；最近窗口里第 [recent] 次 */
+    fun countOf(streak: Int, recent: Int): Int = if (gapBalance) maxOf(streak, recent) else streak
+
+    /** 间断未交平衡的说明 */
+    fun gapText(): String = "间断未交平衡：次数取连续未交次数和最近 $gapWindow 次作业里的未交次数中较大的（请假、未登记不算）"
+
     /** 实际使用的加倍方式（1 或 2） */
     val shape: Int get() = when (mode) { 1 -> 1; 3 -> if (tierBase == 1) 1 else 2; else -> 2 }
 
@@ -79,7 +91,7 @@ data class MissingEscalation(
         1 -> "正常加倍：连续未交依次扣 ${seq(base, 1)}"
         3 -> "分段倍率（在${modeLabelOf(shape)}基础上）：${tiersText()}，依次扣 ${sample()}"
         else -> "第 2 次起加倍：连续未交依次扣 ${seq(base, 2)}"
-    }
+    } + if (gapBalance) "；${gapText()}" else ""
 
     companion object {
         val DEFAULT_TIERS = listOf(EscalationTier(1, 1.0), EscalationTier(3, 1.5), EscalationTier(5, 2.0))
@@ -155,12 +167,18 @@ data class AutoPoint(
     val plagiarism: Int = 0, val plagiarismFactor: Double = 1.0,
     /** 分段倍率方式下这次的分段倍率（其余为 1） */
     val tierFactor: Double = 1.0,
+    /** 最近窗口里这是第几次未交（间断未交平衡用；0 = 没有用到） */
+    val recentMiss: Int = 0,
 ) {
     /** “连续第 3 次未交，分段 ×1.5”；不需要说明时为 null */
     fun streakNote(rules: ScoreRules): String? {
         if (!rules.escalation.enabled) return null
         val tier = if (tierFactor != 1.0) "分段 ×${tierFactor.fmt()}" else null
-        val streak = if (missStreak >= 2) "连续第 $missStreak 次未交" else null
+        val streak = when {
+            recentMiss > missStreak && recentMiss >= 2 -> "近 ${rules.escalation.gapWindow} 次第 $recentMiss 次未交（间断未交平衡）"
+            missStreak >= 2 -> "连续第 $missStreak 次未交"
+            else -> null
+        }
         return listOfNotNull(streak, tier).joinToString("，").ifEmpty { null }
     }
 }
@@ -171,25 +189,35 @@ fun SchoolClass.autoPointDetails(rules: ScoreRules, studentId: String): Map<Stri
     val out = HashMap<String, AutoPoint>()
     val resets = recharges.filter { studentId in it.studentIds }.sortedWith(compareBy<ScoreRecharge> { it.start }.thenBy { it.time }.thenBy { it.id })
     var round: String? = null; var streak = 0; var total = 0; var run = 0; var plag = 0
+    // 最近几次有记录的作业是否未交（间断未交平衡用），每轮清空
+    val recent = ArrayDeque<Boolean>()
+    fun record(missed: Boolean) { recent.addLast(missed); while (recent.size > maxOf(1, esc.gapWindow)) recent.removeFirst() }
     for (a in assignments.sortedWith(compareBy<Assignment> { it.createdAt }.thenBy { it.id })) {
         val st = a.statuses[studentId] ?: HwStatus.NONE
         val r = resets.lastOrNull { it.counts(a.createdAt) }?.id
-        if (r != round) { round = r; streak = 0; total = 0; run = 0; plag = 0 }
+        if (r != round) { round = r; streak = 0; total = 0; run = 0; plag = 0; recent.clear() }
         out[a.id] = when (st) {
             HwStatus.MISSING -> {
                 streak++; total++; run = 0
-                val base = if (esc.enabled) -esc.penalty(streak, total) else rules.of(st)
+                record(true)
+                val inWindow = recent.count { it }
+                val n = esc.countOf(streak, inWindow)
+                val base = if (esc.enabled) -esc.penalty(n, total) else rules.of(st)
                 // 抄袭与复审不合格可以叠加：两个倍数相乘
                 val plagged = rules.plagiarism.enabled && a.plagiarized(studentId)
                 if (plagged) plag++
                 val f = if (plagged) rules.plagiarism.factor(plag) else 1.0
                 val failed = rules.review.enabled && a.failedReview(studentId)
                 val rv = if (failed) rules.review.multiplier else 1.0
-                val tf = if (esc.enabled) esc.tierFactor(streak, total) else 1.0
-                AutoPoint(rules.pt(base * f * rv), missStreak = streak, reviewFailed = failed, plagiarism = if (plagged) plag else 0, plagiarismFactor = f, tierFactor = tf)
+                val tf = if (esc.enabled) esc.tierFactor(n, total) else 1.0
+                AutoPoint(
+                    rules.pt(base * f * rv), missStreak = streak, reviewFailed = failed, plagiarism = if (plagged) plag else 0, plagiarismFactor = f, tierFactor = tf,
+                    recentMiss = if (esc.enabled && esc.gapBalance) inWindow else 0,
+                )
             }
             HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE -> {
                 streak = 0
+                record(false)
                 val counts = st != HwStatus.LATE || sb.lateCounts
                 if (counts) run++ else run = 0
                 val b = if (sb.enabled && counts && run > sb.after) sb.bonus else 0.0
@@ -217,7 +245,7 @@ fun SchoolClass.autoPointsAll(rules: ScoreRules): Map<String, Map<String, Double
 
 /** 规则说明（界面上显示） */
 fun ScoreRules.missingText(): String = if (escalation.enabled)
-    "未交${escalation.modeLabel}（${escalation.sample()}，累计超 ${escalation.heavyAfter} 次后 ${escalation.sample(escalation.heavyBase)}）"
+    "未交${escalation.modeLabel}（${escalation.sample()}，累计超 ${escalation.heavyAfter} 次后 ${escalation.sample(escalation.heavyBase)}${if (escalation.gapBalance) "；间断未交按近 ${escalation.gapWindow} 次计" else ""}）"
 else "未交 ${missing.signed()}"
 
 /** 这次作业这位同学的计分说明，如“本次 -8（抄袭第 1 次 ×2 × 复审不合格 ×2 = ×4）”；没有分数变化时为空 */

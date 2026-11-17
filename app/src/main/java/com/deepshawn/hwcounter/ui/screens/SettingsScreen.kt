@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.deepshawn.hwcounter.BuildConfig
 import com.deepshawn.hwcounter.data.autoPointsAll
+import com.deepshawn.hwcounter.data.autoPointDetails
 import com.deepshawn.hwcounter.data.missingText
 import com.deepshawn.hwcounter.data.signed
 import com.deepshawn.hwcounter.data.AiConfig
@@ -237,8 +238,15 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                             RuleRow("累计超过几次后", e.heavyAfter.toDouble(), 1.0) { v -> if (v >= 1) esc { it.copy(heavyAfter = v.toInt()) } }
                             RuleRow("加重后的底数", e.heavyBase) { v -> if (v >= 1) esc { it.copy(heavyBase = v) } }
                             RuleRow("单次最多扣（0 不限）", e.cap, 1.0) { v -> if (v >= 0) esc { it.copy(cap = v) } }
+                            SuperSwitch(
+                                checked = e.gapBalance, onCheckedChange = { v -> esc { it.copy(gapBalance = v) } },
+                                title = "间断未交平衡",
+                                summary = if (e.gapBalance) "已开启：隔几次不交一次也会逐次加重。次数取“连续未交次数”和“最近 ${e.gapWindow} 次作业里的未交次数”中较大的（请假、未登记不算）。例：隔一次不交一次，依次扣 ${gapExample(e)}"
+                                else "已关闭：只看连续未交，交过一次就从第 1 次重新算（隔一次不交一次，每次都只扣 ${e.penalty(1, 1).fmt()}）",
+                            )
+                            if (e.gapBalance) RuleRow("看最近几次作业", e.gapWindow.toDouble(), 1.0) { v -> if (v >= 2 && v <= 30) esc { it.copy(gapWindow = v.toInt()) } }
                             Text(
-                                "· 请假、未登记不打断连续，也不计次；只要交过一次（已交 / 优秀 / 迟交）就打断，重新从第 1 次算\n" +
+                                (if (e.gapBalance) "· 请假、未登记不打断连续，也不计次；交过一次会打断连续，但间断未交平衡仍按最近 ${e.gapWindow} 次里的未交次数计\n" else "· 请假、未登记不打断连续，也不计次；只要交过一次（已交 / 优秀 / 迟交）就打断，重新从第 1 次算\n") +
                                     "· 本轮累计未交超过 ${e.heavyAfter} 次后，底数变为 ${e.heavyBase.fmt()}（${e.sample(e.heavyBase)}）\n" +
                                     "· 每次积分重置开始新一轮：连续次数和累计次数清零，底数回到 ${e.base.fmt()}\n" +
                                     (if (e.mode == 3) "· 分段倍率乘完后再按单次上限封顶；复审不合格、抄袭的倍数照常再乘\n" else "") +
@@ -829,4 +837,14 @@ private fun RuleRow(label: String, value: Double, step: Double = 0.5, onChange: 
         )
         OutlinedButton(onClick = { onChange(value + step) }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp), modifier = Modifier.size(40.dp)) { Text("+") }
     }
+}
+
+/** “隔一次不交一次”时依次扣的分（前 5 次未交），说明间断未交平衡的效果 */
+private fun gapExample(e: com.deepshawn.hwcounter.data.MissingEscalation): String {
+    val c = com.deepshawn.hwcounter.data.SchoolClass(
+        id = "x", name = "x", students = listOf(com.deepshawn.hwcounter.data.Student(id = "s", no = "1", name = "x")),
+        assignments = (0 until 10).map { k -> com.deepshawn.hwcounter.data.Assignment(id = "a$k", title = "", createdAt = k + 1L, statuses = mapOf("s" to if (k % 2 == 0) com.deepshawn.hwcounter.data.HwStatus.MISSING else com.deepshawn.hwcounter.data.HwStatus.SUBMITTED)) },
+    )
+    val p = c.autoPointDetails(com.deepshawn.hwcounter.data.ScoreRules(escalation = e, streakBonus = com.deepshawn.hwcounter.data.StreakBonus(enabled = false)), "s")
+    return (0 until 10 step 2).joinToString("、") { (-(p["a$it"]?.points ?: 0.0)).fmt() } + "…"
 }

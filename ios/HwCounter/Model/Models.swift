@@ -452,6 +452,9 @@ struct MissingEscalation: Equatable {
     static let defaultTiers = [EscalationTier(from: 1, factor: 1), EscalationTier(from: 3, factor: 1.5), EscalationTier(from: 5, factor: 2)]
     var enabled = true, base = 2.0, heavyBase = 3.0, heavyAfter = 6, cap = 30.0
     var mode = 2, tierBase = 2, tierBy = "streak", tiers = MissingEscalation.defaultTiers
+    /// 间断未交平衡（默认开启）：次数取连续未交次数和最近 gapWindow 次有记录的作业里的未交次数中较大的（请假、未登记不算）
+    var gapBalance = true, gapWindow = 8
+    func countOf(streak: Int, recent: Int) -> Int { gapBalance ? max(streak, recent) : streak }
     /// 实际使用的加倍方式（1 或 2）
     var shape: Int { mode == 1 ? 1 : mode == 3 ? (tierBase == 1 ? 1 : 2) : 2 }
     func tierFactor(_ n: Int) -> Double {
@@ -487,10 +490,11 @@ struct MissingEscalation: Equatable {
         return parts.joined(separator: "、") + "（按\(tierByLabel)）"
     }
     func describe() -> String {
+        let gap = gapBalance ? "；间断未交平衡：次数取连续未交次数和最近 \(gapWindow) 次作业里的未交次数中较大的（请假、未登记不算）" : ""
         switch mode {
-        case 1: return "正常加倍：连续未交依次扣 \(MissingEscalationAmount.seq(base, 1))"
-        case 3: return "分段倍率（在\(MissingEscalationAmount.label(shape))基础上）：\(tiersText())，依次扣 \(sample())"
-        default: return "第 2 次起加倍：连续未交依次扣 \(MissingEscalationAmount.seq(base, 2))"
+        case 1: return "正常加倍：连续未交依次扣 \(MissingEscalationAmount.seq(base, 1))" + gap
+        case 3: return "分段倍率（在\(MissingEscalationAmount.label(shape))基础上）：\(tiersText())，依次扣 \(sample())" + gap
+        default: return "第 2 次起加倍：连续未交依次扣 \(MissingEscalationAmount.seq(base, 2))" + gap
         }
     }
 }
@@ -733,6 +737,8 @@ struct AppData: Codable, Equatable {
                 x.escalation.mode = e["mode"]?.int ?? x.escalation.mode
                 x.escalation.tierBase = e["tierBase"]?.int ?? x.escalation.tierBase
                 x.escalation.tierBy = e["tierBy"]?.string ?? x.escalation.tierBy
+                x.escalation.gapBalance = e["gapBalance"]?.bool ?? x.escalation.gapBalance
+                x.escalation.gapWindow = e["gapWindow"]?.int ?? x.escalation.gapWindow
                 if case .array(let arr)? = e["tiers"] {
                     x.escalation.tiers = arr.compactMap { t in
                         guard let f = t["from"]?.int, let k = t["factor"]?.double else { return nil }
@@ -762,6 +768,7 @@ struct AppData: Codable, Equatable {
             e["heavyBase"] = .number(newValue.escalation.heavyBase); e["heavyAfter"] = .number(Double(newValue.escalation.heavyAfter)); e["cap"] = .number(newValue.escalation.cap)
             e["mode"] = .number(Double(newValue.escalation.mode)); e["tierBase"] = .number(Double(newValue.escalation.tierBase))
             e["tierBy"] = .string(newValue.escalation.tierBy)
+            e["gapBalance"] = .bool(newValue.escalation.gapBalance); e["gapWindow"] = .number(Double(newValue.escalation.gapWindow))
             e["tiers"] = .array(newValue.escalation.tiers.map { .object(["from": .number(Double($0.from)), "factor": .number($0.factor)]) })
             r["escalation"] = e
             var b = r["streakBonus"] ?? .object([:])
@@ -872,14 +879,19 @@ extension SchoolClass {
         var out: [String: Double] = [:]
         let resets = recharges.filter { $0.studentIds.contains(sid) }.sorted { ($0.start, $0.time, $0.id) < ($1.start, $1.time, $1.id) }
         var round: String? = nil, streak = 0, total = 0, run = 0, plag = 0
+        // 最近几次有记录的作业是否未交（间断未交平衡用），每轮清空
+        var recent: [Bool] = []
+        func record(_ m: Bool) { recent.append(m); while recent.count > max(1, esc.gapWindow) { recent.removeFirst() } }
         for a in assignments.sorted(by: { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }) {
             let s = a.status(sid)
             let r = resets.last { $0.counts(a.createdAt) }?.id
-            if r != round { round = r; streak = 0; total = 0; run = 0; plag = 0 }
+            if r != round { round = r; streak = 0; total = 0; run = 0; plag = 0; recent = [] }
             switch s {
             case .MISSING:
                 streak += 1; total += 1; run = 0
-                let base = esc.enabled ? -esc.penalty(streak: streak, total: total) : rules.of(s)
+                record(true)
+                let n = esc.countOf(streak: streak, recent: recent.filter { $0 }.count)
+                let base = esc.enabled ? -esc.penalty(streak: n, total: total) : rules.of(s)
                 // 抄袭与复审不合格可以叠加：两个倍数相乘
                 let plagged = rules.plagiarism.enabled && a.plagiarized(sid)
                 if plagged { plag += 1 }
@@ -888,6 +900,7 @@ extension SchoolClass {
                 out[a.id] = rules.pt(base * f * rv)
             case .SUBMITTED, .EXCELLENT, .LATE:
                 streak = 0
+                record(false)
                 let counts = s != .LATE || sb.lateCounts
                 run = counts ? run + 1 : 0
                 let bonus = sb.enabled && counts && run > sb.after ? sb.bonus : 0

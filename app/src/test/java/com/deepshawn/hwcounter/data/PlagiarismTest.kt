@@ -26,7 +26,7 @@ class PlagiarismTest {
     private fun pts(c: SchoolClass, rules: ScoreRules, id: String) = c.autoPointDetails(rules, id).mapValues { it.value.points }
 
     @Test fun bothSidesDoubledAndRepeatEscalates() {
-        val c = cls(); val r = ScoreRules()
+        val c = cls(); val r = CLASSIC
         // 甲：a0 第 1 次 2×2=4；a2 第 2 次 2×2×2=8；a3 乙已交 → 普通连续未交（连续第 2 次，仍扣 2）
         assertEquals(mapOf("a0" to -4.0, "a1" to 0.0, "a2" to -8.0, "a3" to -2.0), pts(c, r, "a"))
         assertEquals(mapOf("a0" to -4.0, "a1" to 0.0, "a2" to -8.0, "a3" to 0.0), pts(c, r, "b"))
@@ -42,19 +42,19 @@ class PlagiarismTest {
     @Test fun resetDisabledAndCap() {
         val c = cls()
         // 全班在 a2 前重置：累犯次数重新算
-        val reset = c.recharge(ScoreRules(), c.students.map { it.id }, 100.0, time = 10 * day, assignment = c.assignments[2])
-        assertEquals(-4.0, pts(reset, ScoreRules(), "a").getValue("a2"), 1e-9)
+        val reset = c.recharge(CLASSIC, c.students.map { it.id }, 100.0, time = 10 * day, assignment = c.assignments[2])
+        assertEquals(-4.0, pts(reset, CLASSIC, "a").getValue("a2"), 1e-9)
         // 关闭：按普通未交
-        assertEquals(-2.0, pts(c, ScoreRules(plagiarism = PlagiarismRules(enabled = false)), "b").getValue("a0"), 1e-9)
+        assertEquals(-2.0, pts(c, CLASSIC.copy(plagiarism = PlagiarismRules(enabled = false)), "b").getValue("a0"), 1e-9)
         // 不加重：每次 ×2
-        assertEquals(-4.0, pts(c, ScoreRules(plagiarism = PlagiarismRules(escalate = false)), "b").getValue("a2"), 1e-9)
+        assertEquals(-4.0, pts(c, CLASSIC.copy(plagiarism = PlagiarismRules(escalate = false)), "b").getValue("a2"), 1e-9)
         // 最多 ×maxTimes：倍数 2、4、6、8、8
         val p = PlagiarismRules()
         assertEquals(listOf(2.0, 4.0, 6.0, 8.0, 8.0), (1..5).map { p.factor(it) })
     }
 
     @Test fun graphLedgerAndClear() {
-        val c = cls(); val r = ScoreRules()
+        val c = cls(); val r = CLASSIC
         val g = PlagiarismGraph.report(c, r)
         assertEquals(3, g.cases.size)
         assertEquals(listOf("a→b" to 2, "a→c" to 1), g.edges.map { "${it.provider.id}→${it.receiver.id}" to it.count })
@@ -73,7 +73,7 @@ class PlagiarismTest {
     }
 
     @Test fun graphPerAssignment() {
-        val c = cls(); val r = ScoreRules()
+        val c = cls(); val r = CLASSIC
         // 只有 a0、a2 有有效的抄袭记录，最新的在前
         assertEquals(listOf("a2", "a0"), PlagiarismGraph.assignments(c).map { it.id })
         val g0 = PlagiarismGraph.report(c, r, "a0")
@@ -93,7 +93,7 @@ class PlagiarismTest {
     @Test fun reviewAndPlagiarismStack() {
         // 乙在 a0 既抄袭又复审不合格：2 × 抄袭 ×2 × 复审 ×2 = 8
         val c = cls().let { c -> c.copy(assignments = c.assignments.map { if (it.id == "a0") it.copy(reviewFailed = listOf("b")) else it }) }
-        val r = ScoreRules()
+        val r = CLASSIC
         val d = c.autoPointDetails(r, "b").getValue("a0")
         assertEquals(-8.0, d.points, 1e-9); assertTrue(d.reviewFailed); assertEquals(1, d.plagiarism)
         // 甲（只抄袭）不受影响
@@ -109,7 +109,7 @@ class PlagiarismTest {
     @Test fun unknownProvider() {
         // a1：丁抄袭但提供者不明
         val c = cls().let { c -> c.copy(assignments = c.assignments.map { if (it.id == "a1") it.copy(statuses = it.statuses + ("d" to HwStatus.MISSING), plagiarism = mapOf("d" to listOf(UNKNOWN_PROVIDER))) else it }) }
-        val r = ScoreRules(); val a = c.assignments.first { it.id == "a1" }
+        val r = CLASSIC; val a = c.assignments.first { it.id == "a1" }
         assertEquals(-4.0, c.autoPointDetails(r, "d").getValue("a1").points, 1e-9)
         assertTrue(a.plagiarized("d")); assertTrue(a.unknownProvider("d"))
         assertEquals("抄袭（提供者不明）", c.plagiarismDesc(a, "d"))

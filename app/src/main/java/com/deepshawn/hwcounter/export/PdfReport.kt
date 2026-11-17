@@ -563,7 +563,10 @@ object PdfReport {
                     }
                     else -> p.text("连续未交时，第 1 次扣 ${e.base.fmt()} 分，第 2 次也扣 ${e.base.fmt()} 分，第 3 次扣 ${MissingEscalation.amount(e.base, 3).fmt()} 分，第 4 次扣 ${MissingEscalation.amount(e.base, 4).fmt()} 分，以此类推（从第 2 次起每次翻倍）。", 10.5f)
                 }
-                p.text("· 中间请假、未登记的不打断连续，也不计次；只要交过一次，就打断，下次未交重新从第 1 次算。", 10f)
+                if (e.gapBalance) {
+                    p.text("· 中间请假、未登记的不打断连续，也不计次；交过一次会打断连续。", 10f)
+                    p.text("· 间断未交平衡：隔几次不交一次也会逐次加重——这一次按“连续未交次数”和“最近 ${e.gapWindow} 次作业里的未交次数”中较大的那个算。例如隔一次不交一次，依次扣 ${(1..5).map { k -> e.penalty(minOf(k, (e.gapWindow + 1) / 2), k).fmt() }.joinToString("、")} 分……", 10f)
+                } else p.text("· 中间请假、未登记的不打断连续，也不计次；只要交过一次，就打断，下次未交重新从第 1 次算。", 10f)
                 p.text("· 同一轮内累计未交超过 ${e.heavyAfter} 次后，改为 ${e.sample(e.heavyBase).removeSuffix("…")} 分……", 10f)
                 if (e.cap > 0) p.text("· 单次最多扣 ${e.cap.fmt()} 分。", 10f)
                 p.text("· 每次积分重置后进入新一轮，连续次数和累计次数清零，重新从 ${e.base.fmt()} 分开始。", 10f)
