@@ -133,6 +133,8 @@ sealed interface Route {
     data class BatchScore(val ids: List<String> = emptyList(), val reason: String = "") : Route
     data class Ledger(val studentId: String? = null) : Route
     data object Settlement : Route
+    /** 积分重置页：本轮进度、每月定期重置、立即重置 / 按作业重置、重置记录 */
+    data object Reset : Route
     data class SettleRegister(val id: String) : Route
     data class Personal(val id: String) : Route
     data class Stock(val id: String) : Route
@@ -397,6 +399,7 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         is Route.BatchScore -> com.deepshawn.hwcounter.ui.screens.BatchScoreScreen(vm, data, route.ids, route.reason)
         is Route.Ledger -> com.deepshawn.hwcounter.ui.screens.LedgerScreen(vm, data, route.studentId)
         Route.Settlement -> com.deepshawn.hwcounter.ui.screens.SettlementScreen(vm, data)
+        Route.Reset -> com.deepshawn.hwcounter.ui.screens.ResetScreen(vm, data)
         is Route.SettleRegister -> com.deepshawn.hwcounter.ui.screens.SettleRegisterScreen(vm, data, route.id)
         is Route.Personal -> com.deepshawn.hwcounter.ui.screens.PersonalReportScreen(vm, data, route.id)
         is Route.Stock -> com.deepshawn.hwcounter.ui.screens.StockDetailScreen(vm, data, route.id)
