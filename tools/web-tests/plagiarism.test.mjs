@@ -60,3 +60,10 @@ test('关系图按作业：每次作业一张图', () => {
   assert.equal(g2.copiers, 2); assert.equal(g2.providers, 1);
   assert.equal(plagiarismReport(c, R, 'a3').cases.length, 0);
 });
+
+test('抄袭与复审不合格叠加', () => {
+  const c = cls(); c.assignments[0].reviewFailed = ['b'];
+  assert.equal(autoPoints(c, R, 'b').a0, -8);
+  assert.equal(autoPoints(c, R, 'a').a0, -4);
+  assert.equal(autoPoints(c, { ...R, review: { ...R.review, enabled: false } }, 'b').a0, -4);
+});

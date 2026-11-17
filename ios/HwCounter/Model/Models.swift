@@ -487,7 +487,7 @@ struct PlagiarismRules: Equatable {
     var enabled = true, multiplier = 2.0, escalate = true, maxTimes = 4
     func factor(_ n: Int) -> Double { multiplier * Double(escalate ? min(max(1, n), max(1, maxTimes)) : 1) }
     var text: String {
-        enabled ? "抄袭：抄袭者和提供者都记一次未交，扣分 ×\(fmtNum(multiplier))" + (escalate ? "，累犯逐次加重（第 n 次再 ×n，最多 ×\(maxTimes)）" : "") : "抄袭：按普通未交扣分"
+        enabled ? "抄袭：抄袭者和提供者都记一次未交，扣分 ×\(fmtNum(multiplier))" + (escalate ? "，累犯逐次加重（第 n 次再 ×n，最多 ×\(maxTimes)）" : "") + "；同时复审不合格时倍数叠加" : "抄袭：按普通未交扣分"
     }
 }
 
@@ -733,13 +733,12 @@ extension SchoolClass {
             case .MISSING:
                 streak += 1; total += 1; run = 0
                 let base = esc.enabled ? -esc.penalty(streak: streak, total: total) : rules.of(s)
-                if rules.plagiarism.enabled && a.plagiarized(sid) {
-                    plag += 1
-                    out[a.id] = rules.pt(base * rules.plagiarism.factor(plag))
-                } else {
-                    let failed = rules.review.enabled && a.failedReview(sid)
-                    out[a.id] = rules.pt(failed ? base * rules.review.multiplier : base)
-                }
+                // 抄袭与复审不合格可以叠加：两个倍数相乘
+                let plagged = rules.plagiarism.enabled && a.plagiarized(sid)
+                if plagged { plag += 1 }
+                let f = plagged ? rules.plagiarism.factor(plag) : 1
+                let rv = rules.review.enabled && a.failedReview(sid) ? rules.review.multiplier : 1
+                out[a.id] = rules.pt(base * f * rv)
             case .SUBMITTED, .EXCELLENT, .LATE:
                 streak = 0
                 let counts = s != .LATE || sb.lateCounts

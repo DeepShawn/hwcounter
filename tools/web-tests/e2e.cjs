@@ -1,4 +1,4 @@
-// 网页查看版端到端测试：本地起静态服务 + Playwright 拦截 Supabase（只读公开数据）
+// 网页版端到端测试：本地起静态服务 + Playwright 拦截 Supabase（只读公开数据）
 // 运行：node tools/web-tests/e2e.cjs   截图输出到 $OUT（默认 /tmp/hw-e2e）
 const { chromium } = require(process.env.PW || '/opt/node22/lib/node_modules/playwright');
 const http = require('http'); const fs = require('fs'); const path = require('path');
@@ -49,7 +49,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
 
   // 新手提示：第一次打开出现，可以跳过
   await page.waitForSelector('.guide', { timeout: 8000 });
-  check(await page.isVisible('text=欢迎使用作业通 · 网页查看版'), '第一次打开显示新手提示');
+  check(await page.isVisible('text=欢迎使用作业通 · 网页版'), '第一次打开显示新手提示');
   await page.click('.guide .btn1'); check(await page.isVisible('text=新手提示 2/5'), '新手提示：下一步');
   await shot('0-guide');
   await page.click('.guide-skip');

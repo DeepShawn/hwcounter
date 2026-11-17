@@ -52,7 +52,7 @@ data class ReviewRules(
 /**
  * 抄袭（三端同一算法）：作业里记下“谁抄了谁的”，抄袭者和提供者都记为“未交”（参与连续未交和累计次数），
  * 这一次的扣分 × [multiplier]（默认 2）；[escalate] 开启时累犯逐次加重：本轮第 2 次涉及抄袭再 ×2、第 3 次 ×3……最多 ×[maxTimes]。
- * 每次积分重置开始新一轮重新计次。同一次作业既复审不合格又抄袭时按抄袭算（不叠加）。关闭后按普通未交扣分。
+ * 每次积分重置开始新一轮重新计次。同一次作业既复审不合格又抄袭时两个倍数叠加（相乘）。关闭后按普通未交扣分。
  */
 @Serializable
 data class PlagiarismRules(
@@ -96,14 +96,13 @@ fun SchoolClass.autoPointDetails(rules: ScoreRules, studentId: String): Map<Stri
             HwStatus.MISSING -> {
                 streak++; total++; run = 0
                 val base = if (esc.enabled) -esc.penalty(streak, total) else rules.of(st)
-                if (rules.plagiarism.enabled && a.plagiarized(studentId)) {
-                    plag++
-                    val f = rules.plagiarism.factor(plag)
-                    AutoPoint(rules.pt(base * f), missStreak = streak, plagiarism = plag, plagiarismFactor = f)
-                } else {
-                    val failed = rules.review.enabled && a.failedReview(studentId)
-                    AutoPoint(rules.pt(if (failed) base * rules.review.multiplier else base), missStreak = streak, reviewFailed = failed)
-                }
+                // 抄袭与复审不合格可以叠加：两个倍数相乘
+                val plagged = rules.plagiarism.enabled && a.plagiarized(studentId)
+                if (plagged) plag++
+                val f = if (plagged) rules.plagiarism.factor(plag) else 1.0
+                val failed = rules.review.enabled && a.failedReview(studentId)
+                val rv = if (failed) rules.review.multiplier else 1.0
+                AutoPoint(rules.pt(base * f * rv), missStreak = streak, reviewFailed = failed, plagiarism = if (plagged) plag else 0, plagiarismFactor = f)
             }
             HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE -> {
                 streak = 0

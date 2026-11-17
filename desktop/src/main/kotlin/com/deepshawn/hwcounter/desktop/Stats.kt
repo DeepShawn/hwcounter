@@ -727,7 +727,7 @@ private fun Plagiarism(x: Ctx) {
     val only = sel?.takeIf { id -> list.any { it.id == id } }
     val one = list.firstOrNull { it.id == only }
     val r = remember(x.c, rules, only) { PlagiarismGraph.report(x.c, rules, only) }
-    val text = if (!pg.enabled) "抄袭：按普通未交扣分" else "抄袭：抄袭者和提供者都记一次未交，扣分 ×${pg.multiplier.fmt()}" + if (pg.escalate) "，累犯逐次加重（第 n 次再 ×n，最多 ×${pg.maxTimes}）" else ""
+    val text = if (!pg.enabled) "抄袭：按普通未交扣分" else "抄袭：抄袭者和提供者都记一次未交，扣分 ×${pg.multiplier.fmt()}" + (if (pg.escalate) "，累犯逐次加重（第 n 次再 ×n，最多 ×${pg.maxTimes}）" else "") + if (rules.review.enabled) "；同时复审不合格时倍数叠加" else ""
     if (list.isEmpty() && r.cases.isEmpty()) { Empty("🕵️", "还没有抄袭记录。老师在作业里把同学记为抄袭并选出抄了谁的之后，这里会出现关系图。\n$text"); return }
     val pick = { id: String? -> sel = id; Keep.plagSel = id }
     if (list.isNotEmpty()) {

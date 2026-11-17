@@ -89,4 +89,18 @@ class PlagiarismTest {
         // 没有抄袭的作业：空图
         assertTrue(PlagiarismGraph.report(c, r, "a3").cases.isEmpty())
     }
+
+    @Test fun reviewAndPlagiarismStack() {
+        // 乙在 a0 既抄袭又复审不合格：2 × 抄袭 ×2 × 复审 ×2 = 8
+        val c = cls().let { c -> c.copy(assignments = c.assignments.map { if (it.id == "a0") it.copy(reviewFailed = listOf("b")) else it }) }
+        val r = ScoreRules()
+        val d = c.autoPointDetails(r, "b").getValue("a0")
+        assertEquals(-8.0, d.points, 1e-9); assertTrue(d.reviewFailed); assertEquals(1, d.plagiarism)
+        // 甲（只抄袭）不受影响
+        assertEquals(-4.0, c.autoPointDetails(r, "a").getValue("a0").points, 1e-9)
+        // 关闭复审：只按抄袭
+        assertEquals(-4.0, c.autoPointDetails(r.copy(review = r.review.copy(enabled = false)), "b").getValue("a0").points, 1e-9)
+        val row = c.ledger(r, "b").first { it.assignmentId == "a0" }
+        assertTrue(row.title, row.title.contains("复审不合格再 ×2") && row.title.contains("合计 ×4"))
+    }
 }

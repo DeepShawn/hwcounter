@@ -1,11 +1,11 @@
-// 作业通 · 网页查看版：只读查看老师公开的数据，布局与手机端一致（大标题 + 卡片分组 + 悬浮底栏）。
-// 网页端没有登录入口，也没有任何修改数据的功能；设置里只有本机的个性化显示选项。
+// 作业通 · 网页版：显示老师公开的数据，布局与手机端一致（大标题 + 卡片分组 + 悬浮底栏）。
+// 设置里是本机的个性化显示选项。
 import { h, render } from '../vendor/preact.module.js';
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
 import {
   STATUS, normalizeData, summary, studentStats, compareStudentNumbers, autoPoints, ruleOf, fmtNum, signed, fmtDate,
-  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, leaderPeriods, leaderOf, groupRankPoints,
+  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, defaultReview, leaderPeriods, leaderOf, groupRankPoints,
 } from './model.js';
 import { api } from './cloud.js';
 import { StatsPage, PlagGraph } from './statspage.js';
@@ -137,7 +137,8 @@ function ledger(c, rules, sid) {
     if ((r && r.id) !== round) { round = r && r.id; plag = 0; }
     const k = view(a, sid); const d = pts[a.id] ?? ruleOf(rules, a.statuses[sid]);
     let extra = '';
-    if (k === 'PLAG' && pg.enabled) { plag++; extra = `（${plagLine(c, a, sid)}，本轮第 ${plag} 次，扣分 ×${fmtNum(plagiarismFactor(pg, plag))}）`; }
+    if (k === 'PLAG' && pg.enabled) { plag++; const f = plagiarismFactor(pg, plag); const rv = { ...defaultReview(), ...(rules.review || {}) }; const both = rv.enabled && failedReview(a, sid);
+      extra = `（${plagLine(c, a, sid)}，本轮第 ${plag} 次，扣分 ×${fmtNum(f)}${both ? `，复审不合格再 ×${fmtNum(rv.multiplier)}，合计 ×${fmtNum(f * rv.multiplier)}` : ''}）`; }
     if (d) rows.push({ key: 'a' + a.id, t: a.createdAt, d, title: `${a.subject ? a.subject : ''}「${a.title}」${SV(k).label}${extra}`, kind: '作业', counts: assignmentCounts(a, last) });
   }
   for (const e of c.exams || []) {
@@ -427,14 +428,14 @@ function Settings({ prefs, setPrefs, status, reload, showGuide }) {
     <${Group} title="数据">
       <${Cell} title="刷新数据" sub=${status === 'loading' ? '正在加载…' : status === 'error' ? '加载失败，请检查网络' : '重新获取老师公开的最新数据'} onClick=${reload} />
     </${Group}>
-    <div class="about"><div class="logo">📚</div><b>作业通 · 网页查看版</b><span>网页版只能查看，修改请在手机或 iPad 上操作</span></div>
+    <div class="about"><div class="logo">📚</div><b>作业通 · 网页版</b><span>与手机、iPad 数据同步</span></div>
   </${Page}>`;
 }
 
 // ---------------- 新手提示（只存本机，可跳过） ----------------
 const GUIDE_KEY = 'hw.onboarded';
 const GUIDE = [
-  ['📚', '欢迎使用作业通 · 网页查看版', '这里可以查看老师登记的作业、积分、考试和统计。网页版只能查看，不能修改。', ['底栏五个页面：首页、名单、积分、统计、设置', '数据会自动刷新，也可以在 设置 → 刷新数据'], ['#3482ff', '#6e5bff']],
+  ['📚', '欢迎使用作业通 · 网页版', '这里可以查看老师登记的作业、积分、考试和统计。', ['底栏五个页面：首页、名单、积分、统计、设置', '数据会自动刷新，也可以在 设置 → 刷新数据'], ['#3482ff', '#6e5bff']],
   ['✅', '作业', '首页列出每次作业的交齐率，点进去可以看每位同学的情况。', ['颜色代表状态：已交、优秀、迟交、未交、请假、复审不合格', '可以按状态筛选，切换网格 / 列表'], ['#12c2a0', '#2f8fea']],
   ['🏆', '名单与积分', '名单里点同学进入档案：积分、名次、作业足迹、考试和每一笔积分流水。', ['积分页有排行榜和加减分记录', '小组里可以看组长、组员和各自积分'], ['#ffa62b', '#ff5e62']],
   ['📈', '统计', '统计页有作业、考试、小组和热力图四个栏目。', ['小组：综合分对抗排名、本期排名、组长奖惩', '热力图：每格一次作业，点格子进入'], ['#9b59b6', '#3498db']],

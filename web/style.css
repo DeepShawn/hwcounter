@@ -1,4 +1,4 @@
-/* 作业通 · 网页查看版：与手机端（HyperOS / miuix 风格）一致的布局 */
+/* 作业通 · 网页版：与手机端（HyperOS / miuix 风格）一致的布局 */
 :root {
   --accent: #3482ff; --accent2: #6e5bff;
   --bg: #f7f7f7; --card: #ffffff; --fg: #1a1a1a; --sub: #8a8a8f; --line: rgba(0, 0, 0, .06); --line2: rgba(0, 0, 0, .08);

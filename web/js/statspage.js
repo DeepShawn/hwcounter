@@ -1,5 +1,5 @@
-// 网页查看版 · 统计页：与安卓“统计”页同样的四个栏目（作业 / 考试 / 关注 / 小组）、同样的分析项和算法（analytics.js）。
-// 只读：没有加减分按钮；分析报告可以复制或下载为文字。
+// 网页版 · 统计页：与安卓“统计”页同样的四个栏目（作业 / 考试 / 关注 / 小组）、同样的分析项和算法（analytics.js）。
+// 分析报告可以复制、下载文字，或导出 PDF / Excel。
 import { h } from '../vendor/preact.module.js';
 import { useState, useEffect, useMemo } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
@@ -479,7 +479,7 @@ function Duel({ c, r, a, b, setA, setB, names, colorOf }) {
 const PROVIDER = '#e8792c'; const COPIER = '#e5384d'; const BOTH = '#8e44ad'; const PLAGC = '#d9480f';
 const roleColor = (n) => (n.copied > 0 && n.provided > 0 ? BOTH : n.copied > 0 ? COPIER : PROVIDER);
 export const plagiarismText = (rules) => { const pg = { ...defaultPlagiarism(), ...(rules.plagiarism || {}) };
-  return pg.enabled ? `抄袭：抄袭者和提供者都记一次未交，扣分 ×${fmtNum(pg.multiplier)}${pg.escalate ? `，累犯逐次加重（第 n 次再 ×n，最多 ×${pg.maxTimes}）` : ''}` : '抄袭：按普通未交扣分'; };
+  return pg.enabled ? `抄袭：抄袭者和提供者都记一次未交，扣分 ×${fmtNum(pg.multiplier)}${pg.escalate ? `，累犯逐次加重（第 n 次再 ×n，最多 ×${pg.maxTimes}）` : ''}${(rules.review || {}).enabled !== false ? '；同时复审不合格时倍数叠加' : ''}` : '抄袭：按普通未交扣分'; };
 
 /** 关系图：同学排成一圈（同一个抄袭圈的挨在一起），箭头从提供者指向抄袭者 */
 export function PlagGraph({ r, open }) {

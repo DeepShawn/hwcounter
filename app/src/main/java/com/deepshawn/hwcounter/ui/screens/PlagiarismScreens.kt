@@ -87,7 +87,7 @@ private fun shortDay(t: Long): String = java.text.SimpleDateFormat("M/d", java.u
 /** 抄袭规则说明（作业页、设置页） */
 fun ScoreRules.plagiarismText(): String =
     if (!plagiarism.enabled) "抄袭：按普通未交扣分"
-    else "抄袭：抄袭者和提供者都记一次未交，扣分 ×${plagiarism.multiplier.fmt()}" + if (plagiarism.escalate) "，累犯逐次加重（第 n 次再 ×n，最多 ×${plagiarism.maxTimes}）" else ""
+    else "抄袭：抄袭者和提供者都记一次未交，扣分 ×${plagiarism.multiplier.fmt()}" + (if (plagiarism.escalate) "，累犯逐次加重（第 n 次再 ×n，最多 ×${plagiarism.maxTimes}）" else "") + if (review.enabled) "；同时复审不合格时倍数叠加" else ""
 
 /** 选择“抄了谁的”：可多选，可搜索 */
 @Composable

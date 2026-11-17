@@ -16,7 +16,7 @@ let guideSteps: [GuideStep] = [
     GuideStep(emoji: "👥", title: "名单与小组", body: "在“名单”里添加同学、填写学号和小组。",
               tips: ["积分页可以手动加减分、积分重置", "小组对抗分析、股票模式、结算在安卓上使用", "计分规则在 设置 里调整，三端同步"], colors: [Color(red: 0.61, green: 0.35, blue: 0.71), Color(red: 0.20, green: 0.60, blue: 0.86)]),
     GuideStep(emoji: "☁️", title: "同步与设置", body: "在 设置 里登录账号，改动会自动上传，多台设备之间同步。",
-              tips: ["网页版只能查看，适合分享给同学和家长", "可以备份全部数据（JSON，与安卓、网页通用）"], colors: [Color(red: 0.22, green: 0.28, blue: 0.31), Color(red: 0.56, green: 0.64, blue: 0.68)]),
+              tips: ["网页版适合分享给同学和家长", "可以备份全部数据（JSON，与安卓、网页通用）"], colors: [Color(red: 0.22, green: 0.28, blue: 0.31), Color(red: 0.56, green: 0.64, blue: 0.68)]),
 ]
 
 struct OnboardingView: View {
