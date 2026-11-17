@@ -102,7 +102,7 @@ object PdfReport {
         }
         private fun footer() {
             val tp = tp(8.5f, MUTED)
-            cv.drawText("第 $pages 页 · 生成于 ${SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(now))} · 作业登记", M, H - M + 6f, tp)
+            cv.drawText("第 $pages 页 · 生成于 ${SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(Date(now))} · 作业登记", M, H - M + 6f, tp)
         }
         fun ensure(h: Float) { if (y + h > bottom) { footer(); endPage(); open() } }
         fun finish() { footer(); endPage() }
@@ -153,7 +153,7 @@ object PdfReport {
         val top = p.y
         p.cell("${c.name} 作业与成绩分析报告", M + 18f, top + 16f, W - 2 * M - 36f, 19f, Color.WHITE, true)
         p.cell("范围：${r.window.label}", M + 18f, top + 46f, W - 2 * M - 36f, 10f, Color.argb(230, 255, 255, 255))
-        p.cell("${c.students.size} 名学生 · ${c.assignments.size} 次作业 · ${c.exams.size} 场考试 · 生成于 ${SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(now))}", M + 18f, top + 64f, W - 2 * M - 36f, 9.5f, Color.argb(220, 255, 255, 255))
+        p.cell("${c.students.size} 名学生 · ${c.assignments.size} 次作业 · ${c.exams.size} 场考试 · 生成于 ${SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(Date(now))}", M + 18f, top + 64f, W - 2 * M - 36f, 9.5f, Color.argb(220, 255, 255, 255))
         p.y = top + 108f
         val k = r.kpi; val pv = r.previous
         fun d(cur: Float, prev: Float?, up: Boolean = true): Pair<String, Int> {
@@ -489,7 +489,7 @@ object PdfReport {
         p.y = top + 94f
     }
 
-    private fun stamp(t: Long) = SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(t))
+    private fun stamp(t: Long) = SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(Date(t))
     private fun day(t: Long) = SimpleDateFormat("yyyy/M/d", Locale.CHINA).format(Date(t))
 
     /** 积分流水 PDF：rows 为（学生名，流水行），已按需筛选 */

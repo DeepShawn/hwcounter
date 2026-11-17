@@ -114,4 +114,4 @@ fun plagLine(c: SchoolClass, a: Assignment, sid: String): String {
 fun pct(x: Double?): String = if (x == null || !x.isFinite()) "—" else "${Math.round(x * 100)}%"
 fun pct(x: Float): String = pct(x.toDouble())
 fun md(t: Long): String { val c = java.util.Calendar.getInstance().apply { timeInMillis = t }; return "${c.get(java.util.Calendar.MONTH) + 1}/${c.get(java.util.Calendar.DAY_OF_MONTH)}" }
-fun fmtTime(t: Long): String { val c = java.util.Calendar.getInstance().apply { timeInMillis = t }; return "${c.get(java.util.Calendar.MONTH) + 1}月${c.get(java.util.Calendar.DAY_OF_MONTH)}日 %02d:%02d".format(c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE)) }
+fun fmtTime(t: Long): String { val c = java.util.Calendar.getInstance().apply { timeInMillis = t }; return "${c.get(java.util.Calendar.MONTH) + 1}月${c.get(java.util.Calendar.DAY_OF_MONTH)}日" } // 记录只显示日期

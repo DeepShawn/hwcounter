@@ -132,7 +132,7 @@ fun ColumnScope.UpdateSettings() {
     val st = Updater.status
     LaunchedEffect(st) { p = Updater.prefs(ctx) }
     val summary = when (st) {
-        Updater.Status.Idle -> "当前 v${Updater.current}" + if (p.lastCheck > 0) " · 上次检查 ${java.text.SimpleDateFormat("M月d日 HH:mm", java.util.Locale.CHINA).format(java.util.Date(p.lastCheck))}" else ""
+        Updater.Status.Idle -> "当前 v${Updater.current}" + if (p.lastCheck > 0) " · 上次检查 ${java.text.SimpleDateFormat("M月d日", java.util.Locale.CHINA).format(java.util.Date(p.lastCheck))}" else ""
         Updater.Status.Checking -> "正在检查…"
         is Updater.Status.UpToDate -> "已是最新版本 v${Updater.current}"
         is Updater.Status.Available -> "发现新版本 v${st.release.version}，点击查看"

@@ -131,7 +131,7 @@ fun LedgerScreen(vm: AppViewModel, data: AppData, studentId: String?) {
     val whoName = who?.let { id -> c.students.firstOrNull { it.id == id }?.name } ?: "全班"
     val scope = "$whoName · ${listOf("本轮", "本月", "全部")[range]}" + (kinds[kind]?.let { " · ${Ledger.kindLabel[it]}" } ?: "") +
         (from?.let { " · ${fmtDay(it)} 起" } ?: "")
-    val df = remember { SimpleDateFormat("M/d HH:mm", Locale.CHINA) }
+    val df = remember { SimpleDateFormat("M/d", Locale.CHINA) }
 
     MiuixPage(
         title = "积分流水", onBack = { kit.nav.pop() },

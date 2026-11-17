@@ -9,6 +9,7 @@ import {
 } from './model.js';
 import { api } from './cloud.js';
 import { StatsPage, PlagGraph } from './statspage.js';
+import { StockDetail, GroupStockDetail } from './stockpage.js';
 import { plagiarismReport } from './analytics.js';
 
 const html = htm.bind(h);
@@ -32,7 +33,7 @@ const SV = (k) => (k === 'PLAG' ? PLAG : k === 'REVIEW' ? REVIEW : STATUS[k] || 
 const HANDED = new Set(['SUBMITTED', 'EXCELLENT', 'LATE']);
 const pct = (x) => (x == null || !Number.isFinite(x) ? '—' : `${Math.round(x * 100)}%`);
 const md = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
-const fmtTime = (t) => { const d = new Date(t); const p = (n) => String(n).padStart(2, '0'); return `${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`; };
+const fmtTime = (t) => { const d = new Date(t); return `${d.getMonth() + 1}月${d.getDate()}日`; }; // 记录只显示日期
 const rateColor = (r) => (r == null ? 'var(--sub)' : r >= 0.95 ? '#16a34a' : r >= 0.8 ? 'var(--accent)' : r >= 0.6 ? '#e8792c' : '#e5384d');
 
 // ---------------- 图标 ----------------
@@ -266,6 +267,16 @@ function Roster({ c, rules, open }) {
       })}</${Group}>`}
   </${Page}>`;
 }
+// ---------------- 股票模式：个股详情 / 小组个股详情（与安卓一致） ----------------
+function StockView({ c, rules, id, back, open, prefs, setPrefs }) {
+  const s = c.students.find((x) => x.id === id);
+  const t = s ? (s.no ? `No.${s.no}` : s.name) : '个股';
+  return html`<${Page} title=${t} large=${s ? `${t} ${s.name}` : t} onBack=${back}><${StockDetail} c=${c} rules=${rules} id=${id} open=${open} us=${prefs.usColors !== false} setUs=${(v) => setPrefs({ usColors: v })} /></${Page}>`;
+}
+function GroupStockView({ c, rules, id, back, open, prefs, setPrefs }) {
+  return html`<${Page} title=${id} large=${`${id} · 行情`} onBack=${back}><${GroupStockDetail} c=${c} rules=${rules} id=${id} open=${open} us=${prefs.usColors !== false} setUs=${(v) => setPrefs({ usColors: v })} /></${Page}>`;
+}
+
 function GroupView({ c, rules, id, back, open }) {
   const st = useStats(c, rules);
   const ms = sortStudents(c.students.filter((s) => (s.group || '未分组') === id));
@@ -525,7 +536,7 @@ function App() {
   const props = { c, data, rules, open, back, prefs, setPrefs };
   let body;
   if (top) {
-    const V = { assign: AssignView, student: StudentView, group: GroupView, exam: ExamView, exams: ExamList }[top.view];
+    const V = { assign: AssignView, student: StudentView, group: GroupView, exam: ExamView, exams: ExamList, stock: StockView, gstock: GroupStockView }[top.view];
     body = V ? h(V, { ...props, id: top.id }) : null;
   } else if (tab === 'home') body = h(Home, props);
   else if (tab === 'roster') body = h(Roster, props);

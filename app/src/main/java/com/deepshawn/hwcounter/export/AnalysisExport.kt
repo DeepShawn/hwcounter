@@ -24,7 +24,7 @@ object AnalysisExport {
             widths = listOf(22.0, 16.0, 16.0, 60.0)
             row(XlsxWriter.Cell("${c.name} 作业与成绩分析报告（${Analytics.rangeTitle(r)}）", XlsxWriter.Style.TITLE))
             row("范围", r.window.label)
-            row("生成时间", fmtDay(System.currentTimeMillis()))
+            row("生成日期", fmtDay(System.currentTimeMillis()))
             row()
             rowCells(header("指标", "本时段", "上一时段", "说明"))
             fun line(n: String, v: Any, p: Any?, d: String) = rowCells(listOf(XlsxWriter.Cell(n), XlsxWriter.Cell(v), XlsxWriter.Cell(p ?: ""), XlsxWriter.Cell(d)))

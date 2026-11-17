@@ -93,6 +93,9 @@ import java.util.Locale
 
 private val timeFmt = SimpleDateFormat("M月d日 HH:mm", Locale.CHINA)
 fun fmtTime(t: Long): String = timeFmt.format(Date(t))
+/** 记录只显示日期 */
+private val editFmt = SimpleDateFormat("M月d日", Locale.CHINA)
+fun fmtEdited(t: Long): String = editFmt.format(Date(t))
 private val REG = listOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE, HwStatus.MISSING, HwStatus.LEAVE)
 
 /** 分享统计名单 Excel */
@@ -201,7 +204,7 @@ fun DraftScreen(vm: AppViewModel, data: AppData, draftId: String) {
                         Text("📝 草稿 · 只保存在本机 · ${if (d.isNew) "新作业" else "已有作业"}", color = Color.White.copy(alpha = 0.85f), fontSize = 12.sp)
                         Text(d.title.ifBlank { "未命名作业" }, color = Color.White, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.combinedClickable(onClick = { edit = true }))
-                        Text("${d.subject} · ${c.name} · 编辑于 ${fmtTime(d.updatedAt)}", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+                        Text("${d.subject} · ${c.name} · 编辑于 ${fmtEdited(d.updatedAt)}", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
                     }
                 }
                 Spacer(Modifier.height(10.dp))
@@ -381,7 +384,7 @@ fun DraftListScreen(vm: AppViewModel, data: AppData) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text((if (d.isNew) "🆕 " else "") + d.title.ifBlank { "未命名作业" }, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${c?.let { "${it.emoji} ${it.name}" } ?: "⚠️ 班级已删除"} · ${d.subject} · 改动 ${StatTable.changes(d).size} 人 · 编辑于 ${fmtTime(d.updatedAt)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${c?.let { "${it.emoji} ${it.name}" } ?: "⚠️ 班级已删除"} · ${d.subject} · 改动 ${StatTable.changes(d).size} 人 · 编辑于 ${fmtEdited(d.updatedAt)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         d.scheduledAt?.let { Text("⏰ ${fmtTime(it)} 自动上传", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
                     }
                     if (t != null) Column(horizontalAlignment = Alignment.End) {

@@ -3,6 +3,8 @@
 import { h } from '../vendor/preact.module.js';
 import { useState, useEffect, useMemo } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
+import { analysisXlsx, analysisHtml } from './reportexport.js';
+import { StockTab } from './stockpage.js';
 import { STATUS, fmtNum, signed, compareStudentNumbers, rechargeCounts, defaultPlagiarism, plagiarismFactor, copiedFrom, copiedBy, plagiarized } from './model.js';
 import {
   report as buildReport, text as reportText, examReport, periodBounds, periodLabel, difficultyText, discriminationText,
@@ -32,7 +34,7 @@ function useLater(fn, deps) {
   return v && v.deps.length === deps.length && v.deps.every((x, i) => x === deps[i]) ? v.r : undefined;
 }
 
-export function StatsPage({ kit, c, rules, open, prefs }) {
+export function StatsPage({ kit, c, rules, open, prefs, setPrefs }) {
   const { Page, Seg } = kit;
   const [mode, setMode] = useKeep('mode');
   const [share, setShare] = useState(false);
@@ -42,7 +44,7 @@ export function StatsPage({ kit, c, rules, open, prefs }) {
     <div class="pad"><${Seg} items=${[['hw', '作业'], ['exam', '考试'], ['att', '关注'], ['group', '小组'], ['plag', '抄袭']]} value=${mode} onChange=${setMode} /></div>
     ${mode === 'hw' && html`<${Homework} kit=${kit} c=${c} rules=${rules} open=${open} share=${share} setShare=${setShare} />`}
     ${mode === 'exam' && html`<${Exams} kit=${kit} c=${c} rules=${rules} open=${open} />`}
-    ${mode === 'att' && html`<${AttentionTab} kit=${kit} c=${c} rules=${rules} open=${open} us=${prefs.usColors !== false} />`}
+    ${mode === 'att' && html`<${AttentionTab} kit=${kit} c=${c} rules=${rules} open=${open} us=${prefs.usColors !== false} setUs=${setPrefs ? (v) => setPrefs({ usColors: v }) : null} />`}
     ${mode === 'group' && html`<${Groups} kit=${kit} c=${c} rules=${rules} open=${open} />`}
     ${mode === 'plag' && html`<${Plagiarism} kit=${kit} c=${c} rules=${rules} open=${open} />`}
     ${mode !== 'hw' && share && html`<${ReportSheet} c=${c} rules=${rules} spec=${{ range: 'ALL' }} onClose=${() => setShare(false)} />`}
@@ -266,16 +268,35 @@ function Tiers({ tiers, open }) {
 
 // ---------------- 分析报告（文字） ----------------
 function ReportSheet({ c, rules, spec, report, onClose }) {
-  const txt = useMemo(() => reportText(c, report || buildReport(c, rules, spec), Date.now(), examReport(c)), [c, rules, report]);
+  const r = useMemo(() => report || buildReport(c, rules, spec), [c, rules, report]);
+  const ex = useMemo(() => examReport(c), [c]);
+  const txt = useMemo(() => reportText(c, r, Date.now(), ex), [c, r, ex]);
   const [msg, setMsg] = useState('');
+  const name = (ext) => `${c.name}_分析报告_${stamp()}.${ext}`.replace(/[\\/:*?"<>|]/g, '_');
+  const save = (blob, file) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
   const copy = async () => { try { await navigator.clipboard.writeText(txt); setMsg('已复制分析报告'); } catch { setMsg('复制失败：请长按下面的文字手动复制'); } };
-  const download = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain;charset=utf-8' })); a.download = `${c.name}_分析报告.txt`.replace(/\//g, '_'); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); };
+  const download = () => save(new Blob([txt], { type: 'text/plain;charset=utf-8' }), name('txt'));
+  const excel = () => { try { save(analysisXlsx(c, r, ex), name('xlsx')); setMsg('已导出 Excel 分析报告（概览、学生明细、每次作业、进步与退步、积分、考试等多张表）'); } catch (e) { setMsg('导出 Excel 失败：' + e.message); } };
+  const pdf = () => {
+    const doc = analysisHtml(c, r, ex);
+    try {
+      const f = document.createElement('iframe');
+      f.setAttribute('aria-hidden', 'true'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+      document.body.appendChild(f);
+      const d = f.contentDocument; d.open(); d.write(doc); d.close();
+      setTimeout(() => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch { save(new Blob([doc], { type: 'text/html;charset=utf-8' }), name('html')); } setTimeout(() => f.remove(), 60_000); }, 250);
+      setMsg('已打开打印：目标选“存储为 PDF”即可保存 PDF 报告');
+    } catch { save(new Blob([doc], { type: 'text/html;charset=utf-8' }), name('html')); setMsg('已下载报告网页，打开后可打印为 PDF'); }
+  };
   return html`<div class="sheet-bg" onClick=${onClose}><div class="sheet" role="dialog" aria-label="分析报告" onClick=${(e) => e.stopPropagation()}>
     <div class="sheet-h"><b>一键生成分析报告</b><button class="ib" onClick=${onClose} aria-label="关闭">✕</button></div>
-    <div class="sheet-btns"><button class="btn1" onClick=${copy}>复制文字报告</button><button class="btn2" onClick=${download}>下载文字报告</button></div>
+    <div class="muted" style=${{ fontSize: '12px', margin: '-4px 0 10px' }}>把本页全部分析（含考试、进步与退步）整理成文字、PDF 或多表 Excel。</div>
+    <div class="sheet-btns"><button class="btn1" onClick=${pdf}>导出 PDF 报告</button><button class="btn1" onClick=${excel}>导出 Excel 报告</button></div>
+    <div class="sheet-btns"><button class="btn2" onClick=${copy}>复制文字报告</button><button class="btn2" onClick=${download}>下载文字报告</button></div>
     ${msg && html`<div class="an-note">${msg}</div>`}
     <pre class="sheet-txt">${txt}</pre></div></div>`;
 }
+const stamp = () => { const d = new Date(); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`; };
 
 // ---------------- 考试 ----------------
 function Exams({ kit, c, rules, open }) {
@@ -363,11 +384,11 @@ function Spark({ values, color, w = 48, hgt = 22 }) {
   const hi = Math.max(100, ...values); const x = (i) => w * i / (values.length - 1); const y = (v) => hgt - 2 - (hgt - 4) * v / hi;
   return html`<svg width=${w} height=${hgt} aria-hidden="true"><path d=${values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')} fill="none" stroke=${color} stroke-width="1.6" stroke-linejoin="round" /></svg>`;
 }
-function AttentionTab({ kit, c, rules, open, us }) {
+function AttentionTab({ kit, c, rules, open, us, setUs }) {
   const [att, setAtt] = useKeep('att');
   const list = useMemo(() => attention(c, rules), [c, rules]);
   return html`<div class="pad"><${Tabs2} items=${['榜单', '股票']} value=${att} onChange=${setAtt} /></div>
-    ${att === 0 ? html`<${AttentionBoard} kit=${kit} c=${c} rules=${rules} list=${list} open=${open} />` : html`<${StockTab} kit=${kit} c=${c} rules=${rules} list=${list} open=${open} us=${us} />`}`;
+    ${att === 0 ? html`<${AttentionBoard} kit=${kit} c=${c} rules=${rules} list=${list} open=${open} />` : html`<${StockTab} c=${c} rules=${rules} list=${list} open=${open} us=${us} setUs=${setUs} />`}`;
 }
 function AttentionBoard({ kit, c, rules, list, open }) {
   const { Empty, Avatar } = kit;
@@ -385,132 +406,6 @@ function AttentionBoard({ kit, c, rules, list, open }) {
         <div class="an-grow"><b>${x.student.name} <em class="an-tag" style=${{ color: col, background: col + '1f' }}>${attLabel(x.level)}</em></b><small>${x.top.slice(0, 2).map((p) => p.detail).join(' · ') || '各项正常'}</small></div>
         <${Spark} values=${w} color=${col} />
         <div class="an-att"><b style=${{ color: col }}>${Math.round(x.index)}</b><small style=${{ color: delta > 0 ? BAD : delta < 0 ? GOOD : 'var(--sub)' }}>${delta > 0 ? `▲${delta}` : delta < 0 ? `▼${-delta}` : '持平'}</small></div></button>`; })}</section>`;
-}
-
-const p2 = (x) => x.toFixed(2);
-const s2 = (x) => (x > 0.005 ? '+' + p2(x) : x < -0.005 ? '-' + p2(Math.abs(x)) : '0.00');
-const pctOf = (q) => (q.pct == null ? '—' : `${q.pct > 0.00005 ? '+' : q.pct < -0.00005 ? '-' : ''}${Math.abs(q.pct * 100).toFixed(2)}%`);
-const candleLabel = (k) => (k.end - k.start <= 86400000 ? md(k.start) : `${md(k.start)}–${md(k.end - 1)}`);
-function StockChart({ q, kline, sc, sel, onSel }) {
-  const n = q.candles.length; if (!n) return null;
-  const W = 340; const H = 190; const VH = 36; const P = 4;
-  let lo = Math.min(q.low, q.base); let hi = Math.max(q.high, q.base);
-  if (hi - lo < 2) { const m = (hi + lo) / 2; lo = m - 1; hi = m + 1; }
-  const pad = (hi - lo) * 0.08; lo = Math.max(0, lo - pad); hi += pad;
-  const y = (v) => P + (H - VH - 2 * P) * (1 - (v - lo) / (hi - lo));
-  const bw = W / n; const maxV = Math.max(1, ...q.candles.map((k) => k.volume));
-  const color = sc(q.change);
-  const pts = q.closes.map((v, i) => [W * i / n, y(v)]);
-  const pick = (e) => { const r = e.currentTarget.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width * W; onSel(Math.max(0, Math.min(n - 1, kline ? Math.floor(x / bw) : Math.round(x / W * n) - 1))); };
-  const sx = sel == null ? null : kline ? (sel + 0.5) * bw : W * (sel + 1) / n;
-  return html`<svg class="an-stock" viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none" onPointerMove=${pick} onPointerDown=${pick} onPointerLeave=${() => onSel(null)} role="img" aria-label="行情图">
-    <line x1="0" x2=${W} y1=${y(q.base)} y2=${y(q.base)} stroke="var(--sub)" stroke-dasharray="3 4" stroke-width="1" vector-effect="non-scaling-stroke" />
-    ${kline ? q.candles.map((k, i) => { const col = k.close >= k.open ? sc(1) : sc(-1); const cx = (i + 0.5) * bw; const top = y(Math.max(k.open, k.close)); const bot = y(Math.min(k.open, k.close));
-      return html`<g><line x1=${cx} x2=${cx} y1=${y(k.high)} y2=${y(k.low)} stroke=${col} stroke-width="1" vector-effect="non-scaling-stroke" /><rect x=${cx - bw * 0.32} width=${bw * 0.64} y=${top} height=${Math.max(1, bot - top)} fill=${col} /></g>`; })
-      : html`<path d=${pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ') + ` L${W},${H - VH - P} L0,${H - VH - P} Z`} fill=${color} opacity="0.12" />
-        <path d=${pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')} fill="none" stroke=${color} stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke" />`}
-    ${q.candles.map((k, i) => html`<rect x=${i * bw + bw * 0.15} width=${bw * 0.7} y=${H - k.volume / maxV * (VH - 4)} height=${k.volume / maxV * (VH - 4)} fill=${sc(k.close - k.open)} opacity="0.45" />`)}
-    ${sx != null && html`<line x1=${sx} x2=${sx} y1="0" y2=${H} stroke="var(--fg)" stroke-width="1" opacity="0.5" vector-effect="non-scaling-stroke" />`}
-  </svg>`;
-}
-function QuoteHeader({ q, sel, spanLabel, sc }) {
-  const k = sel == null ? null : q.candles[sel]; const v = k ? k.close : q.last; const ch = v - q.base;
-  const pc = q.base < 1 ? '—' : `${ch >= 0 ? '+' : '-'}${Math.abs(ch / q.base * 100).toFixed(2)}%`;
-  return html`<div class="an-quote"><b>${p2(v)}</b><div><span style=${{ color: sc(ch) }}>${s2(ch)} (${pc})</span><small>${k ? candleLabel(k) : `近${spanLabel}`}</small></div></div>`;
-}
-function MiniChart({ q, color }) {
-  const v = q.closes; if (v.length < 2) return null;
-  let lo = Math.min(...v); let hi = Math.max(...v); if (hi - lo < 1) { lo -= 0.5; hi += 0.5; }
-  const W = 70; const H = 30; const x = (i) => W * i / (v.length - 1); const y = (t) => 2 + (H - 4) * (1 - (t - lo) / (hi - lo));
-  return html`<svg width=${W} height=${H} aria-hidden="true"><line x1="0" x2=${W} y1=${y(q.base)} y2=${y(q.base)} stroke="var(--sub)" stroke-dasharray="2 3" stroke-width="0.8" />
-    <path d=${v.map((t, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(t).toFixed(1)}`).join(' ')} fill="none" stroke=${color} stroke-width="1.6" /></svg>`;
-}
-/** 行情计算：优先放到 Web Worker（不卡页面），每个区间算一次就缓存；不支持时退回主线程 */
-let stockWorker = null; let reqSeq = 0; const pending = new Map();
-function worker() {
-  if (stockWorker !== null) return stockWorker;
-  try {
-    stockWorker = new Worker(new URL('./stockworker.js', import.meta.url), { type: 'module' });
-    stockWorker.onmessage = (e) => { const p = pending.get(e.data.id); if (p) { pending.delete(e.data.id); e.data.error ? p.reject(new Error(e.data.error)) : p.resolve(e.data.board); } };
-    stockWorker.onerror = () => { stockWorker = false; for (const p of pending.values()) p.reject(new Error('worker')); pending.clear(); };
-  } catch { stockWorker = false; }
-  return stockWorker;
-}
-function computeBoard(c, rules, kind, span) {
-  const now = Date.now();
-  const local = () => new Promise((resolve) => setTimeout(() => resolve(kind === 1 ? groupStockBoard(c, rules, span, now) : stockBoard(c, rules, span, now)), 0));
-  const w = worker();
-  if (!w) return local();
-  const id = ++reqSeq;
-  return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); w.postMessage({ id, c, rules, kind, span, now }); }).catch(local);
-}
-const boardCache = new WeakMap();
-function useBoard(c, rules, kind, span) {
-  let byRules = boardCache.get(c); if (!byRules) { byRules = new WeakMap(); boardCache.set(c, byRules); }
-  let cache = byRules.get(rules); if (!cache) { cache = new Map(); byRules.set(rules, cache); }
-  const key = `${kind}:${span}`;
-  const [, tick] = useState(0);
-  const [shown, setShown] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    const want = (k, sp) => {
-      const kk = `${k}:${sp}`;
-      if (!cache.has(kk)) cache.set(kk, computeBoard(c, rules, k, sp).then((b) => { cache.set(kk, { board: b }); return b; }, () => { cache.delete(kk); return undefined; }));
-      return cache.get(kk);
-    };
-    const hit = cache.get(key);
-    if (hit && hit.board !== undefined) { setShown({ key, board: hit.board }); return; }
-    want(kind, span).then((b) => {
-      if (!alive) return;
-      setShown({ key, board: b }); tick((x) => x + 1);
-      // 预先把其他区间也算好，切换时立即显示
-      for (const [sp] of SPANS) want(kind, sp);
-    });
-    return () => { alive = false; };
-  }, [c, rules, key]);
-  const hit = cache.get(key);
-  if (hit && hit.board !== undefined) return { board: hit.board, stale: false };
-  // 还在算：先显示同一类（个人 / 小组）上一次的行情
-  return { board: shown && shown.key.split(':')[0] === String(kind) ? shown.board : undefined, stale: true };
-}
-
-function StockTab({ kit, c, rules, list, open, us }) {
-  const { Empty } = kit;
-  const [kind, setKind] = useKeep('kind'); const [span, setSpan] = useKeep('span'); const [kline, setKline] = useKeep('kline');
-  const [pill, setPill] = useKeep('pill'); const [sort, setSort] = useKeep('sort');
-  const [sel, setSel] = useState(null);
-  const { board, stale } = useBoard(c, rules, kind, span);
-  const up = us ? '#12a866' : '#e5433a'; const down = us ? '#e5433a' : '#12a866';
-  const sc = (x) => (x > 0.005 ? up : x < -0.005 ? down : '#8e8e93');
-  if (!c.students.length) return html`<${Empty} emoji="📈" text="还没有学生" />`;
-  const head = html`<div class="pad an-picker"><${Tabs2} items=${['个人 · 关注度', '小组 · 综合分']} value=${kind} onChange=${(v) => { setKind(v); setSel(null); }} />
-    <${Tabs2} items=${SPANS.map((s) => s[1])} value=${SPANS.findIndex((s) => s[0] === span)} onChange=${(i) => { setSpan(SPANS[i][0]); setSel(null); }} /></div>`;
-  if (board === undefined) return html`${head}<div class="empty">正在计算行情…</div>`;
-  const busy = stale && board.span !== span;
-  if (board === null) return html`${head}<${Empty} emoji="👥" text="还没有小组（每组至少 2 人）" />`;
-  const m = board.market; const spanLabel = SPANS.find((s) => s[0] === board.span)[1];
-  const isGroup = kind === 1;
-  const att = Object.fromEntries(list.map((x) => [x.student.id, x]));
-  const rows = isGroup
-    ? Object.entries(board.stocks).map(([g, q]) => ({ id: g, title: g, sub: `${c.students.filter((s) => s.group === g).length} 人`, q, val: q.last, onClick: () => open({ view: 'group', id: g }) }))
-    : c.students.filter((s) => board.stocks[s.id]).map((s) => ({ id: s.id, no: s.no, title: s.no ? `No.${s.no}` : s.name, sub: s.name + (att[s.id]?.top[0] ? ` · ${att[s.id].top[0].label}` : ''), q: board.stocks[s.id], val: att[s.id]?.index ?? board.stocks[s.id].last, level: att[s.id]?.level, name: s.name, onClick: () => open({ view: 'student', id: s.id }) }));
-  const sorted = [...rows].sort([(a, b) => b.val - a.val, (a, b) => b.q.change - a.q.change, (a, b) => a.q.change - b.q.change, (a, b) => compareStudentNumbers(a.no || '', b.no || '') || (a.title < b.title ? -1 : 1)][sort]);
-  const ups = rows.filter((x) => x.q.change > 0.005).sort((a, b) => b.q.change - a.q.change); const downs = rows.filter((x) => x.q.change < -0.005).sort((a, b) => a.q.change - b.q.change);
-  return html`${head}
-    <section class="grp an-pad"><div class="an-mkt"><b>${isGroup ? 'GRP' : 'ATTN'}</b><small>${isGroup ? '小组综合指数 · 各组平均' : '关注指数 · 全班平均'}</small>${busy && html`<small class="an-busy">正在计算${SPANS.find((x) => x[0] === span)[1]}…</small>`}</div>
-      <${QuoteHeader} q=${m} sel=${sel} spanLabel=${spanLabel} sc=${sc} />
-      <div class="an-toggles"><${Tabs2} items=${['走势', 'K 线']} value=${kline ? 1 : 0} onChange=${(v) => setKline(v === 1)} /></div>
-      <${StockChart} q=${m} kline=${kline} sc=${sc} sel=${sel} onSel=${setSel} />
-      <div class="an-keys">${[['开盘', p2(m.base)], ['最高', p2(m.high)], ['前收', p2(m.prevClose)], ['最低', p2(m.low)], ['成交量', `${m.volume}`], ['振幅', m.base < 1 ? '—' : `${((m.high - m.low) / m.base * 100).toFixed(2)}%`], ['上涨', `${board.up} 家`], ['下跌', `${board.down} 家`]].map(([l, v]) => html`<div><small>${l}</small><b>${v}</b></div>`)}</div>
-      <div class="muted" style=${{ fontSize: '11px', marginTop: '8px' }}>${isGroup ? '综合分越高越好：上涨表示小组在变好。成交量为这段时间的记录条数（作业登记、考试成绩）。' : '指数越高越需要关注：上涨表示情况变差，下跌表示在好转。成交量为这段时间的记录条数（作业登记、加减分、考试成绩）。'}</div></section>
-    <div class="an-movers">${[['领涨', ups], ['领跌', downs]].map(([t, l]) => html`<section class="grp an-pad"><b>${t}</b>${l.length ? l.slice(0, 3).map((x) => html`<button class="an-mini" onClick=${x.onClick}><span>${x.name || x.title}</span><b style=${{ color: sc(x.q.change) }}>${s2(x.q.change)}</b></button>`) : html`<div class="muted">无</div>`}</section>`)}</div>
-    <div class="st">${isGroup ? '小组板块' : '自选股'} · 点胶囊切换涨跌额 / 涨跌幅${isGroup ? '' : ' / 等级'}</div>
-    <div class="chips">${['关注度', '涨幅', '跌幅', isGroup ? '名称' : '学号'].map((t, i) => html`<button class=${'chip' + (sort === i ? ' on' : '')} onClick=${() => setSort(i)}>${isGroup && i === 0 ? '综合分' : t}</button>`)}</div>
-    <section class="grp">${sorted.map((x) => { const col = sc(x.q.change); const mode = isGroup ? pill % 2 : pill;
-      const txt = mode === 0 ? s2(x.q.change) : mode === 1 ? pctOf(x.q) : attLabel(x.level);
-      const bg = mode === 2 ? attColor(x.level) : col;
-      return html`<div class="an-row tap" key=${x.id} onClick=${x.onClick}><div class="an-grow"><b class="an-ticker">${x.title}</b><small>${x.sub}</small></div>
-        <${MiniChart} q=${x.q} color=${col} /><div class="an-att"><b>${p2(x.val)}</b><button class="an-pill" style=${{ background: bg }} onClick=${(e) => { e.stopPropagation(); setPill((p) => (p + 1) % (isGroup ? 2 : 3)); }}>${txt}</button></div></div>`; })}</section>`;
 }
 
 // ---------------- 小组 ----------------

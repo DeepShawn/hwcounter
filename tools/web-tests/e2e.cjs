@@ -40,7 +40,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}/`;
   const browser = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {});
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, colorScheme: 'light' });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, colorScheme: 'light', acceptDownloads: true });
   await ctx.route('https://beasxxexggnjcocdbtdl.supabase.co/**', mock);
   const page = await ctx.newPage();
   const errors = []; globalThis.pageErrors = errors; page.on('pageerror', (e) => errors.push(e.message)); page.on('console', (m) => { if (m.type() === 'error' && !m.text().startsWith('Failed to load resource')) errors.push(m.text()); });
@@ -89,6 +89,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.click('.tabbar button:has-text("积分")'); await page.waitForSelector('text=排行榜');
   await shot('6-scores');
   await page.click('.seg button:has-text("加减分记录")'); check(await page.isVisible('text=课堂表现好'), '加减分记录');
+  check(!/\d{1,2}:\d{2}/.test(await page.textContent('main')), '记录只显示日期，不显示时间点');
   await page.click('.tabbar button:has-text("统计")'); await page.waitForSelector('text=数据分析');
   // 作业：与手机端同样的分析项
   await page.waitForSelector('text=主要发现');
@@ -104,7 +105,15 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.click('.seg button:has-text("全部") >> nth=0');
   await page.click('button:has-text("生成分析报告")'); await page.waitForSelector('.sheet');
   check((await page.textContent('.sheet-txt')).includes('作业与成绩分析报告') && (await page.textContent('.sheet-txt')).includes('五、考试'), '一键生成文字分析报告（含考试）');
-  await shot('7a-report'); await page.click('.sheet-bg', { position: { x: 10, y: 10 } });
+  await shot('7a-report');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('.sheet button:has-text("导出 Excel 报告")')]);
+  const xpath = path.join(OUT, 'report.xlsx'); await dl.saveAs(xpath);
+  const xbuf = fs.readFileSync(xpath);
+  check(xbuf.slice(0, 2).toString() === 'PK' && xbuf.includes(Buffer.from('xl/worksheets/sheet8.xml')), '导出 Excel 分析报告（多张工作表）');
+  await page.evaluate(() => { window.__printed = 0; const f = HTMLIFrameElement.prototype; const d = Object.getOwnPropertyDescriptor(f, 'contentWindow'); Object.defineProperty(f, 'contentWindow', { get() { const w = d.get.call(this); try { w.print = () => { window.__printed++; window.__printDoc = w.document.body.innerText; }; } catch { /* 跨域 */ } return w; } }); });
+  await page.click('.sheet button:has-text("导出 PDF 报告")'); await page.waitForFunction(() => window.__printed > 0);
+  check((await page.evaluate(() => window.__printDoc)).includes('、学生明细') && await page.isVisible('text=存储为 PDF'), '导出 PDF 分析报告（打印版）');
+  await page.click('.sheet-bg', { position: { x: 10, y: 10 } });
   // 考试
   await page.click('.seg button:has-text("考试")'); await page.waitForSelector('text=各场考试');
   check(await page.isVisible('text=最近平均得分率') && await page.isVisible('text=学生考试明细（平均得分率从高到低）'), '考试分析');
@@ -119,11 +128,42 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await shot('7d-attention');
   await page.click('.an-tabs button:has-text("股票")'); await page.waitForSelector('text=ATTN', { timeout: 15000 });
   check(await page.isVisible('text=关注指数 · 全班平均') && (await page.locator('.an-pill').count()) === 12, '股票模式：大盘与个股');
-  await page.click('.an-tabs button:has-text("K 线")'); check((await page.locator('.an-stock rect').count()) > 30, '股票模式：K 线');
+  // 滚动行情条一直在动
+  const tx1 = await page.$eval('.stk-tape-in', (e) => new DOMMatrix(getComputedStyle(e).transform).m41); await page.waitForTimeout(700);
+  const tx2 = await page.$eval('.stk-tape-in', (e) => new DOMMatrix(getComputedStyle(e).transform).m41);
+  check((await page.locator('.stk-tick').count()) >= 13 && tx2 < tx1, '滚动行情条：大盘 + 个股，持续滚动');
+  check(await page.isVisible('.stk-axis') && await page.isVisible('text=按住左右拖动查看') && await page.isVisible('.stk-toggles button:has-text("美股 · 绿涨红跌")'), '行情图：价格轴、提示、配色切换');
+  // 按住拖动：显示所选那一根；松手恢复
+  const box = await page.locator('.stk-card .an-stock').first().boundingBox();
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height / 2); await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2, { steps: 5 });
+  const during = await page.textContent('.stk-card .an-quote small');
+  check(/\d+\/\d+/.test(during) && await page.isVisible('.stk-foot >> text=成交'), '拖动图表：显示那一天的价格和成交');
+  await page.mouse.up(); await page.mouse.move(box.x + box.width * 0.5, box.y - 60);
+  check((await page.textContent('.stk-card .an-quote small')).startsWith('近'), '松手恢复最新价');
+  // 点按选中、再点取消
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2); await page.mouse.move(box.x + box.width * 0.5, box.y - 60);
+  check(/\d+\/\d+/.test(await page.textContent('.stk-card .an-quote small')), '点按选中一根');
+  await page.click('.stk-toggles button:has-text("K线")'); check((await page.locator('.stk-candle').count()) > 20, '股票模式：K 线');
+  await page.click('.an-pill >> nth=0'); check((await page.locator('.an-pill:has-text("%")').count()) > 0, '胶囊切换涨跌幅');
+  await page.click('.an-pill >> nth=0'); await page.click('.an-pill >> nth=0');
   await shot('7e-stock');
+  // 个股详情
+  await page.click('.an-row.tap >> nth=0'); await page.waitForSelector('text=成分 · 关注度构成');
+  for (const t of ['关键数据', '历史行情', '成分 · 关注度构成']) check(await page.isVisible(`.st:has-text("${t}")`), `个股详情：${t}`);
+  check(await page.isVisible('text=积分（市值）') && await page.isVisible('text=相对大盘') && (await page.locator('.stk-hist tbody tr').count()) > 5, '个股详情：关键数据与历史行情');
+  await shot('7e2-stock-detail');
+  await page.click('button.more:has-text("查看完整个人分析")'); await page.waitForSelector('text=积分流水');
+  await page.goBack(); await page.goBack(); await page.waitForSelector('text=ATTN');
   await page.click('.an-tabs button:has-text("小组 · 综合分")'); await page.waitForSelector('text=GRP', { timeout: 15000 });
-  check((await page.locator('.an-pill').count()) === 3, '股票模式：小组板块');
-  await page.click('.an-tabs button:has-text("个人 · 关注度")'); await page.click('.an-tabs button:has-text("走势")'); await page.click('.an-tabs button:has-text("榜单")');
+  check((await page.locator('.an-pill').count()) === 3 && !(await page.isVisible('.stk-tape')), '股票模式：小组板块');
+  await page.click('.an-pill >> nth=0'); await page.click('.an-pill >> nth=0');
+  check((await page.textContent('.an-pill >> nth=0')).includes('名'), '小组胶囊：涨跌额 / 涨跌幅 / 名次');
+  await page.click('.an-row.tap >> nth=0'); await page.waitForSelector('text=当前名次');
+  check(await page.isVisible('text=人均作业扣分') && await page.isVisible('button.more:has-text("查看小组详情")'), '小组个股详情');
+  await shot('7e3-group-stock');
+  await page.goBack(); await page.waitForSelector('text=GRP');
+  await page.click('.an-tabs button:has-text("个人 · 关注度")'); await page.click('.stk-toggles button:has-text("走势")'); await page.click('.an-tabs button:has-text("榜单")');
   // 小组
   await page.click('.seg button:has-text("小组")'); await page.waitForSelector('text=小组对抗排名');
   for (const t of ['本期排名', '历次排名', '每周对抗 · 交齐率最高的组胜出', '两组对决', '组长奖惩'])
@@ -150,6 +190,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check(await page.isVisible('.cell:has-text("冉浩") .pill:has-text("抄袭")') && await page.isVisible('.cell:has-text("林静") .pill:has-text("抄袭")'), '作业页：抄袭者和提供者都标为抄袭');
   await page.click('.cell:has-text("冉浩")'); await page.waitForSelector('text=积分流水');
   check(await page.isVisible('text=抄袭 林静，本轮第 1 次，扣分 ×2'), '积分流水写明抄袭了谁、第几次、倍数');
+  check(!/\d{1,2}:\d{2}/.test(await page.textContent('main')), '积分流水只显示日期');
   await page.goBack(); await page.goBack(); await page.waitForSelector('.an-graph');
   await page.click('.seg button:has-text("作业")');
   await page.click('.tabbar button:has-text("设置")'); await page.waitForSelector('text=主题配色');

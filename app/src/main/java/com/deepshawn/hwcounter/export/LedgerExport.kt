@@ -20,7 +20,7 @@ object Ledger {
     fun all(c: SchoolClass, rules: ScoreRules): List<Pair<Student, LedgerRow>> =
         c.students.flatMap { s -> c.ledger(rules, s.id).map { s to it } }.sortedWith(compareByDescending<Pair<Student, LedgerRow>> { it.second.time }.thenBy { it.second.kind.ordinal }.thenBy { it.first.no })
 
-    private val f = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
+    private val f = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
 
     fun writeXlsx(c: SchoolClass, title: String, scope: String, rows: List<Pair<Student, LedgerRow>>, out: OutputStream) {
         val x = XlsxWriter()
@@ -28,7 +28,7 @@ object Ledger {
             widths = listOf(17.0, 12.0, 10.0, 8.0, 8.0, 50.0, 8.0, 8.0)
             row(XlsxWriter.Cell("${c.name} $title", XlsxWriter.Style.TITLE))
             row(scope)
-            rowCells(listOf("时间", "学号", "姓名", "小组", "类型", "内容", "分值", "计入").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) })
+            rowCells(listOf("日期", "学号", "姓名", "小组", "类型", "内容", "分值", "计入").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) })
             rows.forEach { (s, r) ->
                 val style = if (r.delta > 0) XlsxWriter.Style.GREEN else if (r.delta < 0) XlsxWriter.Style.RED else XlsxWriter.Style.NORMAL
                 rowCells(listOf(
@@ -54,7 +54,7 @@ object Ledger {
         x.sheet("结算") {
             widths = listOf(12.0, 10.0, 8.0, 10.0, 8.0, 8.0, 10.0, 10.0, 8.0, 10.0, 60.0)
             row(XlsxWriter.Cell("${c.name} ${s.title}", XlsxWriter.Style.TITLE))
-            row("结算时间", f.format(Date(s.time)), "", "范围", (s.roundStart?.let { f.format(Date(it)) + " 起" } ?: "有记录以来"))
+            row("结算日期", f.format(Date(s.time)), "", "范围", (s.roundStart?.let { f.format(Date(it)) + " 起" } ?: "有记录以来"))
             rowCells(listOf("学号", "姓名", "应交", "交齐度%", "迟交", "缺交", "最长连缺", "综合指数", "名次", "结算分", "原因").map { XlsxWriter.Cell(it, XlsxWriter.Style.HEADER) })
             s.lines.sortedByDescending { it.delta }.forEach { l ->
                 val st = names[l.studentId]
