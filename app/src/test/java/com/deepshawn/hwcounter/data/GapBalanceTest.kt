@@ -14,15 +14,18 @@ class GapBalanceTest {
     )
     private fun misses(c: SchoolClass, r: ScoreRules = rules) = c.assignments.filter { it.statuses["s1"] == M }.map { c.autoPoints(r, "s1").getValue(it.id) }
 
-    @Test fun defaultOnWindowEight() {
+    @Test fun defaultOnWindowSixMaxThree() {
         assertTrue(MissingEscalation().gapBalance)
-        assertEquals(8, MissingEscalation().gapWindow)
+        assertEquals(6, MissingEscalation().gapWindow)
+        assertEquals(3, MissingEscalation().gapMax)
     }
 
     @Test fun everyOtherTimeEscalates() {
-        // 隔一次不交一次：2、2、4、8、8（近 8 次最多 4 次未交）；关闭平衡时每次都只扣 2
+        // 隔一次不交一次：2、2、4、4、4（间断最多按第 3 次算）；关闭平衡时每次都只扣 2
         val c = cls(M, S, M, S, M, S, M, S, M, S)
-        assertEquals(listOf(-2.0, -2.0, -4.0, -8.0, -8.0), misses(c))
+        assertEquals(listOf(-2.0, -2.0, -4.0, -4.0, -4.0), misses(c))
+        // 上限可调：最多按第 4 次算、看最近 8 次时 2、2、4、8、8
+        assertEquals(listOf(-2.0, -2.0, -4.0, -8.0, -8.0), misses(c, rules.copy(escalation = MissingEscalation(gapWindow = 8, gapMax = 4))))
         assertEquals(List(5) { -2.0 }, misses(c, rules.copy(escalation = MissingEscalation(gapBalance = false))))
     }
 
@@ -32,6 +35,7 @@ class GapBalanceTest {
         val b = cls(M, S, M, S, M, S, M, S, M, S, M, S)
         val sa = misses(a).sum(); val sb = misses(b).sum()
         assertEquals(-16.0, sa, 1e-9)
+        assertEquals(-20.0, sb, 1e-9)
         assertTrue("乙 $sb 应比甲 $sa 扣得多", sb < sa)
         // 关闭平衡：乙反而扣得少（这就是要解决的问题）
         val off = rules.copy(escalation = MissingEscalation(gapBalance = false))
@@ -50,7 +54,11 @@ class GapBalanceTest {
         val c = cls(M, S, M, S, M)
         val p = c.autoPointDetails(rules, "s1").getValue("a4")
         assertEquals(1, p.missStreak); assertEquals(3, p.recentMiss)
-        assertEquals("近 8 次第 3 次未交（间断未交平衡）", p.streakNote(rules))
+        assertEquals("近 6 次第 3 次未交（间断未交平衡）", p.streakNote(rules))
+        // 窗口里未交次数超过上限时写明按第几次算
+        val c2 = cls(M, S, M, S, M, M, S, M)
+        val p2 = c2.autoPointDetails(rules.copy(escalation = MissingEscalation(gapMax = 2)), "s1").getValue("a7")
+        assertEquals("近 6 次第 4 次未交，按第 2 次算（间断未交平衡）", p2.streakNote(rules.copy(escalation = MissingEscalation(gapMax = 2))))
     }
 
     @Test fun resetClearsWindow() {

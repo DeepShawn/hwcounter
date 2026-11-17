@@ -585,20 +585,21 @@ do {
         return c
     }
     func misses(_ c: SchoolClass, _ r: Rules) -> [Double] { let p = c.autoPoints(r, "s1"); return c.assignments.filter { $0.statuses["s1"] == M }.map { p[$0.id] ?? 0 } }
-    check(MissingEscalation().gapBalance && MissingEscalation().gapWindow == 8, "默认开启、看最近 8 次")
+    check(MissingEscalation().gapBalance && MissingEscalation().gapWindow == 6 && MissingEscalation().gapMax == 3, "默认开启、看最近 6 次、间断最多按第 3 次算")
     let alt = mk([M, S, M, S, M, S, M, S, M, S])
     var off = rules; off.escalation.gapBalance = false
-    check(misses(alt, rules) == [-2, -2, -4, -8, -8] && misses(alt, off) == [-2, -2, -2, -2, -2], "隔一次不交一次也逐次加重")
+    var wide = rules; wide.escalation.gapWindow = 8; wide.escalation.gapMax = 4
+    check(misses(alt, rules) == [-2, -2, -4, -4, -4] && misses(alt, off) == [-2, -2, -2, -2, -2] && misses(alt, wide) == [-2, -2, -4, -8, -8], "隔一次不交一次也逐次加重，最多按第 3 次算")
     let a = mk([M, M, M, M, S, S, S, S, S, S, S, S]), b = mk([M, S, M, S, M, S, M, S, M, S, M, S])
     let sa = misses(a, rules).reduce(0, +), sb = misses(b, rules).reduce(0, +)
-    check(sa == -16 && sb < sa && misses(b, off).reduce(0, +) > misses(a, off).reduce(0, +), "未交率更高的间断未交不会比连续未交扣得少")
+    check(sa == -16 && sb == -20 && sb < sa && misses(b, off).reduce(0, +) > misses(a, off).reduce(0, +), "未交率更高的间断未交不会比连续未交扣得少")
     var w3 = rules; w3.escalation.gapWindow = 3
     var w3m1 = w3; w3m1.escalation.mode = 1
     check(misses(mk([M, S, M, S, S, S, M]), w3) == [-2, -2, -2] && misses(mk([M, S, L, L, L, M]), w3m1) == [-2, -4], "窗口滑动；请假不算记录")
     let c5 = mk([M, S, M, S, M])
     let reset = c5.recharging(rules, ids: ["s1"], target: 100, time: 4500, assignmentId: "a4")
     check(c5.autoPoints(rules, "s1")["a4"] == -4 && reset.autoPoints(rules, "s1")["a4"] == -2, "积分重置后窗口清空")
-    var data = AppData(); var rr = data.rules; rr.escalation.gapBalance = false; rr.escalation.gapWindow = 5; data.rules = rr
+    var data = AppData(); var rr = data.rules; rr.escalation.gapBalance = false; rr.escalation.gapWindow = 5; rr.escalation.gapMax = 2; data.rules = rr
     check(data.rules.escalation == rr.escalation, "开关和窗口可存取（与安卓、网页字段一致）")
 }
 print("\n通过 \(pass)/\(total)")

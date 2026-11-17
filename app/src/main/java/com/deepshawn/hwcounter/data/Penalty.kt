@@ -15,7 +15,8 @@ import kotlin.math.pow
  * - [cap] > 0 时，单次最多扣 cap 分（默认 30，分段倍率乘完后再封顶）。
  * - [gapBalance]「间断未交平衡」（默认开启）：隔几次不交一次的同学，交过一次连续次数就清零，扣分一直停在最低档，
  *   未交率更高反而比偶尔连续不交的人扣得少。开启后，这一次的次数取「连续未交次数」和「最近 [gapWindow] 次有记录的作业里的未交次数」中较大的那个
- *   （请假、未登记不算记录），分段倍率按连续次数时也用这个次数。
+ *   （请假、未登记不算记录），但间断未交最多只按第 [gapMax] 次算（默认第 3 次，避免扣得太重；真正连续未交照常逐次加重）。
+ *   分段倍率按连续次数时也用这个次数。
  */
 @Serializable
 data class MissingEscalation(
@@ -34,13 +35,15 @@ data class MissingEscalation(
     val tiers: List<EscalationTier> = DEFAULT_TIERS,
     /** 间断未交平衡：次数取连续未交次数与最近 [gapWindow] 次里的未交次数中较大的 */
     val gapBalance: Boolean = true,
-    val gapWindow: Int = 8,
+    val gapWindow: Int = 6,
+    /** 间断未交最多按第几次算（连续未交不受限制） */
+    val gapMax: Int = 3,
 ) {
-    /** 这一次用来计算扣分的次数：连续第 [streak] 次；最近窗口里第 [recent] 次 */
-    fun countOf(streak: Int, recent: Int): Int = if (gapBalance) maxOf(streak, recent) else streak
+    /** 这一次用来计算扣分的次数：连续第 [streak] 次；最近窗口里第 [recent] 次（最多按第 [gapMax] 次算） */
+    fun countOf(streak: Int, recent: Int): Int = if (gapBalance) maxOf(streak, minOf(recent, maxOf(1, gapMax))) else streak
 
     /** 间断未交平衡的说明 */
-    fun gapText(): String = "间断未交平衡：次数取连续未交次数和最近 $gapWindow 次作业里的未交次数中较大的（请假、未登记不算）"
+    fun gapText(): String = "间断未交平衡：次数取连续未交次数和最近 $gapWindow 次作业里的未交次数中较大的（请假、未登记不算），间断未交最多按第 $gapMax 次算"
 
     /** 实际使用的加倍方式（1 或 2） */
     val shape: Int get() = when (mode) { 1 -> 1; 3 -> if (tierBase == 1) 1 else 2; else -> 2 }
@@ -169,13 +172,16 @@ data class AutoPoint(
     val tierFactor: Double = 1.0,
     /** 最近窗口里这是第几次未交（间断未交平衡用；0 = 没有用到） */
     val recentMiss: Int = 0,
+    /** 实际按第几次算 */
+    val counted: Int = 0,
 ) {
     /** “连续第 3 次未交，分段 ×1.5”；不需要说明时为 null */
     fun streakNote(rules: ScoreRules): String? {
         if (!rules.escalation.enabled) return null
         val tier = if (tierFactor != 1.0) "分段 ×${tierFactor.fmt()}" else null
         val streak = when {
-            recentMiss > missStreak && recentMiss >= 2 -> "近 ${rules.escalation.gapWindow} 次第 $recentMiss 次未交（间断未交平衡）"
+            counted > missStreak && counted >= 2 && recentMiss == counted -> "近 ${rules.escalation.gapWindow} 次第 $recentMiss 次未交（间断未交平衡）"
+            counted > missStreak && counted >= 2 -> "近 ${rules.escalation.gapWindow} 次第 $recentMiss 次未交，按第 $counted 次算（间断未交平衡）"
             missStreak >= 2 -> "连续第 $missStreak 次未交"
             else -> null
         }
@@ -212,7 +218,7 @@ fun SchoolClass.autoPointDetails(rules: ScoreRules, studentId: String): Map<Stri
                 val tf = if (esc.enabled) esc.tierFactor(n, total) else 1.0
                 AutoPoint(
                     rules.pt(base * f * rv), missStreak = streak, reviewFailed = failed, plagiarism = if (plagged) plag else 0, plagiarismFactor = f, tierFactor = tf,
-                    recentMiss = if (esc.enabled && esc.gapBalance) inWindow else 0,
+                    recentMiss = if (esc.enabled && esc.gapBalance) inWindow else 0, counted = n,
                 )
             }
             HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE -> {
