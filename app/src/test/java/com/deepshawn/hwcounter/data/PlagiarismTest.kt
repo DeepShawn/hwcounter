@@ -102,5 +102,7 @@ class PlagiarismTest {
         assertEquals(-4.0, c.autoPointDetails(r.copy(review = r.review.copy(enabled = false)), "b").getValue("a0").points, 1e-9)
         val row = c.ledger(r, "b").first { it.assignmentId == "a0" }
         assertTrue(row.title, row.title.contains("复审不合格再 ×2") && row.title.contains("合计 ×4"))
+        assertEquals("本次 -8（抄袭第 1 次 ×2 × 复审不合格 ×2 = ×4）", c.assignmentPointNote(r, "a0", "b"))
+        assertEquals("本次 -4（抄袭第 1 次 ×2）", c.assignmentPointNote(r, "a0", "a"))
     }
 }

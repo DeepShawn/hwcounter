@@ -135,3 +135,22 @@ fun SchoolClass.autoPointsAll(rules: ScoreRules): Map<String, Map<String, Double
 fun ScoreRules.missingText(): String = if (escalation.enabled)
     "未交连续递增（${escalation.base.fmt()}、${(escalation.base * escalation.base).fmt()}、${(escalation.base * escalation.base * escalation.base).fmt()}…，累计超 ${escalation.heavyAfter} 次后 ${escalation.heavyBase.fmt()}、${(escalation.heavyBase * escalation.heavyBase).fmt()}…）"
 else "未交 ${missing.signed()}"
+
+/** 这次作业这位同学的计分说明，如“本次 -8（抄袭第 1 次 ×2 × 复审不合格 ×2 = ×4）”；没有分数变化时为空 */
+fun SchoolClass.assignmentPointNote(rules: ScoreRules, assignmentId: String, studentId: String): String {
+    val p = autoPointDetails(rules, studentId)[assignmentId] ?: return ""
+    if (p.points == 0.0) return ""
+    val parts = listOfNotNull(
+        if (p.plagiarism > 0) "抄袭第 ${p.plagiarism} 次 ×${p.plagiarismFactor.fmt()}" else null,
+        if (p.reviewFailed) "复审不合格 ×${rules.review.multiplier.fmt()}" else null,
+    )
+    val total = (if (p.plagiarism > 0) p.plagiarismFactor else 1.0) * (if (p.reviewFailed) rules.review.multiplier else 1.0)
+    val why = when {
+        parts.size >= 2 -> parts.joinToString(" × ") + " = ×${total.fmt()}"
+        parts.size == 1 -> parts[0]
+        p.missStreak >= 2 && rules.escalation.enabled -> "连续第 ${p.missStreak} 次未交"
+        p.bonus != 0.0 -> "连续交第 ${p.handStreak} 次"
+        else -> ""
+    }
+    return "本次 ${p.points.signed()}" + if (why.isNotEmpty()) "（$why）" else ""
+}
