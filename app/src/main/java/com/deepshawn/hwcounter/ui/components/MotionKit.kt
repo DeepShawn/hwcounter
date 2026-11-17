@@ -36,7 +36,13 @@ object Springs {
     val press = spring<Float>(dampingRatio = 0.55f, stiffness = 700f)
     val soft = spring<Float>(dampingRatio = 0.86f, stiffness = Spring.StiffnessMediumLow)
     val bouncy = spring<Float>(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium)
+    /** 性能模式：更有弹性的按压与浮现 */
+    val pressUltra = spring<Float>(dampingRatio = 0.42f, stiffness = 520f)
+    val appearUltra = spring<Float>(dampingRatio = 0.74f, stiffness = 260f)
 }
+
+@Composable
+fun ultraOn(): Boolean = LocalUiPrefs.current.ultra
 
 /** 页面级的入场状态：页面打开的时刻 + 依次递增的序号（决定入场的先后） */
 class PageEntrance(val start: Long) { var next = 0 }
@@ -50,8 +56,9 @@ fun motionOn(): Boolean = LocalUiPrefs.current.motion
 @Composable
 fun Modifier.pressScale(scale: Float = 0.97f): Modifier {
     if (!motionOn()) return this
+    val ultra = ultraOn()
     var pressed by remember { mutableStateOf(false) }
-    val s by animateFloatAsState(if (pressed) scale else 1f, Springs.press, label = "press")
+    val s by animateFloatAsState(if (pressed) (if (ultra) 1f - (1f - scale) * 2f else scale) else 1f, if (ultra) Springs.pressUltra else Springs.press, label = "press")
     return this
         .graphicsLayer { scaleX = s; scaleY = s }
         .pointerInput(Unit) {
@@ -70,20 +77,25 @@ fun Modifier.pressScale(scale: Float = 0.97f): Modifier {
 fun Modifier.appear(): Modifier {
     if (!motionOn()) return this
     val page = LocalPageEntrance.current ?: return this
-    val order = remember { if (System.currentTimeMillis() - page.start < 700) page.next++ else -1 }
+    val ultra = ultraOn()
+    val order = remember { if (System.currentTimeMillis() - page.start < (if (ultra) 900 else 700)) page.next++ else -1 }
     if (order < 0) return this
     val a = remember { Animatable(0f) }
-    val dy = with(LocalDensity.current) { 18.dp.toPx() }
+    val dy = with(LocalDensity.current) { (if (ultra) 34.dp else 18.dp).toPx() }
     LaunchedEffect(Unit) {
-        delay(minOf(order, 10) * 32L)
-        a.animateTo(1f, Springs.soft)
+        delay(minOf(order, if (ultra) 14 else 10) * (if (ultra) 38L else 32L))
+        a.animateTo(1f, if (ultra) Springs.appearUltra else Springs.soft)
     }
-    return this.graphicsLayer { alpha = a.value; translationY = (1f - a.value) * dy }
+    // 性能模式：从 92% 缩放、上浮 34dp 弹入
+    return this.graphicsLayer {
+        alpha = a.value.coerceIn(0f, 1f); translationY = (1f - a.value) * dy
+        if (ultra) { val sc = 0.92f + 0.08f * a.value; scaleX = sc; scaleY = sc }
+    }
 }
 
 /** 高度变化平滑过渡 */
 @Composable
-fun Modifier.smoothSize(): Modifier = if (motionOn()) this.animateContentSize(spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)) else this
+fun Modifier.smoothSize(): Modifier = if (motionOn()) this.animateContentSize(spring(dampingRatio = if (ultraOn()) 0.72f else 0.9f, stiffness = Spring.StiffnessMediumLow)) else this
 
 /**
  * 数字滚动：从上一次的值（第一次显示时从 0）滚到新值；动效关闭时直接显示。
@@ -93,7 +105,8 @@ fun Modifier.smoothSize(): Modifier = if (motionOn()) this.animateContentSize(sp
 fun animatedValue(value: Double, fromZero: Boolean = true): Double {
     if (!motionOn()) return value
     val a = remember { Animatable(if (fromZero) 0f else value.toFloat()) }
-    LaunchedEffect(value) { a.animateTo(value.toFloat(), tween(650, easing = androidx.compose.animation.core.FastOutSlowInEasing)) }
+    val ms = if (ultraOn()) 900 else 650
+    LaunchedEffect(value) { a.animateTo(value.toFloat(), tween(ms, easing = androidx.compose.animation.core.FastOutSlowInEasing)) }
     return a.value.toDouble()
 }
 

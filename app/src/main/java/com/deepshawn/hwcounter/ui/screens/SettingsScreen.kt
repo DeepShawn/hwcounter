@@ -648,22 +648,29 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                 }
                 group("流畅度与动效（仅本机）", key = "perf") {
                     SuperSwitch(
+                        checked = ui.perf, onCheckedChange = { v -> prefs { it.copy(perf = v, lowPerf = if (v) false else it.lowPerf) }; kit.toast(if (v) "已开启性能模式" else "已关闭性能模式") },
+                        title = "性能模式",
+                        summary = if (ui.perf) "已开启：弹簧翻页带纵深、卡片缩放浮现、选项滑块拉伸回弹、玻璃更强的模糊与折射（纵深 + 色散）、流动的柔光背景、屏幕最高刷新率。更耗电"
+                        else "默认关闭。开启后动效和液态玻璃都开到最好（需要较新的手机，更耗电）",
+                    )
+                    SuperSwitch(
                         checked = ui.animations, onCheckedChange = { v -> prefs { it.copy(animations = v) } },
-                        title = "界面动效", enabled = !ui.lowPerf,
-                        summary = if (ui.lowPerf) "低性能模式下始终关闭" else if (ui.animations) "页面弹簧滑入、卡片依次浮现、数字滚动、按压回弹、列表重排、选项滑块等动画" else "默认关闭：所有操作即点即达。开启后有页面滑入、卡片浮现、数字滚动、按压回弹等动画",
+                        title = "界面动效", enabled = !ui.lowPerf && !ui.perf,
+                        summary = if (ui.lowPerf) "低性能模式下始终关闭" else if (ui.perf) "性能模式下始终开启" else if (ui.animations) "页面弹簧滑入、卡片依次浮现、数字滚动、按压回弹、列表重排、选项滑块等动画" else "默认关闭：所有操作即点即达。开启后有页面滑入、卡片浮现、数字滚动、按压回弹等动画",
                     )
                     SuperSwitch(
                         checked = ui.glass, onCheckedChange = { v -> prefs { it.copy(glass = v) } },
-                        title = "液态玻璃", enabled = !ui.lowPerf && android.os.Build.VERSION.SDK_INT >= 31,
+                        title = "液态玻璃", enabled = !ui.lowPerf && !ui.perf && android.os.Build.VERSION.SDK_INT >= 31,
                         summary = when {
                             android.os.Build.VERSION.SDK_INT < 31 -> "需要 Android 12 及以上，当前使用半透明效果"
                             ui.lowPerf -> "低性能模式下已关闭"
+                            ui.perf -> "性能模式下始终开启（增强）"
                             android.os.Build.VERSION.SDK_INT < 33 -> "底栏与顶栏背景模糊（折射需要 Android 13）"
                             else -> "底栏与顶栏背景模糊 + 边缘折射高光"
                         },
                     )
                     SuperSwitch(
-                        checked = ui.lowPerf, onCheckedChange = { v -> prefs { it.copy(lowPerf = v) }; kit.toast(if (v) "已开启低性能模式" else "已关闭低性能模式") },
+                        checked = ui.lowPerf, onCheckedChange = { v -> prefs { it.copy(lowPerf = v, perf = if (v) false else it.perf) }; kit.toast(if (v) "已开启低性能模式" else "已关闭低性能模式") },
                         title = "低性能模式",
                         summary = "适合老旧或卡顿的设备：关闭液态玻璃、动效、平滑圆角、阴影、回弹和彩带",
                     )
@@ -766,7 +773,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.settingsIndex(vm: App
         SuperArrow(
             title = "主题与显示",
             summary = com.deepshawn.hwcounter.ui.theme.paletteOf(s.theme).name + " · " + listOf("深色跟随系统", "浅色", "深色")[s.dark.coerceIn(0, 2)] +
-                " · 动效" + (if (ui.motion) "开" else "关") + if (ui.lowPerf) " · 低性能模式" else "",
+                " · 动效" + (if (ui.motion) "开" else "关") + if (ui.lowPerf) " · 低性能模式" else if (ui.perf) " · 性能模式" else "",
             onClick = { open("look") },
         )
     }

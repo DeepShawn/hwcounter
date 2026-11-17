@@ -13,13 +13,17 @@ import androidx.compose.ui.MotionDurationScale
  * 本机显示偏好（只存本机，不随云端同步：每台设备性能不同）。
  * - animations：界面动效，默认关闭（关闭时所有动画瞬间完成，操作更跟手）；
  * - lowPerf：低性能模式，关闭液态玻璃、平滑圆角、阴影、回弹和彩带，强制关闭动效；
- * - glass：液态玻璃效果（背景模糊 + 折射），需要 Android 12+，折射需要 Android 13+。
+ * - glass：液态玻璃效果（背景模糊 + 折射），需要 Android 12+，折射需要 Android 13+；
+ * - perf：性能模式（默认关闭），动效和液态玻璃都开到最好：弹簧翻页带纵深、卡片缩放浮现、
+ *   滑块拉伸、玻璃更强的模糊与折射（纵深 + 色散）、流动的柔光背景、最高刷新率。与低性能模式互斥。
  */
 @Immutable
 data class UiPrefs(
     val animations: Boolean = false,
     val lowPerf: Boolean = false,
     val glass: Boolean = true,
+    /** 性能模式：动效与液态玻璃做到极致（默认关闭） */
+    val perf: Boolean = false,
     /** 关注度用股票行情的方式显示 */
     val stockMode: Boolean = false,
     /** 股票模式配色：true 美股（绿涨红跌），false A股（红涨绿跌） */
@@ -28,9 +32,11 @@ data class UiPrefs(
     val onboarded: Boolean = false,
 ) {
     /** 实际是否播放动画 */
-    val motion: Boolean get() = animations && !lowPerf
+    val motion: Boolean get() = (animations || perf) && !lowPerf
+    /** 性能模式实际生效（低性能模式优先） */
+    val ultra: Boolean get() = perf && !lowPerf
     /** 实际是否绘制液态玻璃（模糊需要 Android 12） */
-    val glassOn: Boolean get() = glass && !lowPerf && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val glassOn: Boolean get() = (glass || perf) && !lowPerf && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     /** 折射透镜需要 Android 13 */
     val lensOn: Boolean get() = glassOn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
 }
@@ -48,6 +54,7 @@ object UiPrefsStore {
                 animations = sp.getBoolean("animations", false),
                 lowPerf = sp.getBoolean("lowPerf", false),
                 glass = sp.getBoolean("glass", true),
+                perf = sp.getBoolean("perf", false),
                 stockMode = sp.getBoolean("stockMode", false),
                 usColors = sp.getBoolean("usColors", true),
                 onboarded = sp.getBoolean("onboarded", false),
@@ -64,6 +71,7 @@ object UiPrefsStore {
             .putBoolean("animations", next.animations)
             .putBoolean("lowPerf", next.lowPerf)
             .putBoolean("glass", next.glass)
+            .putBoolean("perf", next.perf)
             .putBoolean("stockMode", next.stockMode)
             .putBoolean("usColors", next.usColors)
             .putBoolean("onboarded", next.onboarded)

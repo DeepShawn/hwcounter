@@ -162,7 +162,7 @@ fun DraftScreen(vm: AppViewModel, data: AppData, draftId: String) {
     var edit by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var confirmFill by remember { mutableStateOf(false) }
-    var filter by remember { mutableIntStateOf(0) }
+    var filter by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
     var seatView by remember { mutableStateOf(c.seating != null) }
     var typed by remember { mutableStateOf("") }
     var typedAs by remember { mutableStateOf(HwStatus.SUBMITTED) }

@@ -106,7 +106,7 @@ private fun TradePanel(vm: AppViewModel, data: AppData, c: SchoolClass) {
     var err by remember { mutableStateOf("") }
     var tick by remember { mutableIntStateOf(0) }
     fun order(p: Trade.Price?, side: String) = kit.nav.push(Route.TradeOrder(p?.symbol, side))
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
     val loggedIn = st.email != null
     val member = st.member
 
@@ -331,12 +331,12 @@ fun TradeOrderScreen(vm: AppViewModel, data: AppData, symbol: String?, initialSi
     val c = vm.currentClass(data)
     var td by remember { mutableStateOf<TradeData?>(null) }
     var err by remember { mutableStateOf("") }
-    var sel by remember { mutableStateOf(symbol) }
+    var sel by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(symbol) }
     var side by remember { mutableStateOf(initialSide) }
-    var limitMode by remember { mutableIntStateOf(0) }
+    var limitMode by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
     var qtyText by remember { mutableStateOf("10") }
     var limitText by remember { mutableStateOf("") }
-    var filter by remember { mutableIntStateOf(0) }
+    var filter by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
     var query by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
 

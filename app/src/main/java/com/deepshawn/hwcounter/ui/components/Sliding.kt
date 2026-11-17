@@ -21,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -63,7 +64,9 @@ fun SlidingSegments(
     val density = LocalDensity.current
     var widthPx by remember { mutableIntStateOf(0) }
     val select by rememberUpdatedState(onSelect)
-    val spec = spring<Float>(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
+    val ultra = com.deepshawn.hwcounter.ui.theme.LocalUiPrefs.current.ultra
+    // 性能模式：滑块更有弹性，移动时像液滴一样横向拉伸
+    val spec = if (ultra) spring<Float>(dampingRatio = 0.62f, stiffness = 420f) else spring<Float>(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
     LaunchedEffect(selected, count) {
         if (!state.dragging) {
             state.hot = selected
@@ -110,7 +113,13 @@ fun SlidingSegments(
                 Modifier
                     .offset { IntOffset((state.pos.value * segW).roundToInt(), 0) }
                     .width(with(density) { segW.toDp() })
-                    .fillMaxHeight(),
+                    .fillMaxHeight()
+                    .then(
+                        if (ultra) Modifier.graphicsLayer {
+                            val st = minOf(abs(state.pos.velocity) * 0.05f, 0.35f)
+                            scaleX = 1f + st; scaleY = 1f - st * 0.25f
+                        } else Modifier,
+                    ),
             )
         }
         content(state)

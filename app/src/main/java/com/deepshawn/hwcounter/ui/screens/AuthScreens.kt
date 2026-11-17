@@ -171,8 +171,8 @@ fun AuthScreen(vm: AppViewModel, initialMode: Int = 0) {
     val scope = rememberCoroutineScope()
     val colors = MiuixTheme.colorScheme
     val st by vm.sync.state.collectAsState()
-    var mode by remember { mutableIntStateOf(initialMode) }
-    var role by remember { mutableIntStateOf(0) } // 注册：0 学生 / 家长（邀请码）、1 老师（邮箱）
+    var mode by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(initialMode) }
+    var role by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) } // 注册：0 学生 / 家长（邀请码）、1 老师（邮箱）
     var account by remember { mutableStateOf("") }
     var pw by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
