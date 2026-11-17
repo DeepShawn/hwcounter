@@ -175,12 +175,14 @@ class ShotsTest {
                 click("3月"); waitStock(); save("${prefix}_37f_stock_3m")
                 click("1周"); waitStock(); save("${prefix}_37g_stock_1w")
                 rule.onAllNodes(hasText("No.202406") and hasClickAction()).onFirst().performClick(); waitStock(); save("${prefix}_38a_stock_detail"); scroll(); save("${prefix}_38b_stock_detail"); scroll(); save("${prefix}_38c_stock_detail"); back()
-                top(); click("小组 · 综合分"); waitStock(); save("${prefix}_39a_group_stock"); scroll(); save("${prefix}_39b_group_stock")
+                top(); click("小组综合"); waitStock(); save("${prefix}_39a_group_stock"); scroll(); save("${prefix}_39b_group_stock")
                 rule.onAllNodes(hasText("第1组") and hasClickAction()).onFirst().performClick(); waitStock(); save("${prefix}_39c_group_stock_detail"); scroll(); save("${prefix}_39d_group_stock_detail"); top(); back()
-                top(); click("个人 · 关注度")
-                top(); click("榜单")
+                top(); click("信誉分"); waitStock(); save("${prefix}_39e_credit_stock"); scroll(); save("${prefix}_39f_credit_stock")
+                rule.onAllNodes(hasText("No.202406") and hasClickAction()).onFirst().performClick(); waitStock(); save("${prefix}_39g_credit_detail"); scroll(); save("${prefix}_39h_credit_detail"); back()
+                top(); click("关注度")
+                top(); click("炒股"); save("${prefix}_39j_trade"); click("行情")
             }
-            top(); click("周杰"); save("${prefix}_36a_personal"); for (k in 1..5) { scroll(); save("${prefix}_36${('a' + k)}_personal") }; back()
+            top(); click("关注"); top(); click("周杰"); save("${prefix}_36a_personal"); for (k in 1..5) { scroll(); save("${prefix}_36${('a' + k)}_personal") }; back()
         }
 
         tab("首页")

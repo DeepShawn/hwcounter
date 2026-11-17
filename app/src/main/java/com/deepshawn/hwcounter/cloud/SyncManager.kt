@@ -36,7 +36,13 @@ data class SyncState(
     val conflictVersion: Long = 0,
     /** 云端是否开放了“未登录预览”（null = 未知） */
     val publicRead: Boolean? = null,
+    /** 凭邀请码注册的普通用户（只读查看老师的数据、模拟炒股）；老师账号为 null */
+    val member: MemberInfo? = null,
 )
+
+/** 普通用户的身份（登录后从 hw_me 取得） */
+@Serializable
+data class MemberInfo(val adminId: String, val username: String, val name: String, val active: Boolean = true)
 
 @Serializable
 private data class SyncMeta(
@@ -49,6 +55,8 @@ private data class SyncMeta(
     val auto: Boolean = true,
     /** 是否已按默认值开启过“未登录预览” */
     val previewInit: Boolean = false,
+    /** 普通用户（凭邀请码注册）；老师账号为 null */
+    val member: MemberInfo? = null,
 )
 
 /**
@@ -82,9 +90,9 @@ class SyncManager(
         msg: String = "", error: Boolean = false, busy: Boolean = false,
         conflict: AppData? = null, conflictVersion: Long = 0,
     ) = SyncState(
-        email = meta.session?.email, busy = busy, message = msg, error = error,
+        email = CloudConfig.displayEmail(meta.session?.email), busy = busy, message = msg, error = error,
         version = meta.baseVersion, lastSyncAt = meta.lastSyncAt, auto = meta.auto,
-        conflict = conflict, conflictVersion = conflictVersion,
+        conflict = conflict, conflictVersion = conflictVersion, member = meta.member,
     )
 
     private fun setMeta(m: SyncMeta) {
@@ -99,6 +107,82 @@ class SyncManager(
     }
 
     val loggedIn: Boolean get() = meta.session != null
+    /** 登录的是普通用户：只读，不上传 */
+    val isMember: Boolean get() = meta.member != null
+    val member: MemberInfo? get() = meta.member
+
+    /** 登录后查身份；查不到（网络问题）时按邮箱判断，普通用户的管理员 id 下次再补 */
+    private suspend fun loadIdentity() {
+        val me = runCatching { Trade.me(client) }.getOrNull()
+        val m = when {
+            me != null && me.isMember -> MemberInfo(me.adminId ?: "", me.username, me.name, me.status == "active")
+            me != null -> null
+            CloudConfig.isMemberEmail(meta.session?.email) -> meta.member ?: MemberInfo("", meta.session?.email?.substringBefore("@") ?: "", "")
+            else -> null
+        }
+        setMeta(meta.copy(member = m))
+    }
+
+    /** 普通用户：重新读取身份（余额、是否被停用） */
+    suspend fun refreshMember(): MemberInfo? {
+        if (!loggedIn || !isMember) return null
+        loadIdentity()
+        post(_state.value.message)
+        return meta.member
+    }
+
+    /** 普通用户：读取所属老师的班级数据（只读） */
+    suspend fun pullMemberData(): AppData? {
+        var m = meta.member ?: return null
+        if (m.adminId.isBlank()) { loadIdentity(); m = meta.member ?: return null }
+        if (!m.active || m.adminId.isBlank()) return null
+        return client.pullOf(m.adminId)?.let { decode(it.data) }
+    }
+
+    /** 凭邀请码注册普通用户并登录 */
+    suspend fun registerWithInvite(code: String, username: String, password: String, name: String) {
+        post("正在注册…", busy = true)
+        try {
+            client.registerWithInvite(code, username, password, name)
+            setMeta(meta.copy(baseVersion = 0, syncedHash = "", lastSyncAt = 0))
+            loadIdentity()
+            onAuthChanged(true)
+            post("注册成功，已登录：${meta.member?.name ?: username}")
+        } catch (e: Exception) {
+            post(e.message ?: "注册失败", error = true)
+            throw e
+        }
+    }
+
+    // ---------------- 老师：发布股价（有普通用户时，每次同步后按最新数据发布） ----------------
+    private var hasMembersAt = 0L
+    private var hasMembers = false
+    private var lastQuotesHash = ""
+
+    private fun publishPrices(d: AppData) {
+        if (!loggedIn || isMember) return
+        scope.launch {
+            runCatching {
+                val now = System.currentTimeMillis()
+                if (now - hasMembersAt > 10 * 60_000L) {
+                    hasMembers = Trade.members(client).isNotEmpty(); hasMembersAt = now
+                }
+                if (!hasMembers) return@runCatching
+                val q = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Trade.quotes(d) }
+                val h = q.joinToString("|") { "${it.symbol}=${it.price}" }.hashCode().toString()
+                if (h == lastQuotesHash) return@runCatching
+                Trade.publish(client, q)
+                lastQuotesHash = h
+            }
+        }
+    }
+
+    /** 老师在管理页手动发布股价 */
+    suspend fun publishNow(d: AppData): Int {
+        val n = Trade.publish(client, kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Trade.quotes(d) })
+        hasMembers = true; hasMembersAt = System.currentTimeMillis(); lastQuotesHash = ""
+        return n
+    }
 
     /** 上传前去掉只属于本机的东西（AI API Key） */
     private fun strip(d: AppData) = d.copy(settings = d.settings.copy(ai = d.settings.ai.copy(apiKey = "")))
@@ -121,9 +205,10 @@ class SyncManager(
             client.signIn(email, password)
             // 新账号/新设备：基于版本 0 开始，第一次同步会判断要不要合并
             setMeta(meta.copy(baseVersion = 0, syncedHash = "", lastSyncAt = 0))
+            loadIdentity()
             onAuthChanged(true)
-            post("登录成功")
-            syncNow()
+            post(if (isMember) "登录成功（普通用户：只读查看，可模拟炒股）" else "登录成功")
+            if (!isMember) syncNow()
         } catch (e: Exception) {
             post(e.message ?: "登录失败", error = true)
             throw e
@@ -177,11 +262,11 @@ class SyncManager(
     // ---------------- 同步 ----------------
     /** 本地数据变化后调用：防抖几秒再同步 */
     fun onLocalChange() {
-        if (loggedIn && meta.auto && _state.value.conflict == null) schedule(4000)
+        if (loggedIn && !isMember && meta.auto && _state.value.conflict == null) schedule(4000)
     }
 
     fun onResume() {
-        if (loggedIn && meta.auto) schedule(300)
+        if (loggedIn && !isMember && meta.auto) schedule(300)
     }
 
     private fun schedule(delayMs: Long) {
@@ -193,7 +278,7 @@ class SyncManager(
     }
 
     suspend fun syncNow(): Unit = lock.withLock {
-        if (!loggedIn) return
+        if (!loggedIn || isMember) return
         post("同步中…", busy = true)
         try {
             val local = current()
@@ -223,6 +308,7 @@ class SyncManager(
                 }
             }
             ensurePreviewDefault()
+            if (_state.value.conflict == null) publishPrices(current())
         } catch (e: ConflictException) {
             // 上传瞬间被其它设备抢先：下一轮会走冲突/下载逻辑
             post("云端刚被其它设备更新，正在重新比对…", busy = true)

@@ -344,6 +344,15 @@ object PdfReport {
         }
         if (r.streakers.isNotEmpty()) { p.sub("连续交齐榜"); p.text(r.streakers.joinToString("、") { "${it.student.name} ${it.handStreak} 次" }, 9.5f); p.gap(4f) }
         if (r.perfectAttendance.isNotEmpty()) { p.sub("全勤之星（${r.perfectAttendance.size} 人）"); p.text(r.perfectAttendance.joinToString("、") { it.student.name }, 9.5f); p.gap(4f) }
+        r.credit?.takeIf { it.results.any { x -> x.hasData } }?.let { cs ->
+            p.sub("信誉分（越高越好）")
+            Analytics.creditLines(cs).forEach { p.text(it, 9.5f) }
+            val has = cs.results.filter { it.hasData }
+            val pick = (has.take(5) + has.takeLast(5)).distinctBy { it.student.id }
+            table(p, listOf("姓名", "信誉分", "等级", "偏弱项"), listOf(1f, 0.7f, 0.6f, 3.2f),
+                pick.map { listOf(it.student.name, it.index.fmt(), it.level.label, it.weak.firstOrNull()?.let { w -> "${w.label}：${w.detail}" } ?: "—") },
+                pick.map { listOf(null, if (it.index >= 75) GOOD else if (it.index < 60) BAD else WARN, null, MUTED) })
+        }
     }
 
     private fun breakdown(p: Pager, r: Analytics.Report) {
@@ -575,6 +584,11 @@ object PdfReport {
             if (rules.exam.enabled) {
                 p.text("考试按得分率自动加减分：" + rules.exam.bands.sortedByDescending { it.minPct }.joinToString("；") { "${it.minPct.fmt()}%–${it.maxPct.fmt()}% ${it.delta.signed()}" } + if (rules.exam.absent != 0.0) "；缺考 ${rules.exam.absent.signed()}" else "。", 10f)
             }
+            if (rules.credit.active) {
+                val cr = rules.credit
+                p.text("信誉分（0–100，越优秀越高）：由交齐 25%、按时 15%、优秀 10%、连续交 10%、诚信（复审不合格、抄袭）20%、进步 5%、考试 15% 算出，小组信誉分为组员平均。" +
+                    "${cr.periodLabel}结算一次：${cr.bandsText()}，其余 0；个人${com.deepshawn.hwcounter.data.CreditRules.modeLabel(cr.personal)}，小组${com.deepshawn.hwcounter.data.CreditRules.modeLabel(cr.group)}（小组加减分全组每人相同）。", 10f)
+            }
             p.heading("五、积分重置与结算")
             p.text("积分重置：把积分重新设为指定分数，开始新的一轮；之前的加减分记录全部保留，可随时查看。" + (c.autoReset?.takeIf { it.enabled }?.let { " 本班每月 ${it.day} 号自动重置为 ${it.target.fmt()} 分。" } ?: ""), 10.5f)
             p.text("每轮结束时进行结算，按本轮交齐度（已交 + 优秀 + 迟交 ÷ 应交，请假不算应交）加减分，结算分计入下一轮：", 10.5f)
@@ -592,16 +606,21 @@ object PdfReport {
         val s = r.student
         doc(out, c, "${c.name} · ${s.name} 个人分析报告", now) { p ->
             banner(p, "${s.name} 个人分析报告", "${c.name} · ${listOf(s.no, s.group).filter { it.isNotBlank() }.joinToString(" · ")} · 生成于 ${stamp(now)}",
-                "积分 ${r.score.fmt()}（第 ${r.rank}/${r.of} 名）· 关注度指数 ${r.attention.index.roundToInt()}（${r.attention.level.label}）")
+                "积分 ${r.score.fmt()}（第 ${r.rank}/${r.of} 名）· 关注度指数 ${r.attention.index.roundToInt()}（${r.attention.level.label}）" + (r.credit?.takeIf { it.hasData }?.let { " · 信誉分 ${it.index.fmt()}（${it.level.label}）" } ?: ""))
             if (r.strengths.isNotEmpty() || r.concerns.isNotEmpty() || r.suggestions.isNotEmpty()) {
                 p.heading("一、综合评价")
                 if (r.strengths.isNotEmpty()) { p.sub("优点"); r.strengths.forEach { p.text("· $it", 10f, GOOD) } }
                 if (r.concerns.isNotEmpty()) { p.sub("需要注意"); r.concerns.forEach { p.text("· $it", 10f, BAD) } }
                 if (r.suggestions.isNotEmpty()) { p.sub("建议"); r.suggestions.forEach { p.text("· $it", 10f) } }
             }
-            p.heading("二、关注度")
+            p.heading("二、关注度与信誉分")
             if (r.attentionTrend.size >= 2) { p.sub("近 8 周走势（0–100）", 100f); line(p, r.attentionTrend.map { (it / 100).toFloat() }, r.attentionTrend.indices.map { if (it == r.attentionTrend.lastIndex) "本周" else "${r.attentionTrend.size - 1 - it}周前" }, 80f, BAD) }
             table(p, listOf("项目", "权重", "得分", "说明"), listOf(0.9f, 0.5f, 0.5f, 3.2f), r.attention.parts.map { listOf(it.label, "${(it.weight * 100).roundToInt()}%", "${it.points.roundToInt()}", it.detail) })
+            r.credit?.takeIf { it.hasData }?.let { cr ->
+                p.sub("信誉分 ${cr.index.fmt()}（${cr.level.label}，越高越好）" + (r.groupCredit?.let { " · 小组信誉分 ${it.fmt()}" } ?: ""))
+                if (r.creditTrend.count { it > 0 } >= 2) line(p, r.creditTrend.map { (it / 100).toFloat() }, r.creditTrend.indices.map { if (it == r.creditTrend.lastIndex) "本周" else "${r.creditTrend.size - 1 - it}周前" }, 80f, GOOD)
+                table(p, listOf("项目", "权重", "得分率", "说明"), listOf(0.9f, 0.5f, 0.6f, 3.1f), cr.parts.map { listOf(it.label, "${(it.weight * 100).roundToInt()}%", "${(it.value * 100).roundToInt()}%", it.detail) })
+            }
             p.heading("三、作业")
             table(p, listOf("已交", "优秀", "迟交", "未交", "请假", "未登记", "应交"), listOf(1f, 1f, 1f, 1f, 1f, 1f, 1f),
                 listOf(listOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE, HwStatus.MISSING, HwStatus.LEAVE, HwStatus.NONE).map { "${r.counts[it] ?: 0}" } + "${r.expected}"))

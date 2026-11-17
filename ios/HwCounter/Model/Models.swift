@@ -533,6 +533,65 @@ struct GroupRankRules: Equatable {
 struct GroupStanding { var group: String; var rank: Int; var score: Double; var points: Double }
 struct RankPeriod { var key: String; var label: String; var time: Int64; var standings: [GroupStanding] }
 
+/// 信誉分加减分（与安卓 Credit.kt、网页 model.js 同算法）：个人 / 小组分别选 both 加分和扣分 / plus 只加不扣 / minus 只扣不加 / none 不计入
+struct CreditRules: Equatable {
+    var personal = "none", group = "none", period = "week"
+    var excellentAt = 90.0, excellentPts = 2.0, goodAt = 80.0, goodPts = 1.0, poorBelow = 60.0, poorPts = -1.0, badBelow = 40.0, badPts = -2.0
+    var active: Bool { personal != "none" || group != "none" }
+    func band(_ x: Double) -> Double { x >= excellentAt ? excellentPts : x >= goodAt ? goodPts : x < badBelow ? badPts : x < poorBelow ? poorPts : 0 }
+    static func apply(_ m: String, _ x: Double) -> Double { m == "both" ? x : m == "plus" ? max(0, x) : m == "minus" ? min(0, x) : 0 }
+    static let modes: [(String, String)] = [("both", "加分和扣分"), ("plus", "只加不扣"), ("minus", "只扣不加"), ("none", "不计入")]
+    static func label(_ m: String) -> String { modes.first { $0.0 == m }?.1 ?? "不计入" }
+    var bandsText: String { "≥\(fmtNum(excellentAt)) \(signed(excellentPts))、≥\(fmtNum(goodAt)) \(signed(goodPts))、<\(fmtNum(poorBelow)) \(signed(poorPts))、<\(fmtNum(badBelow)) \(signed(badPts))" }
+}
+
+/// 一位同学的信誉分（0–100，越优秀越高）
+struct CreditResult: Equatable { var index: Double; var hasData: Bool
+    var level: String { !hasData ? "暂无" : index >= 90 ? "优秀" : index >= 75 ? "良好" : index >= 60 ? "一般" : "较差" }
+}
+/// 保留 2 位小数（三端比较分段时用同样的值）
+func r2(_ x: Double) -> Double { (x * 100).rounded() / 100 }
+
+enum Credit {
+    /// 交齐 25%、按时 15%、优秀 10%（÷30%）、连续交 10%（÷5 次）、诚信 20%（最近 10 次复审不合格 / 抄袭每次 −0.5）、
+    /// 进步 5%（最近 5 次比之前 5 次，不足 8 次为 0.5）、考试 15%（最近 3 场平均得分率）；没有数据的项不算
+    static func one(_ sid: String, newest: [Assignment], exams: [Exam]) -> CreditResult {
+        var m: [(Assignment, HwStatus)] = []
+        for a in newest { let k = a.status(sid); if k != .NONE && k != .LEAVE { m.append((a, k)) } }
+        func handed(_ k: HwStatus) -> Bool { k == .SUBMITTED || k == .EXCELLENT || k == .LATE }
+        var parts: [(Double, Double)] = []
+        if !m.isEmpty {
+            let m10 = Array(m.prefix(10)); let n = Double(m10.count)
+            parts.append((0.25, Double(m10.filter { handed($0.1) }.count) / n))
+            parts.append((0.15, Double(m10.filter { $0.1 == .SUBMITTED || $0.1 == .EXCELLENT }.count) / n))
+            parts.append((0.10, min(1, Double(m10.filter { $0.1 == .EXCELLENT }.count) / n / 0.3)))
+            var run = 0; for (_, k) in m { if handed(k) { run += 1 } else { break } }
+            parts.append((0.10, Double(min(run, 5)) / 5))
+            let bad = m10.filter { $0.0.failedReview(sid) || $0.0.plagiarized(sid) }.count
+            parts.append((0.20, max(0, 1 - 0.5 * Double(bad))))
+            var trend = 0.5
+            if m.count >= 8 {
+                let a5 = Double(m.prefix(5).filter { handed($0.1) }.count) / 5
+                let b = Array(m.dropFirst(5).prefix(5)); let b5 = Double(b.filter { handed($0.1) }.count) / Double(b.count)
+                trend = min(1, max(0, 0.5 + (a5 - b5) / 0.4 * 0.5))
+            }
+            parts.append((0.05, trend))
+        }
+        let taken = exams.filter { $0.fullScore > 0 && $0.scores[sid] != nil }.suffix(3)
+        if !taken.isEmpty {
+            let p = min(1, max(0, taken.map { $0.scores[sid]! / $0.fullScore }.reduce(0, +) / Double(taken.count)))
+            parts.append((0.15, p))
+        }
+        if parts.isEmpty { return CreditResult(index: 0, hasData: false) }
+        let wsum = parts.reduce(0) { $0 + $1.0 }
+        var sum = 0.0; for (w, v) in parts { sum += w / wsum * v * 100 }
+        return CreditResult(index: r2(sum), hasData: true)
+    }
+}
+
+/// 一段的信誉分加减分
+struct CreditPeriod { var key: String; var label: String; var time: Int64; var personal: [String: (Double, Double)]; var groups: [String: (Double, Double)] }
+
 struct LeaderPeriod { var group: String; var key: String; var label: String; var time: Int64; var perCapita: Double; var parts: [(String, Double)]; var points: Double { parts.reduce(0) { $0 + $1.1 } } }
 
 /// 作业复审：不合格记一次未交，这一次扣分 × multiplier（默认翻倍）
@@ -560,6 +619,7 @@ struct Rules: Equatable {
     var plagiarism = PlagiarismRules()
     var leader = LeaderRules()
     var groupRank = GroupRankRules()
+    var credit = CreditRules()
     /// 单笔加减分保留原值；取整只作用在最终显示的总积分上
     func pt(_ x: Double) -> Double { x }
     func shown(_ total: Double) -> Double { roundPoints ? roundAway(total) : total }
@@ -627,6 +687,19 @@ struct AppData: Codable, Equatable {
                 x.leader.streakMax = v["streakMax"]?.int ?? x.leader.streakMax
                 x.leader.cap = v["cap"]?.double ?? x.leader.cap
                 x.leader.mode = v["mode"]?.string ?? x.leader.mode
+            }
+            if let v = r?["credit"] {
+                x.credit.personal = v["personal"]?.string ?? x.credit.personal
+                x.credit.group = v["group"]?.string ?? x.credit.group
+                x.credit.period = v["period"]?.string ?? x.credit.period
+                x.credit.excellentAt = v["excellentAt"]?.double ?? x.credit.excellentAt
+                x.credit.excellentPts = v["excellentPts"]?.double ?? x.credit.excellentPts
+                x.credit.goodAt = v["goodAt"]?.double ?? x.credit.goodAt
+                x.credit.goodPts = v["goodPts"]?.double ?? x.credit.goodPts
+                x.credit.poorBelow = v["poorBelow"]?.double ?? x.credit.poorBelow
+                x.credit.poorPts = v["poorPts"]?.double ?? x.credit.poorPts
+                x.credit.badBelow = v["badBelow"]?.double ?? x.credit.badBelow
+                x.credit.badPts = v["badPts"]?.double ?? x.credit.badPts
             }
             if let v = r?["groupRank"] {
                 x.groupRank.enabled = v["enabled"]?.bool ?? x.groupRank.enabled
@@ -703,6 +776,12 @@ struct AppData: Codable, Equatable {
             pg["enabled"] = .bool(newValue.plagiarism.enabled); pg["multiplier"] = .number(newValue.plagiarism.multiplier)
             pg["escalate"] = .bool(newValue.plagiarism.escalate); pg["maxTimes"] = .number(Double(newValue.plagiarism.maxTimes))
             r["plagiarism"] = pg
+            var cr = r["credit"] ?? .object([:])
+            let c = newValue.credit
+            cr["personal"] = .string(c.personal); cr["group"] = .string(c.group); cr["period"] = .string(c.period)
+            cr["excellentAt"] = .number(c.excellentAt); cr["excellentPts"] = .number(c.excellentPts); cr["goodAt"] = .number(c.goodAt); cr["goodPts"] = .number(c.goodPts)
+            cr["poorBelow"] = .number(c.poorBelow); cr["poorPts"] = .number(c.poorPts); cr["badBelow"] = .number(c.badBelow); cr["badPts"] = .number(c.badPts)
+            r["credit"] = cr
             settings["rules"] = r
         }
     }
@@ -966,12 +1045,65 @@ extension SchoolClass {
         return out
     }
 
+    /// 全班当前的信誉分：学生 id → 结果
+    func creditAll(at: Int64 = nowMillis()) -> [String: CreditResult] {
+        let newest = assignments.filter { $0.createdAt <= at }.sorted { ($0.createdAt, $0.id) > ($1.createdAt, $1.id) }
+        let ex = exams.filter { $0.date <= at }.sorted { ($0.date, $0.id) < ($1.date, $1.id) }
+        return Dictionary(uniqueKeysWithValues: students.map { ($0.id, Credit.one($0.id, newest: newest, exams: ex)) })
+    }
+    /// 已命名、2 人以上的小组
+    var creditGroups: [String: [Student]] {
+        var g: [String: [Student]] = [:]
+        for s in students where !s.group.isEmpty { g[s.group, default: []].append(s) }
+        return g.filter { $0.value.count >= 2 }
+    }
+    /// 全班每一段的信誉分加减分（旧 → 新）；个人、小组都“不计入”时为空
+    func creditPeriods(_ rules: Rules) -> [CreditPeriod] {
+        let cr = rules.credit
+        guard cr.active, !students.isEmpty else { return [] }
+        let sorted = assignments.sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
+        var order: [String] = []; var buckets: [String: (String, [Assignment])] = [:]
+        for a in sorted {
+            let (k, l) = cr.period == "assignment" ? (a.id, "「\(a.title)」") : SchoolClass.periodKeyAt(cr.period, a.date)
+            if buckets[k] == nil { order.append(k); buckets[k] = (l, []) }
+            buckets[k]!.1.append(a)
+        }
+        let groups = creditGroups
+        let examsSorted = exams.sorted { ($0.date, $0.id) < ($1.date, $1.id) }
+        var out: [CreditPeriod] = []
+        for key in order {
+            let (label, list) = buckets[key]!
+            let t = list.last!.createdAt
+            let active = Set(students.filter { s in list.contains { a in let k = a.status(s.id); return k != .NONE && k != .LEAVE } }.map(\.id))
+            if active.isEmpty { continue }
+            let newest = Array(sorted.filter { $0.createdAt <= t }.reversed())
+            let ex = examsSorted.filter { $0.date <= t }
+            var res: [String: CreditResult] = [:]
+            for s in students { res[s.id] = Credit.one(s.id, newest: newest, exams: ex) }
+            var personal: [String: (Double, Double)] = [:]
+            if cr.personal != "none" { for id in active { if let r = res[id], r.hasData { personal[id] = (r.index, CreditRules.apply(cr.personal, cr.band(r.index))) } } }
+            var gs: [String: (Double, Double)] = [:]
+            if cr.group != "none" {
+                for (g, ms) in groups where ms.contains(where: { active.contains($0.id) }) {
+                    let vals = ms.compactMap { res[$0.id] }.filter(\.hasData).map(\.index)
+                    if vals.isEmpty { continue }
+                    let x = r2(vals.reduce(0, +) / Double(vals.count))
+                    gs[g] = (x, CreditRules.apply(cr.group, cr.band(x)))
+                }
+            }
+            out.append(CreditPeriod(key: key, label: label, time: t, personal: personal, groups: gs))
+        }
+        return out
+    }
+
     func stats(_ rules: Rules) -> [Stat] {
         let last = latestRecharges()
         var manual: [String: Double] = [:]
         for e in scores where last[e.studentId].map({ $0.counts(e.time) }) ?? true { manual[e.studentId, default: 0] += rules.pt(e.delta) }
         let lead = leaderPeriods(rules)
         let periods = groupRankPeriods(rules)
+        let credit = creditPeriods(rules)
+        let creditGroupsNow = creditGroups
         return students.map { st in
             let r = last[st.id]
             var auto = 0.0, sub = 0, late = 0, miss = 0
@@ -990,6 +1122,10 @@ extension SchoolClass {
                 for p in periods where r.map({ $0.counts(p.time) }) ?? true {
                     if let g = p.standings.first(where: { $0.group == st.group }) { leaderPts += rules.pt(g.points) }
                 }
+            }
+            for p in credit where r.map({ $0.counts(p.time) }) ?? true {
+                if let v = p.personal[st.id] { leaderPts += rules.pt(v.1) }
+                if creditGroupsNow[st.group] != nil, let v = p.groups[st.group] { leaderPts += rules.pt(v.1) }
             }
             return Stat(student: st, score: rules.shown((r?.target ?? rules.initial) + auto + (manual[st.id] ?? 0) + examPts + leaderPts), submitted: sub, late: late, missing: miss)
         }

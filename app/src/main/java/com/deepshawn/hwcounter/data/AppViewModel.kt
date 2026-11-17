@@ -34,14 +34,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 云端同步（Supabase）：本地每次改动后防抖上传；回到前台时检查云端 */
     // 登录/退出时同步切换数据（必须在首次同步开始前完成，避免把预览数据当成本机数据上传）
     val sync: com.deepshawn.hwcounter.cloud.SyncManager = com.deepshawn.hwcounter.cloud.SyncManager(app, viewModelScope, json, { _data.value }, { d: AppData -> update { d } }) { loggedIn: Boolean ->
-        if (loggedIn) enterEditMode() else enterPreviewMode()
+        if (loggedIn && !sync.isMember) enterEditMode() else enterPreviewMode()
     }
 
-    private val _readOnly: MutableStateFlow<Boolean> = MutableStateFlow(!sync.loggedIn)
-    /** 未登录 = 预览模式（只读）；登录后才能修改 */
+    private val _readOnly: MutableStateFlow<Boolean> = MutableStateFlow(!sync.loggedIn || sync.isMember)
+    /** 未登录 = 预览模式（只读）；凭邀请码注册的普通用户也只读；老师登录后才能修改 */
     val readOnly: StateFlow<Boolean> = _readOnly.asStateFlow()
 
-    private val _data: MutableStateFlow<AppData> = MutableStateFlow(if (sync.loggedIn) load() else loadPreview())
+    private val _data: MutableStateFlow<AppData> = MutableStateFlow(if (sync.loggedIn && !sync.isMember) load() else loadPreview())
     val data: StateFlow<AppData> = _data.asStateFlow()
 
     /** 给界面的提示（如“预览模式：登录后才能修改”） */
@@ -51,7 +51,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var saveJob: Job? = null
 
     init {
-        if (!sync.loggedIn) viewModelScope.launch { refreshPreview() }
+        if (!sync.loggedIn || sync.isMember) viewModelScope.launch { refreshPreview() }
         // 定时上传草稿：每 15 秒检查一次（App 在后台但进程还在时也会执行；进程被杀则下次打开立即补传）
         viewModelScope.launch {
             delay(1500)
@@ -121,12 +121,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return (cached ?: AppData()).copy(settings = local.settings)
     }
 
-    /** 拉取老师公开的预览数据（未登录时） */
+    private fun previewing() = !sync.loggedIn || sync.isMember
+
+    /** 拉取只读数据：未登录时是老师公开的预览；普通用户是所属老师的数据 */
     suspend fun refreshPreview() {
-        if (sync.loggedIn) return
-        val remote = runCatching { sync.pullPublic() }.getOrNull() ?: return
+        if (!previewing()) return
+        val remote = runCatching { if (sync.isMember) sync.pullMemberData() else sync.pullPublic() }.getOrNull() ?: return
         withContext(Dispatchers.IO) { runCatching { previewFile.writeText(json.encodeToString(remote)) } }
-        if (sync.loggedIn) return
+        if (!previewing()) return
         val cur = _data.value
         _data.value = remote.copy(
             settings = cur.settings,
@@ -150,7 +152,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onResume() {
-        if (sync.loggedIn) sync.onResume() else viewModelScope.launch { refreshPreview() }
+        if (sync.loggedIn && !sync.isMember) sync.onResume() else viewModelScope.launch { refreshPreview() }
         uploadDueDrafts()
         applyAutoResets()
     }

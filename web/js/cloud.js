@@ -1,5 +1,9 @@
 // Supabase 云同步（与安卓版同一个项目、同一套表和冲突规则）
 export const CLOUD = { url: 'https://beasxxexggnjcocdbtdl.supabase.co', key: 'sb_publishable_85hufMmFQvmLQt2Rz1Hcrw_S4t7BjAO' };
+/** 凭邀请码注册的普通用户：用户名映射成这个域名下的内部邮箱（与 Edge Function hw-register、安卓一致） */
+export const MEMBER_DOMAIN = 'member.hwcounter.invalid';
+export const loginEmail = (input) => { const t = String(input || '').trim(); return t.includes('@') ? t : `${t.toLowerCase()}@${MEMBER_DOMAIN}`; };
+export const displayName = (email) => (email && email.endsWith('@' + MEMBER_DOMAIN) ? email.slice(0, -MEMBER_DOMAIN.length - 1) : email);
 
 const SESSION_KEY = 'hw.cloud.session';
 const META_KEY = 'hw.cloud.meta';
@@ -11,7 +15,8 @@ export class ConflictError extends Error { constructor(v) { super(`云端已有�
 function friendly(status, body) {
   const raw = (body && (body.error_description || body.msg || body.message || body.error)) || '';
   const l = String(raw).toLowerCase();
-  if (l.includes('invalid login credentials')) return '邮箱或密码不对';
+  if (l.includes('invalid login credentials')) return '账号或密码不对';
+  if (l.includes('password should contain')) return '密码太简单：需要同时包含小写字母、大写字母、数字和符号（如 Abc123!）';
   if (l.includes('email not confirmed')) return '邮箱还没验证：请到邮箱里点确认链接后再登录';
   if (l.includes('already registered')) return '这个邮箱已经注册过了，直接登录即可';
   if (l.includes('password should be at least') || l.includes('weak_password')) return '密码太短或太简单（至少 6 位）';
@@ -56,8 +61,9 @@ async function token() {
 }
 
 export const api = {
-  async signIn(email, password) {
-    const r = await http('POST', '/auth/v1/token?grant_type=password', { email: email.trim(), password });
+  async signIn(email0, password) {
+    const email = loginEmail(email0);
+    const r = await http('POST', '/auth/v1/token?grant_type=password', { email, password });
     if (!r.ok) throw new Error(friendly(r.status, r.json));
     const s = toSession(r.json, email); save(SESSION_KEY, s); return s;
   },
@@ -119,6 +125,30 @@ export const api = {
     }
     const row = Array.isArray(r.json) ? r.json[0] : r.json;
     return row.version;
+  },
+  /** 调用数据库函数；函数里 raise 的中文消息直接给用户看 */
+  async rpc(name, body = {}) {
+    const r = await http('POST', `/rest/v1/rpc/${name}`, body, await token());
+    if (!r.ok) { const m = r.json?.message || ''; throw new Error(/[\u2e80-\u9fff]/.test(m) ? m : friendly(r.status, r.json)); }
+    return r.json;
+  },
+  async select(pathAndQuery) {
+    const r = await http('GET', `/rest/v1/${pathAndQuery}`, null, await token());
+    if (!r.ok) throw new Error(friendly(r.status, r.json));
+    return r.json || [];
+  },
+  /** 凭邀请码注册普通用户（Edge Function hw-register），成功后直接登录 */
+  async register(code, username, password, name) {
+    const r = await http('POST', '/functions/v1/hw-register', { code: code.trim(), username: username.trim(), password, name: (name || '').trim() });
+    if (!r.ok) throw new Error(r.json?.error || friendly(r.status, r.json));
+    return api.signIn(username, password);
+  },
+  /** 普通用户：读取所属老师的数据（只读） */
+  async pullOf(uid) {
+    const r = await http('GET', `/rest/v1/hw_snapshots?select=data,version,updated_at&user_id=eq.${encodeURIComponent(uid)}&limit=1`, null, await token());
+    if (!r.ok) throw new Error(friendly(r.status, r.json));
+    const row = Array.isArray(r.json) ? r.json[0] : null;
+    return row ? { data: row.data, version: row.version, updatedAt: row.updated_at } : null;
   },
   async history() {
     const r = await http('GET', '/rest/v1/hw_snapshot_history?select=id,version,device,saved_at&order=saved_at.desc&limit=30', null, await token());

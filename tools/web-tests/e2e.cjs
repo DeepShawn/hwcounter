@@ -122,11 +122,12 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check(await page.isVisible('text=缺考 · 1 人'), '考试详情：排名与缺考');
   await shot('8-exam');
   await page.goBack(); await page.waitForSelector('text=各场考试');
-  // 关注：榜单与股票
+  // 关注：榜单；股票：一级栏目（行情 / 炒股）
   await page.click('.seg button:has-text("关注")'); await page.waitForSelector('text=关注度指数（0–100，越高越需要关注）');
   check((await page.locator('.an-att').count()) === 12, '关注榜：每位同学一行');
   await shot('7d-attention');
-  await page.click('.an-tabs button:has-text("股票")'); await page.waitForSelector('text=ATTN', { timeout: 15000 });
+  await page.click('.seg button:has-text("股票")'); await page.waitForSelector('text=ATTN', { timeout: 15000 });
+  check(await page.isVisible('.an-tabs button:has-text("行情")') && await page.isVisible('.an-tabs button:has-text("炒股")'), '股票是一级栏目，第二级：行情 / 炒股');
   check(await page.isVisible('text=关注指数 · 全班平均') && (await page.locator('.an-pill').count()) === 12, '股票模式：大盘与个股');
   // 滚动行情条一直在动
   const tx1 = await page.$eval('.stk-tape-in', (e) => new DOMMatrix(getComputedStyle(e).transform).m41); await page.waitForTimeout(700);
@@ -155,7 +156,19 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await shot('7e2-stock-detail');
   await page.click('button.more:has-text("查看完整个人分析")'); await page.waitForSelector('text=积分流水');
   await page.goBack(); await page.goBack(); await page.waitForSelector('text=ATTN');
-  await page.click('.an-tabs button:has-text("小组 · 综合分")'); await page.waitForSelector('text=GRP', { timeout: 15000 });
+  // 信誉分（越高越好）：个人 / 小组
+  await page.click('.an-tabs button:has-text("信誉分")'); await page.waitForSelector('text=CRDT', { timeout: 15000 });
+  check(await page.isVisible('text=信誉指数 · 全班平均') && (await page.locator('.an-pill').count()) === 12, '信誉分行情：大盘与个股');
+  await shot('7e4-credit');
+  await page.click('.an-row.tap >> nth=0'); await page.waitForSelector('text=成分 · 信誉分构成（越高越好）');
+  check(await page.isVisible('text=诚信') && await page.isVisible('text=信誉排名'), '信誉分个股详情：构成与排名');
+  await page.goBack(); await page.waitForSelector('text=CRDT');
+  await page.click('.an-tabs button:has-text("小组") >> nth=-1'); await page.waitForSelector('text=GCRD', { timeout: 15000 });
+  check((await page.locator('.an-pill').count()) === 3, '小组信誉分板块');
+  await page.click('.an-tabs button:has-text("关注度")'); await page.waitForSelector('text=GATT', { timeout: 15000 });
+  check((await page.locator('.an-pill').count()) === 3, '小组关注度板块');
+  await page.click('.an-tabs button:has-text("个人") >> nth=0');
+  await page.click('.an-tabs button:has-text("小组综合")'); await page.waitForSelector('text=GRP', { timeout: 15000 });
   check((await page.locator('.an-pill').count()) === 3 && !(await page.isVisible('.stk-tape')), '股票模式：小组板块');
   await page.click('.an-pill >> nth=0'); await page.click('.an-pill >> nth=0');
   check((await page.textContent('.an-pill >> nth=0')).includes('名'), '小组胶囊：涨跌额 / 涨跌幅 / 名次');
@@ -163,7 +176,11 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check(await page.isVisible('text=人均作业扣分') && await page.isVisible('button.more:has-text("查看小组详情")'), '小组个股详情');
   await shot('7e3-group-stock');
   await page.goBack(); await page.waitForSelector('text=GRP');
-  await page.click('.an-tabs button:has-text("个人 · 关注度")'); await page.click('.stk-toggles button:has-text("走势")'); await page.click('.an-tabs button:has-text("榜单")');
+  await page.click('.an-tabs button:has-text("关注度")'); await page.click('.stk-toggles button:has-text("走势")');
+  // 炒股：未登录时提示去登录 / 注册
+  await page.click('.an-tabs button:has-text("炒股")'); await page.waitForSelector('text=模拟炒股');
+  check(await page.isVisible('text=去登录 / 注册') && await page.isVisible('text=与真实货币无关'), '炒股：未登录提示');
+  await page.click('.an-tabs button:has-text("行情")');
   // 小组
   await page.click('.seg button:has-text("小组")'); await page.waitForSelector('text=小组对抗排名');
   for (const t of ['本期排名', '历次排名', '每周对抗 · 交齐率最高的组胜出', '两组对决', '组长奖惩'])
@@ -195,7 +212,12 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.goBack(); await page.goBack(); await page.waitForSelector('.an-graph');
   await page.click('.seg button:has-text("作业")');
   await page.click('.tabbar button:has-text("设置")'); await page.waitForSelector('text=主题配色');
-  check((await page.locator('input:not([type=checkbox])').count()) === 0, '设置里没有任何输入框（只有个性化开关）');
+  check((await page.locator('.acct input').count()) === 2 && await page.isVisible('.chip:has-text("用邀请码注册")'), '设置：账号登录（邮箱或用户名）');
+  await page.click('.chip:has-text("用邀请码注册")');
+  check((await page.locator('.acct input').count()) === 4 && await page.isDisabled('.acct .btn1'), '邀请码注册：邀请码、用户名、显示名、密码，填好前不能提交');
+  await page.fill('.acct input >> nth=0', 'ab12cd34'); await page.fill('.acct input >> nth=1', 'test_user'); await page.fill('.acct input >> nth=3', 'weak');
+  check(await page.isDisabled('.acct .btn1') && (await page.inputValue('.acct input >> nth=0')) === 'AB12CD34', '密码太简单不能注册；邀请码自动转大写');
+  await page.click('.chip:has-text("登录")');
   check(!(await page.content()).includes('更新于') && !(await page.content()).includes('设备'), '不显示数据更新时间和设备来源');
   await page.click('.cell:has-text("新手提示")'); await page.waitForSelector('.guide');
   check(true, '设置里可以重新打开新手提示'); await page.click('.guide-skip');
@@ -212,6 +234,51 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check((await page.getAttribute('html', 'data-theme')) === 'dark' && (await page.evaluate(() => document.documentElement.classList.contains('motion'))), '个性化设置记在本机');
 
   check(writes === 0, `网页端没有发出任何写请求（共 ${requests} 次请求）`);
+
+  // ---------- 普通用户（凭邀请码注册）：登录后只读查看老师的数据，模拟炒股 ----------
+  const ctx2 = await browser.newContext({ viewport: { width: 400, height: 860 }, deviceScaleFactor: 1 });
+  await ctx2.addInitScript(() => localStorage.setItem('hw.onboarded', '1'));
+  const placed = [];
+  const iso = new Date(now).toISOString();
+  await ctx2.route(/supabase\.co/, (route) => {
+    const req = route.request(); const url = new URL(req.url()); const json = (b) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
+    const p = url.pathname;
+    if (p === '/auth/v1/token') return json({ access_token: 't', refresh_token: 'r', expires_in: 3600, user: { id: 'u1', email: 'stu@member.hwcounter.invalid' } });
+    if (p === '/rest/v1/rpc/hw_me') return json({ role: 'member', user_id: 'u1', admin_id: 'adm', username: 'stu', display_name: '小明家长', status: 'active', cash: 5000 });
+    if (p.startsWith('/rest/v1/hw_snapshots')) return json(url.searchParams.get('user_id') === 'eq.adm' ? [{ data: seed, version: 3, updated_at: iso }] : []);
+    if (p === '/rest/v1/hw_prices') return json([{ symbol: 'C:s0', name: '张锦宇', kind: 'C', price: 80, active: true, updated_at: iso }, { symbol: 'A:s1', name: '李子涵', kind: 'A', price: 20, active: true, updated_at: iso }, { symbol: 'GC:c1/第1组', name: '第1组', kind: 'GC', price: 70, active: true, updated_at: iso }]);
+    if (p === '/rest/v1/hw_positions') return json([{ symbol: 'C:s0', qty: 10, avg_price: 75, realized: 0 }]);
+    if (p === '/rest/v1/hw_orders') return json([{ id: 1, symbol: 'C:s0', side: 'buy', qty: 5, limit_price: 70, status: 'open', reason: '', fill_price: null, created_at: iso }]);
+    if (p === '/rest/v1/hw_trades') return json([{ id: 1, symbol: 'C:s0', side: 'buy', qty: 10, price: 75, amount: 750, realized: 0, created_at: iso }]);
+    if (p === '/rest/v1/hw_cash_log') return json([{ id: 1, amount: 5000, note: '注册赠送', cash_after: 5000, created_at: iso }]);
+    if (p === '/rest/v1/rpc/hw_leaderboard') return json([{ user_id: 'u1', username: 'stu', display_name: '小明家长', status: 'active', cash: 4250, stock_value: 800, equity: 5050, invested: 5000, profit: 50 }]);
+    if (p === '/rest/v1/rpc/hw_place_order') { placed.push(JSON.parse(req.postData() || '{}')); return json({ id: 2, status: 'filled', price: 80 }); }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+  });
+  const p2 = await ctx2.newPage(); p2.on('pageerror', (e) => errors.push(e.message));
+  await p2.goto(`http://localhost:${server.address().port}/`); await p2.waitForSelector('.acct input');
+  check(await p2.isVisible('text=老师还没有开放查看'), '没有公开数据时可以直接登录');
+  await p2.fill('.acct input >> nth=0', 'stu'); await p2.fill('.acct input >> nth=1', 'Abc123!x'); await p2.click('.acct .btn1');
+  await p2.waitForSelector('.tabbar');
+  check(await p2.isVisible('h1:has-text("高一(3)班")'), '普通用户登录后读到老师的数据');
+  await p2.click('.tabbar button:has-text("设置")'); await p2.waitForSelector('text=小明家长（stu）');
+  check(await p2.isVisible('text=普通用户 · 只读查看老师的班级数据'), '普通用户登录（用户名）');
+  await p2.click('.tabbar button:has-text("统计")'); await p2.waitForSelector('text=数据分析');
+  await p2.click('.seg button:has-text("股票")'); await p2.click('.an-tabs button:has-text("炒股")'); await p2.waitForSelector('text=总资产');
+  check(await p2.isVisible('text=小明家长 的账户') && await p2.isVisible('text=张锦宇（空）') === false && await p2.isVisible('.an-row:has-text("张锦宇")'), '炒股：账户与持仓');
+  await p2.screenshot({ path: path.join(OUT, '13-trade.png') });
+  await p2.click('.chip:has-text("委托")'); check(await p2.isVisible('text=限价 70.00') && await p2.isVisible('.chip.on:has-text("撤单")'), '炒股：委托（可撤单）');
+  await p2.click('.chip:has-text("排行")'); check(await p2.isVisible('.trade-me:has-text("小明家长")'), '炒股：收益排行');
+  await p2.click('.trade-card .btn1'); await p2.waitForSelector('.trade-sheet');
+  await p2.click('.trade-list .an-row:has-text("张锦宇")'); await p2.waitForSelector('text=现价 80.00');
+  await p2.click('.trade-sheet .guide-btns .btn1'); await p2.waitForSelector('text=已成交');
+  check(placed.length === 1 && placed[0].p_symbol === 'C:s0' && placed[0].p_side === 'buy' && placed[0].p_qty === 10 && placed[0].p_limit === undefined, '炒股：市价买入下单');
+  await p2.click('.chip:has-text("持仓")'); await p2.click('.an-row.tap:has-text("张锦宇")'); await p2.waitForSelector('.trade-sheet');
+  await p2.click('.trade-sheet .chip:has-text("限价")'); await p2.fill('.trade-sheet .acct input >> nth=1', '90');
+  check(await p2.isVisible('.trade-sheet b:has-text("卖出 10 股")'), '持仓点开：默认卖出');
+  await p2.click('.trade-sheet .guide-btns .btn1'); await p2.waitForTimeout(300);
+  check(placed.length === 2 && placed[1].p_side === 'sell' && placed[1].p_limit === 90, '炒股：限价卖出下单');
+  await ctx2.close();
   check(errors.length === 0, `没有脚本错误${errors.length ? '：' + errors.join(' | ') : ''}`);
   await browser.close(); server.close();
   console.log(failures ? `\n${failures} 项失败` : '\n全部通过');

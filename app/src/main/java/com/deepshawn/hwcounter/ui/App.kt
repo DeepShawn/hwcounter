@@ -137,8 +137,12 @@ sealed interface Route {
     data object Reset : Route
     data class SettleRegister(val id: String) : Route
     data class Personal(val id: String) : Route
-    data class Stock(val id: String) : Route
-    data class GroupStock(val name: String) : Route
+    /** 个股详情：metric 0 关注度、1 信誉分 */
+    data class Stock(val id: String, val metric: Int = 0) : Route
+    /** 小组个股：metric 0 小组关注度、1 小组信誉分、2 小组综合分 */
+    data class GroupStock(val name: String, val metric: Int = 2) : Route
+    /** 管理员：用户与邀请码 */
+    data object Accounts : Route
 }
 
 class Nav(private val stack: MutableList<Route>, private val canOpen: (Route) -> Boolean = { true }) {
@@ -300,7 +304,7 @@ fun App(vm: AppViewModel, data: AppData) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         SnackbarHost(snack) { GlassSnackbar(it) }
-                        if (readOnly) PreviewBanner { nav.tab(Route.Settings); nav.push(Route.SettingsPage("account")) }
+                        if (readOnly) { val mem = vm.sync.isMember; PreviewBanner(mem) { if (mem) nav.tab(Route.Stats) else { nav.tab(Route.Settings); nav.push(Route.SettingsPage("account")) } } }
                         if (topLevel) GlassTabBar(
                             tabs = tabs.filter { !(readOnly && it.route == Route.Students) },
                             current = current,
@@ -402,8 +406,9 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         Route.Reset -> com.deepshawn.hwcounter.ui.screens.ResetScreen(vm, data)
         is Route.SettleRegister -> com.deepshawn.hwcounter.ui.screens.SettleRegisterScreen(vm, data, route.id)
         is Route.Personal -> com.deepshawn.hwcounter.ui.screens.PersonalReportScreen(vm, data, route.id)
-        is Route.Stock -> com.deepshawn.hwcounter.ui.screens.StockDetailScreen(vm, data, route.id)
-        is Route.GroupStock -> com.deepshawn.hwcounter.ui.screens.GroupStockDetailScreen(vm, data, route.name)
+        is Route.Stock -> com.deepshawn.hwcounter.ui.screens.StockDetailScreen(vm, data, route.id, route.metric)
+        is Route.GroupStock -> com.deepshawn.hwcounter.ui.screens.GroupStockDetailScreen(vm, data, route.name, route.metric)
+        is Route.Accounts -> com.deepshawn.hwcounter.ui.screens.AccountsScreen(vm, data)
     }
 }
 
@@ -461,7 +466,7 @@ fun rememberPhotoLauncher(onPhotos: (List<Uri>) -> Unit): PhotoLauncher {
 
 /** 预览模式横幅：未登录时只读 */
 @Composable
-private fun PreviewBanner(onLogin: () -> Unit) {
+private fun PreviewBanner(member: Boolean = false, onLogin: () -> Unit) {
     androidx.compose.foundation.layout.Row(
         Modifier.padding(bottom = 8.dp)
             .glass(shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp), tint = androidx.compose.ui.graphics.Color(0xFFFFF4E5), refraction = 8.dp, elevated = false)
@@ -469,7 +474,7 @@ private fun PreviewBanner(onLogin: () -> Unit) {
             .padding(horizontal = 14.dp, vertical = 8.dp),
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
     ) {
-        Text("预览模式 · 只读　", color = androidx.compose.ui.graphics.Color(0xFF6B4300), fontSize = 13.sp)
-        Text("登录后可修改 ›", color = androidx.compose.ui.graphics.Color(0xFF6B4300), fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+        Text(if (member) "普通用户 · 只读　" else "预览模式 · 只读　", color = androidx.compose.ui.graphics.Color(0xFF6B4300), fontSize = 13.sp)
+        Text(if (member) "统计 → 股票 → 炒股 ›" else "登录后可修改 ›", color = androidx.compose.ui.graphics.Color(0xFF6B4300), fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
     }
 }

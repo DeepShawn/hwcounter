@@ -3,9 +3,9 @@
 import { h } from '../vendor/preact.module.js';
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
-import { fmtNum, compareStudentNumbers, studentStats, leaderOf } from './model.js';
+import { fmtNum, compareStudentNumbers, studentStats, leaderOf, creditAll } from './model.js';
 import { Icon } from './icons.js';
-import { attention, ATT_LEVELS, stockBoard, groupStockBoard, SPANS, groupsOf, groupReport } from './analytics.js';
+import { attention, ATT_LEVELS, boardOf, SPANS, groupsOf, groupReport } from './analytics.js';
 
 const html = htm.bind(h);
 const attColor = (l) => (ATT_LEVELS.find((x) => x[0] === l) || ATT_LEVELS[3])[2];
@@ -26,7 +26,7 @@ export function stockColors(us) {
 }
 
 // 切换页面后回来仍保持（与安卓 StockUi 一致）
-export const stockUi = { kind: 0, span: 'M1', kline: false, pill: 0, sort: 0 };
+export const stockUi = { kind: 0, metric: 0, span: 'M1', kline: false, pill: 0, sort: 0, level2: 0 };
 function useUi(k) { const [v, set] = useState(stockUi[k]); return [v, (x) => { stockUi[k] = typeof x === 'function' ? x(stockUi[k]) : x; set(stockUi[k]); }]; }
 
 function Tabs({ items, value, onChange, cls = '' }) {
@@ -47,7 +47,7 @@ function worker() {
 }
 function computeBoard(c, rules, kind, span) {
   const now = Date.now();
-  const local = () => new Promise((resolve) => setTimeout(() => resolve(kind === 1 ? groupStockBoard(c, rules, span, now) : stockBoard(c, rules, span, now)), 0));
+  const local = () => new Promise((resolve) => setTimeout(() => resolve(boardOf(c, rules, kind, span, now)), 0));
   const w = worker();
   if (!w) return local();
   const id = ++reqSeq;
@@ -199,29 +199,45 @@ function TickerTape({ c, b, sc, onOpen }) {
 const groupsMin2 = (c) => Object.fromEntries(Object.entries(groupsOf(c)));
 const ranksOf = (b) => Object.fromEntries(Object.entries(b.stocks).map(([g, q]) => [g, 1 + Object.values(b.stocks).filter((x) => x.last > q.last + 1e-9).length]));
 
-/** 统计 → 关注 → 股票 */
+/** 小组板块的代码、名称、说明：metric 0 关注度、1 信誉分、2 综合分 */
+const GROUP_META = [
+  ['GATT', '小组关注指数 · 各组平均', '小组关注度 = 组员关注度的平均（0–100）。越高越需要关注：上涨表示小组情况变差。'],
+  ['GCRD', '小组信誉指数 · 各组平均', '小组信誉分 = 组员信誉分的平均（0–100）。越高越好：上涨表示小组在变好。'],
+  ['GRP', '小组综合指数 · 各组平均', '综合分 = 最近 10 次作业的交齐率、少扣分、优秀率和考试得分率加权（与小组对抗排名同一口径）× 100。综合分越高越好：上涨表示小组在变好。'],
+];
+/** 行情板块编号（与 analytics.boardOf 一致） */
+export const boardKind = (metric, isGroup) => (metric === 2 ? 1 : metric === 1 ? (isGroup ? 3 : 2) : (isGroup ? 4 : 0));
+const CREDIT_COLORS = { 优秀: '#16a34a', 良好: '#2f6bff', 一般: '#e8a400', 较差: '#dc2626', 暂无: '#9ca3af' };
+export const creditColor = (l) => CREDIT_COLORS[l] || '#9ca3af';
+
+/** 统计 → 股票 → 行情：关注度 / 信誉分 / 小组综合，个人 / 小组 */
 export function StockTab({ c, rules, list, open, us, setUs }) {
-  const [kind, setKind] = useUi('kind'); const [span, setSpan] = useUi('span'); const [kline, setKline] = useUi('kline');
+  const [kind, setKind] = useUi('kind'); const [metric, setMetric] = useUi('metric'); const [span, setSpan] = useUi('span'); const [kline, setKline] = useUi('kline');
   const [pill, setPill] = useUi('pill'); const [sort, setSort] = useUi('sort');
   const [sel, setSel] = useState(null);
-  const { board, stale } = useBoard(c, rules, kind, span);
-  useEffect(() => setSel(null), [board, kind]);
+  const isGroup = metric === 2 || kind === 1;
+  const bk = boardKind(metric, isGroup);
+  const { board, stale } = useBoard(c, rules, bk, span);
+  const credit = useMemo(() => (metric === 1 ? creditAll(c) : []), [c, metric]);
+  useEffect(() => setSel(null), [board, bk]);
   const sc = stockColors(us);
   if (!c.students.length) return html`<div class="empty"><div class="empty-i"><${Icon} name="📈" size=${44} stroke=${1.5} /></div>还没有学生</div>`;
-  const isGroup = kind === 1;
-  const head = html`<div class="pad an-picker"><${Tabs} items=${['个人 · 关注度', '小组 · 综合分']} value=${kind} onChange=${(v) => { setKind(v); setSel(null); }} />
+  const isCredit = metric === 1;
+  const [gcode, gtitle, gnote] = GROUP_META[metric === 2 ? 2 : metric];
+  const head = html`<div class="pad an-picker"><${Tabs} items=${['关注度', '信誉分', '小组综合']} value=${metric} onChange=${(v) => { setMetric(v); setSel(null); }} />
+    ${metric !== 2 && html`<${Tabs} items=${['个人', '小组']} value=${kind} onChange=${(v) => { setKind(v); setSel(null); }} />`}
     ${!(isGroup && !Object.keys(groupsMin2(c)).length) && html`<${SpanTabs} span=${span} setSpan=${(v) => { setSpan(v); setSel(null); }} />`}</div>`;
   if (isGroup && !Object.keys(groupsMin2(c)).length) return html`${head}<div class="empty"><div class="empty-i"><${Icon} name="👥" size=${44} stroke=${1.5} /></div>还没有小组：在名单里给同学填写小组（每组至少 2 人）</div>`;
   if (board === undefined) return html`${head}<div class="empty">正在计算行情…</div>`;
   if (board === null) return html`${head}<div class="empty"><div class="empty-i"><${Icon} name="👥" size=${44} stroke=${1.5} /></div>还没有小组（每组至少 2 人）</div>`;
   const m = board.market; const busy = stale || board.span !== span;
   const market = html`<section class="grp an-pad stk-card">
-    <div class="an-mkt"><b>${isGroup ? 'GRP' : 'ATTN'}</b><small>${isGroup ? '小组综合指数 · 各组平均' : '关注指数 · 全班平均'}</small>${busy && html`<small class="an-busy">计算中…</small>`}<i class="stk-live" title="随数据实时更新"></i></div>
+    <div class="an-mkt"><b>${isGroup ? gcode : isCredit ? 'CRDT' : 'ATTN'}</b><small>${isGroup ? gtitle : isCredit ? '信誉指数 · 全班平均' : '关注指数 · 全班平均'}</small>${busy && html`<small class="an-busy">计算中…</small>`}<i class="stk-live" title="随数据实时更新"></i></div>
     <${QuoteHeader} q=${m} sel=${sel} span=${board.span} sc=${sc} />
     <${ChartToggles} kline=${kline} setKline=${setKline} us=${us} setUs=${setUs} />
     <${StockChart} q=${m} kline=${kline} sc=${sc} sel=${sel} onSel=${setSel} />
     <${KeyStats} items=${[['开盘', p2(m.base)], ['最高', p2(m.high)], ['前收', p2(m.prevClose)], ['最低', p2(m.low)], ['成交量', `${m.volume}`], ['振幅', amp(m)], ['上涨', `${board.up} ${isGroup ? '组' : '家'}`], ['下跌', `${board.down} ${isGroup ? '组' : '家'}`]]} />
-    <div class="muted stk-note">${isGroup ? '综合分 = 最近 10 次作业的交齐率、少扣分、优秀率和考试得分率加权（与小组对抗排名同一口径）× 100。综合分越高越好：上涨表示小组在变好。' : '指数越高越需要关注：上涨表示情况变差，下跌表示在好转。成交量为这段时间的记录条数（作业登记、加减分、考试成绩）。'}</div></section>`;
+    <div class="muted stk-note">${isGroup ? gnote : isCredit ? '信誉分越高越好：由交齐、按时、优秀、连续交、诚信（复审、抄袭）、进步、考试加权算出，上涨表示在变好。成交量为这段时间的记录条数（作业登记、考试成绩）。' : '指数越高越需要关注：上涨表示情况变差，下跌表示在好转。成交量为这段时间的记录条数（作业登记、加减分、考试成绩）。'}</div></section>`;
 
   if (isGroup) {
     const ranks = ranksOf(board); const gm = groupsMin2(c);
@@ -230,67 +246,76 @@ export function StockTab({ c, rules, list, open, us, setUs }) {
       <div class="st">小组 · 点胶囊切换涨跌额 / 涨跌幅 / 名次</div>
       <section class="grp">${rows.map(([g, q]) => { const col = sc.of(q.change); const ld = leaderOf(c, g); const rk = ranks[g] || 0;
         const [txt, bg] = pill === 1 ? [pctOf(q), col] : pill === 2 ? [`第 ${rk} 名`, rk === 1 ? '#e8a400' : 'var(--accent)'] : [s2(q.change), col];
-        return html`<div class="an-row tap" key=${g} onClick=${() => open({ view: 'gstock', id: g })}><div class="an-grow"><b class="an-ticker">${g}</b><small>${(gm[g] || []).length} 人${ld ? ` · 组长 ${ld.name}` : ''}</small></div>
+        return html`<div class="an-row tap" key=${g} onClick=${() => open({ view: 'gstock', id: g, metric: metric === 2 ? 2 : metric })}><div class="an-grow"><b class="an-ticker">${g}</b><small>${(gm[g] || []).length} 人${ld ? ` · 组长 ${ld.name}` : ''}</small></div>
           <${MiniChart} q=${q} color=${col} /><div class="an-att"><b>${p2(q.last)}</b><button class="an-pill" style=${{ background: bg }} onClick=${(e) => { e.stopPropagation(); setPill((p) => (p + 1) % 3); }}>${txt}</button></div></div>`; })}</section>`;
   }
 
-  const att = Object.fromEntries(list.map((x) => [x.student.id, x]));
+  const att = isCredit
+    ? Object.fromEntries(credit.map((r) => [r.student.id, { index: r.hasData ? r.index : null, label: r.level, color: creditColor(r.level), reason: r.parts.filter((p) => p.value < 0.6).sort((x, y) => x.value - y.value)[0]?.label }]))
+    : Object.fromEntries(list.map((x) => [x.student.id, { index: x.index, label: attLabel(x.level), color: attColor(x.level), reason: x.top[0]?.label }]));
   const rows = c.students.filter((s) => board.stocks[s.id]).map((s) => ({ s, q: board.stocks[s.id], a: att[s.id] }));
-  const sorted = [...rows].sort([(x, y) => (y.a?.index ?? y.q.last) - (x.a?.index ?? x.q.last), (x, y) => y.q.change - x.q.change, (x, y) => x.q.change - y.q.change, (x, y) => compareStudentNumbers(x.s.no || '', y.s.no || '')][sort]);
+  const sorted = [...rows].sort([(x, y) => (y.a?.index ?? (isCredit ? -1 : y.q.last)) - (x.a?.index ?? (isCredit ? -1 : x.q.last)), (x, y) => y.q.change - x.q.change, (x, y) => x.q.change - y.q.change, (x, y) => compareStudentNumbers(x.s.no || '', y.s.no || '')][sort]);
   const ups = rows.filter((x) => x.q.change > 0.005).sort((x, y) => y.q.change - x.q.change); const downs = rows.filter((x) => x.q.change < -0.005).sort((x, y) => x.q.change - y.q.change);
-  const go = (id) => open({ view: 'stock', id });
+  const go = (id) => open({ view: 'stock', id, metric: isCredit ? 1 : 0 });
   return html`${head}<${TickerTape} c=${c} b=${board} sc=${sc} onOpen=${go} />${market}
     <div class="an-movers">${[['领涨', ups], ['领跌', downs]].map(([t, l]) => html`<section class="grp an-pad"><b>${t}</b>${l.length ? l.slice(0, 3).map((x) => html`<button class="an-mini" onClick=${() => go(x.s.id)}><span>${x.s.name}</span><b style=${{ color: sc.of(x.q.change) }}>${s2(x.q.change)}</b></button>`) : html`<div class="muted">无</div>`}</section>`)}</div>
     <div class="st">自选股 · 点胶囊切换涨跌额 / 涨跌幅 / 等级</div>
-    <div class="chips">${['关注度', '涨幅', '跌幅', '学号'].map((t, i) => html`<button class=${'chip' + (sort === i ? ' on' : '')} onClick=${() => setSort(i)}>${t}</button>`)}</div>
+    <div class="chips">${[isCredit ? '信誉分' : '关注度', '涨幅', '跌幅', '学号'].map((t, i) => html`<button class=${'chip' + (sort === i ? ' on' : '')} onClick=${() => setSort(i)}>${t}</button>`)}</div>
     <section class="grp">${sorted.map(({ s, q, a }) => { const col = sc.of(q.change);
-      const [txt, bg] = pill === 1 ? [pctOf(q), col] : pill === 2 ? [a ? attLabel(a.level) : '—', a ? attColor(a.level) : sc.flat] : [s2(q.change), col];
-      return html`<div class="an-row tap" key=${s.id} onClick=${() => go(s.id)}><div class="an-grow"><b class="an-ticker">${ticker(s)}</b><small>${s.name}${a?.top[0] ? ` · ${a.top[0].label}` : ''}</small></div>
-        <${MiniChart} q=${q} color=${col} /><div class="an-att"><b>${p2(a?.index ?? q.last)}</b><button class="an-pill" style=${{ background: bg }} onClick=${(e) => { e.stopPropagation(); setPill((p) => (p + 1) % 3); }}>${txt}</button></div></div>`; })}</section>`;
+      const [txt, bg] = pill === 1 ? [pctOf(q), col] : pill === 2 ? [a ? a.label : '—', a ? a.color : sc.flat] : [s2(q.change), col];
+      return html`<div class="an-row tap" key=${s.id} onClick=${() => go(s.id)}><div class="an-grow"><b class="an-ticker">${ticker(s)}</b><small>${s.name}${a?.reason ? ` · ${a.reason}${isCredit ? '偏弱' : ''}` : ''}</small></div>
+        <${MiniChart} q=${q} color=${col} /><div class="an-att"><b>${a?.index != null ? p2(a.index) : isCredit ? '—' : p2(q.last)}</b><button class="an-pill" style=${{ background: bg }} onClick=${(e) => { e.stopPropagation(); setPill((p) => (p + 1) % 3); }}>${txt}</button></div></div>`; })}</section>`;
 }
 
 /** 历史行情表：最近 14 根 */
 const History = ({ q, sc }) => html`<div class="st">历史行情</div><section class="grp an-pad"><table class="stk-hist"><thead><tr><th>日期</th><th>开盘</th><th>收盘</th><th>涨跌</th><th>成交</th></tr></thead>
   <tbody>${[...q.candles].reverse().slice(0, 14).map((k) => html`<tr><td>${candleLabel(k)}</td><td>${p2(k.open)}</td><td><b>${p2(k.close)}</b></td><td style=${{ color: sc.of(k.close - k.open) }}>${s2(k.close - k.open)}</td><td>${k.volume}</td></tr>`)}</tbody></table></section>`;
 
-/** 个股详情（关注度） */
-export function StockDetail({ c, rules, id, open, us, setUs }) {
+/** 个股详情：metric 0 关注度、1 信誉分 */
+export function StockDetail({ c, rules, id, metric = 0, open, us, setUs }) {
   const [span, setSpan] = useUi('span'); const [kline, setKline] = useUi('kline');
   const [sel, setSel] = useState(null);
-  const { board, stale } = useBoard(c, rules, 0, span);
+  const isCredit = metric === 1;
+  const { board, stale } = useBoard(c, rules, isCredit ? 2 : 0, span);
   useEffect(() => setSel(null), [board]);
   const list = useMemo(() => attention(c, rules), [c, rules]);
+  const credits = useMemo(() => creditAll(c), [c]);
   const score = useMemo(() => studentStats(c, rules).find((x) => x.student.id === id)?.score, [c, rules, id]);
   const a = list.find((x) => x.student.id === id);
   if (!a) return html`<div class="empty"><div class="empty-i"><${Icon} name="👤" size=${44} stroke=${1.5} /></div>找不到这位同学</div>`;
-  const s = a.student; const sc = stockColors(us); const q = board?.stocks?.[id]; const col = attColor(a.level);
-  const rank = list.findIndex((x) => x.student.id === id) + 1;
+  const cr = credits.find((x) => x.student.id === id);
+  const s = a.student; const sc = stockColors(us); const q = board?.stocks?.[id];
+  const col = isCredit ? creditColor(cr?.level) : attColor(a.level);
+  const rank = isCredit ? credits.findIndex((x) => x.student.id === id) + 1 : list.findIndex((x) => x.student.id === id) + 1;
+  const now = isCredit ? (cr?.index ?? 0) : a.index;
   return html`<section class="grp an-pad stk-card">
-      <div class="an-mkt"><small>关注度 · ${s.name}</small><em class="an-tag" style=${{ color: col, background: col + '1f' }}>${attLabel(a.level)}</em>${(stale || (board && board.span !== span)) && html`<small class="an-busy">计算中…</small>`}<i class="stk-live"></i></div>
-      ${q ? html`<${QuoteHeader} q=${q} sel=${sel} span=${board.span} sc=${sc} />` : html`<div class="an-quote"><b>${p2(a.index)}</b></div>`}
+      <div class="an-mkt"><small>${isCredit ? '信誉分' : '关注度'} · ${s.name}</small><em class="an-tag" style=${{ color: col, background: col + '1f' }}>${isCredit ? (cr?.level || '暂无') : attLabel(a.level)}</em>${(stale || (board && board.span !== span)) && html`<small class="an-busy">计算中…</small>`}<i class="stk-live"></i></div>
+      ${q ? html`<${QuoteHeader} q=${q} sel=${sel} span=${board.span} sc=${sc} />` : html`<div class="an-quote"><b>${p2(now)}</b></div>`}
       <div class="stk-span"><${SpanTabs} span=${span} setSpan=${(v) => { setSpan(v); setSel(null); }} /></div>
       <${ChartToggles} kline=${kline} setKline=${setKline} us=${us} setUs=${setUs} />
       ${q ? html`<${StockChart} q=${q} kline=${kline} sc=${sc} sel=${sel} onSel=${setSel} />` : html`<div class="empty">正在计算行情…</div>`}</section>
     ${q && html`<div class="st">关键数据</div><section class="grp an-pad"><${KeyStats} items=${[['开盘', p2(q.base)], ['最高', p2(q.high)], ['前收', p2(q.prevClose)], ['最低', p2(q.low)], ['振幅', amp(q)], ['成交量', `${q.volume}`],
-      ['积分（市值）', score == null ? '—' : fmtNum(score)], ['关注排名', `${rank} / ${list.length}`], ['同期大盘', s2(board.market.change)], ['相对大盘', s2(q.change - board.market.change)]]} /></section>`}
-    <div class="st">成分 · 关注度构成</div>
+      ['积分（市值）', score == null ? '—' : fmtNum(score)], [isCredit ? '信誉排名' : '关注排名', `${rank} / ${list.length}`], ['同期大盘', s2(board.market.change)], ['相对大盘', s2(q.change - board.market.change)]]} /></section>`}
+    ${isCredit ? html`<div class="st">成分 · 信誉分构成（越高越好）</div>
+    <section class="grp">${cr && cr.hasData ? [...cr.parts].sort((x, y) => y.weight - x.weight).map((p) => html`<div class="an-row" key=${p.key}><div class="an-grow"><b>${p.label}</b><small>${p.detail}</small></div>
+      <div class="an-att"><b class="mono" style=${{ color: p.value >= 0.9 ? '#16a34a' : p.value < 0.6 ? '#dc2626' : '' }}>${Math.round(p.value * 100)}%</b><small>权重 ${Math.round(p.weight * 100)}% · ${p2(p.points)} 分</small></div></div>`) : html`<div class="cell"><span class="muted">还没有作业记录和考试成绩</span></div>`}</section>` : html`<div class="st">成分 · 关注度构成</div>
     <section class="grp">${[...a.parts].sort((x, y) => y.points - x.points).map((p) => html`<div class="an-row" key=${p.key}><div class="an-grow"><b>${p.label}</b><small>${p.detail}</small></div>
-      <div class="an-att"><b class="mono">${p2(p.points)}</b><small>权重 ${Math.round(p.weight * 100)}%</small></div></div>`)}</section>
+      <div class="an-att"><b class="mono">${p2(p.points)}</b><small>权重 ${Math.round(p.weight * 100)}%</small></div></div>`)}</section>`}
     ${q && html`<${History} q=${q} sc=${sc} />`}
     <button class="more" onClick=${() => open({ view: 'student', id })}>查看完整个人分析</button>`;
 }
 
 /** 小组个股详情（综合分） */
-export function GroupStockDetail({ c, rules, id: group, open, us, setUs }) {
+export function GroupStockDetail({ c, rules, id: group, metric = 2, open, us, setUs }) {
   const [span, setSpan] = useUi('span'); const [kline, setKline] = useUi('kline');
   const [sel, setSel] = useState(null);
-  const { board, stale } = useBoard(c, rules, 1, span);
+  const { board, stale } = useBoard(c, rules, boardKind(metric, true), span);
   useEffect(() => setSel(null), [board]);
   const team = useMemo(() => groupReport(c, rules).teams.find((t) => t.name === group), [c, rules, group]);
   const sc = stockColors(us); const q = board?.stocks?.[group];
   const members = groupsMin2(c)[group] || []; const ld = leaderOf(c, group);
   return html`<section class="grp an-pad stk-card">
-      <div class="an-mkt"><small>小组综合分 · ${members.length} 人${ld ? ` · 组长 ${ld.name}` : ''}</small>${(stale || (board && board.span !== span)) && html`<small class="an-busy">计算中…</small>`}<i class="stk-live"></i></div>
+      <div class="an-mkt"><small>${['小组关注度', '小组信誉分', '小组综合分'][metric] || '小组综合分'} · ${members.length} 人${ld ? ` · 组长 ${ld.name}` : ''}</small>${(stale || (board && board.span !== span)) && html`<small class="an-busy">计算中…</small>`}<i class="stk-live"></i></div>
       ${q ? html`<${QuoteHeader} q=${q} sel=${sel} span=${board.span} sc=${sc} />
         <div class="stk-span"><${SpanTabs} span=${span} setSpan=${(v) => { setSpan(v); setSel(null); }} /></div>
         <${ChartToggles} kline=${kline} setKline=${setKline} us=${us} setUs=${setUs} />

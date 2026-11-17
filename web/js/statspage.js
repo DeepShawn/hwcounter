@@ -26,7 +26,7 @@ const toDay = (t) => { const d = new Date(t); const p = (n) => String(n).padStar
 const fromDay = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).getTime(); };
 
 // 切换底栏后回来仍保持上次的选择（与手机端 rememberSaveable 一致）
-const keep = { mode: 'hw', top: 0, cal: 2, offset: 0, from: null, to: null, examSubject: 0, att: 0, kind: 0, span: 'M1', kline: false, pill: 0, sort: 0, heatSort: 0, stuSort: 0, plagSel: null };
+const keep = { mode: 'hw', top: 0, cal: 2, offset: 0, from: null, to: null, examSubject: 0, att: 0, kind: 0, span: 'M1', kline: false, pill: 0, sort: 0, heatSort: 0, stuSort: 0, plagSel: null, stockLevel: 0 };
 function useKeep(k) { const [v, set] = useState(keep[k]); return [v, (x) => { keep[k] = typeof x === 'function' ? x(keep[k]) : x; set(keep[k]); }]; }
 /** 耗时的计算放到下一帧，先把页面画出来；算好之前返回 undefined */
 function useLater(fn, deps) {
@@ -35,17 +35,18 @@ function useLater(fn, deps) {
   return v && v.deps.length === deps.length && v.deps.every((x, i) => x === deps[i]) ? v.r : undefined;
 }
 
-export function StatsPage({ kit, c, rules, open, prefs, setPrefs }) {
+export function StatsPage({ kit, c, rules, open, prefs, setPrefs, trade }) {
   const { Page, Seg } = kit;
   const [mode, setMode] = useKeep('mode');
   const [share, setShare] = useState(false);
   const exams = c.exams || [];
   return html`<${Page} title="统计" large="数据分析" actions=${html`<button class="ib" aria-label="分析报告" onClick=${() => setShare(true)}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg></button>`}>
     <div class="meta">${c.name} · ${c.students.length} 人 · ${c.assignments.length} 次作业 · ${exams.length} 场考试</div>
-    <div class="pad"><${Seg} items=${[['hw', '作业'], ['exam', '考试'], ['att', '关注'], ['group', '小组'], ['plag', '抄袭']]} value=${mode} onChange=${setMode} /></div>
+    <div class="pad"><${Seg} items=${[['hw', '作业'], ['exam', '考试'], ['att', '关注'], ['stock', '股票'], ['group', '小组'], ['plag', '抄袭']]} value=${mode} onChange=${setMode} /></div>
     ${mode === 'hw' && html`<${Homework} kit=${kit} c=${c} rules=${rules} open=${open} share=${share} setShare=${setShare} />`}
     ${mode === 'exam' && html`<${Exams} kit=${kit} c=${c} rules=${rules} open=${open} />`}
-    ${mode === 'att' && html`<${AttentionTab} kit=${kit} c=${c} rules=${rules} open=${open} us=${prefs.usColors !== false} setUs=${setPrefs ? (v) => setPrefs({ usColors: v }) : null} />`}
+    ${mode === 'att' && html`<${AttentionTab} kit=${kit} c=${c} rules=${rules} open=${open} />`}
+    ${mode === 'stock' && html`<${StockTop} c=${c} rules=${rules} open=${open} us=${prefs.usColors !== false} setUs=${setPrefs ? (v) => setPrefs({ usColors: v }) : null} trade=${trade} />`}
     ${mode === 'group' && html`<${Groups} kit=${kit} c=${c} rules=${rules} open=${open} />`}
     ${mode === 'plag' && html`<${Plagiarism} kit=${kit} c=${c} rules=${rules} open=${open} />`}
     ${mode !== 'hw' && share && html`<${ReportSheet} c=${c} rules=${rules} spec=${{ range: 'ALL' }} onClose=${() => setShare(false)} />`}
@@ -385,11 +386,16 @@ function Spark({ values, color, w = 48, hgt = 22 }) {
   const hi = Math.max(100, ...values); const x = (i) => w * i / (values.length - 1); const y = (v) => hgt - 2 - (hgt - 4) * v / hi;
   return html`<svg width=${w} height=${hgt} aria-hidden="true"><path d=${values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')} fill="none" stroke=${color} stroke-width="1.6" stroke-linejoin="round" /></svg>`;
 }
-function AttentionTab({ kit, c, rules, open, us, setUs }) {
-  const [att, setAtt] = useKeep('att');
+function AttentionTab({ kit, c, rules, open }) {
   const list = useMemo(() => attention(c, rules), [c, rules]);
-  return html`<div class="pad"><${Tabs2} items=${['榜单', '股票']} value=${att} onChange=${setAtt} /></div>
-    ${att === 0 ? html`<${AttentionBoard} kit=${kit} c=${c} rules=${rules} list=${list} open=${open} />` : html`<${StockTab} c=${c} rules=${rules} list=${list} open=${open} us=${us} setUs=${setUs} />`}`;
+  return html`<${AttentionBoard} kit=${kit} c=${c} rules=${rules} list=${list} open=${open} />`;
+}
+/** 股票（一级栏目）：行情 / 炒股 */
+function StockTop({ c, rules, open, us, setUs, trade }) {
+  const [lv, setLv] = useKeep('stockLevel');
+  const list = useMemo(() => attention(c, rules), [c, rules]);
+  return html`<div class="pad"><${Tabs2} items=${['行情', '炒股']} value=${lv || 0} onChange=${setLv} /></div>
+    ${(lv || 0) === 0 ? html`<${StockTab} c=${c} rules=${rules} list=${list} open=${open} us=${us} setUs=${setUs} />` : trade ? trade() : html`<div class="empty">炒股需要登录</div>`}`;
 }
 function AttentionBoard({ kit, c, rules, list, open }) {
   const { Empty, Avatar } = kit;

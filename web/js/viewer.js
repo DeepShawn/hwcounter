@@ -5,9 +5,10 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from '../vendor
 import htm from '../vendor/htm.module.js';
 import {
   STATUS, normalizeData, summary, studentStats, compareStudentNumbers, autoPoints, ruleOf, fmtNum, signed, fmtDate,
-  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, defaultReview, plagiarismDesc, leaderPeriods, leaderOf, groupRankPoints,
+  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, defaultReview, plagiarismDesc, leaderPeriods, leaderOf, groupRankPoints, creditPoints, creditLevel,
 } from './model.js';
-import { api } from './cloud.js';
+import { api, session } from './cloud.js';
+import { AccountSection, AccountsPage, TradePanel, refreshMe, useAccount, isMember } from './trade.js';
 import { StatsPage, PlagGraph } from './statspage.js';
 import { Icon as LIcon } from './icons.js';
 import { StockDetail, GroupStockDetail } from './stockpage.js';
@@ -143,6 +144,7 @@ function ledger(c, rules, sid) {
     if (d) rows.push({ key: 'e' + e.id, t: e.date, d, title: `考试「${e.title}」${(e.absent || []).includes(sid) ? '缺考' : fmtNum(e.scores?.[sid] ?? 0) + ' 分'}`, kind: '考试', counts: !last || rechargeCounts(last, e.date) });
   }
   for (const x of groupRankPoints(c, rules)[sid] || []) rows.push({ key: 'g' + x.period.key, t: x.period.time, d: x.points, title: `小组排名（${x.standing.group}）${x.period.label}第 ${x.standing.rank} 名（综合 ${Math.round(x.standing.score * 100)}）`, kind: '小组排名', counts: !last || rechargeCounts(last, x.period.time) });
+  for (const x of creditPoints(c, rules)[sid] || []) rows.push({ key: (x.group ? 'cg' : 'cp') + x.period.key, t: x.period.time, d: x.points, title: x.group ? `信誉分 ${x.period.label}：小组（${x.group}）信誉 ${fmtNum(x.credit)}（${creditLevel(x.credit)}）` : `信誉分 ${x.period.label}：个人信誉 ${fmtNum(x.credit)}（${creditLevel(x.credit)}）`, kind: '信誉分', counts: !last || rechargeCounts(last, x.period.time) });
   for (const p of leaderPeriods(c, rules)[sid] || []) if (p.points) rows.push({ key: 'l' + p.key, t: p.time, d: p.points, title: `组长（${p.group}）${p.label}：${p.parts.map(([t, v]) => `${t} ${signed(v)}`).join('；')}`, kind: '组长', counts: !last || rechargeCounts(last, p.time) });
   for (const r of c.recharges || []) if ((r.studentIds || []).includes(sid)) rows.push({ key: 'r' + r.id, t: r.effectiveAt ?? r.time, d: null, title: `积分重置为 ${fmtNum(r.target)}${r.note ? ' · ' + r.note : ''}`, kind: '重置', counts: true });
   return rows.sort((x, y) => y.t - x.t);
@@ -266,13 +268,13 @@ function Roster({ c, rules, open }) {
   </${Page}>`;
 }
 // ---------------- 股票模式：个股详情 / 小组个股详情（与安卓一致） ----------------
-function StockView({ c, rules, id, back, open, prefs, setPrefs }) {
+function StockView({ c, rules, id, metric, back, open, prefs, setPrefs }) {
   const s = c.students.find((x) => x.id === id);
   const t = s ? (s.no ? `No.${s.no}` : s.name) : '个股';
-  return html`<${Page} title=${t} large=${s ? `${t} ${s.name}` : t} onBack=${back}><${StockDetail} c=${c} rules=${rules} id=${id} open=${open} us=${prefs.usColors !== false} setUs=${(v) => setPrefs({ usColors: v })} /></${Page}>`;
+  return html`<${Page} title=${t} large=${s ? `${t} ${s.name}` : t} onBack=${back}><${StockDetail} c=${c} rules=${rules} id=${id} metric=${metric || 0} open=${open} us=${prefs.usColors !== false} setUs=${(v) => setPrefs({ usColors: v })} /></${Page}>`;
 }
-function GroupStockView({ c, rules, id, back, open, prefs, setPrefs }) {
-  return html`<${Page} title=${id} large=${`${id} · 行情`} onBack=${back}><${GroupStockDetail} c=${c} rules=${rules} id=${id} open=${open} us=${prefs.usColors !== false} setUs=${(v) => setPrefs({ usColors: v })} /></${Page}>`;
+function GroupStockView({ c, rules, id, metric, back, open, prefs, setPrefs }) {
+  return html`<${Page} title=${id} large=${`${id} · 行情`} onBack=${back}><${GroupStockDetail} c=${c} rules=${rules} id=${id} metric=${metric ?? 2} open=${open} us=${prefs.usColors !== false} setUs=${(v) => setPrefs({ usColors: v })} /></${Page}>`;
 }
 
 function GroupView({ c, rules, id, back, open }) {
@@ -373,9 +375,11 @@ const medal = (i) => (i < 3 ? html`<${LIcon} name="medal" size=${20} style=${{ c
 }
 
 // ---------------- 统计（与手机端同样的四个栏目和分析，见 statspage.js） ----------------
+const KIT = { Page, Group, Cell, Seg, Tile, Empty, Avatar, Switch, Title };
 function Stats(props) {
-  return h(StatsPage, { ...props, kit: { Page, Group, Cell, Seg, Tile, Empty, Avatar } });
+  return h(StatsPage, { ...props, kit: KIT, trade: () => h(TradePanel, { kit: KIT, c: props.c, data: props.data, openSettings: props.goSettings, openAccounts: () => props.open({ view: 'accounts' }) }) });
 }
+function AccountsView({ data, back }) { return h(AccountsPage, { kit: KIT, data, back }); }
 function ExamList({ c, back, open }) {
   const exams = [...(c.exams || [])].sort((a, b) => b.date - a.date);
   return html`<${Page} title="考试" onBack=${back}>
@@ -406,8 +410,10 @@ function ExamView({ c, rules, id, back, open }) {
 }
 
 // ---------------- 设置（只有本机的个性化显示） ----------------
-function Settings({ prefs, setPrefs, status, reload, showGuide }) {
+function Settings({ prefs, setPrefs, status, reload, showGuide, open }) {
+  const a = useAccount();
   return html`<${Page} title="设置">
+    <${AccountSection} kit=${KIT} onChanged=${reload} openAccounts=${() => open({ view: 'accounts' })} />
     <${Title}>主题配色</${Title}>
     <section class="grp palettes">${Object.entries(PALETTES).map(([k, [a, b, n]]) => html`<button class=${'pal' + (prefs.theme === k ? ' on' : '')} onClick=${() => setPrefs({ theme: k })} aria-pressed=${prefs.theme === k}>
       <i style=${{ background: `linear-gradient(135deg, ${a}, ${b})` }}></i><span>${n}</span></button>`)}</section>
@@ -424,7 +430,7 @@ function Settings({ prefs, setPrefs, status, reload, showGuide }) {
       <${Cell} title="新手提示" sub="重新查看网页版的功能介绍" onClick=${showGuide} />
     </${Group}>
     <${Group} title="数据">
-      <${Cell} title="刷新数据" sub=${status === 'loading' ? '正在加载…' : status === 'error' ? '加载失败，请检查网络' : '重新获取老师公开的最新数据'} onClick=${reload} />
+      <${Cell} title="刷新数据" sub=${status === 'loading' ? '正在加载…' : status === 'error' ? '加载失败，请检查网络' : a.session ? (isMember(a.me) ? '重新获取老师的最新数据' : '重新获取你的云端数据') : '重新获取老师公开的最新数据'} onClick=${reload} />
     </${Group}>
     <div class="about"><div class="logo"><${LIcon} name="book_open" size=${28} /></div><b>作业通 · 网页版</b><span>与手机、iPad 数据同步</span></div>
   </${Page}>`;
@@ -469,7 +475,14 @@ function useData() {
     if (busy.current) return; busy.current = true;
     setSt((s) => ({ ...s, status: 'loading' }));
     try {
-      const row = await api.pullPublic();
+      let row = null;
+      if (session()) {
+        // 登录后：老师读自己的数据，普通用户读所属老师的数据（只读）
+        const me = await refreshMe();
+        if (isMember(me)) row = me.status === 'active' && me.admin_id ? await api.pullOf(me.admin_id) : null;
+        else row = await api.pull();
+        if (!row && !isMember(me)) row = await api.pullPublic();
+      } else row = await api.pullPublic();
       if (!row) { setSt((s) => ({ ...s, status: 'none' })); return; }
       const d = normalizeData(row.data); const at = Date.parse(row.updatedAt) || Date.now();
       try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); localStorage.setItem(CACHE_KEY + '.at', String(at)); } catch { /* 忽略 */ }
@@ -527,6 +540,7 @@ function App() {
     return html`<div class="app"><${Page} title="作业通">
       ${status === 'loading' ? html`<${Empty} emoji="⏳" text="正在加载…" />` : status === 'none' ? html`<${Empty} emoji="🔒" text="老师还没有开放查看" />` : html`<${Empty} emoji="📶" text="加载失败，请检查网络后刷新" />`}
       ${status !== 'loading' && html`<button class="more" onClick=${reload}>重新加载</button>`}
+      <${AccountSection} kit=${KIT} onChanged=${reload} openAccounts=${() => {}} />
     </${Page}></div>`;
   }
   const c = data.classes.find((x) => x.id === prefs.classId) || data.classes.find((x) => x.id === data.currentClassId) || data.classes[0];
@@ -535,13 +549,13 @@ function App() {
   const props = { c, data, rules, open, back, prefs, setPrefs };
   let body;
   if (top) {
-    const V = { assign: AssignView, student: StudentView, group: GroupView, exam: ExamView, exams: ExamList, stock: StockView, gstock: GroupStockView }[top.view];
-    body = V ? h(V, { ...props, id: top.id }) : null;
+    const V = { assign: AssignView, student: StudentView, group: GroupView, exam: ExamView, exams: ExamList, stock: StockView, gstock: GroupStockView, accounts: AccountsView }[top.view];
+    body = V ? h(V, { ...props, id: top.id, metric: top.metric }) : null;
   } else if (tab === 'home') body = h(Home, props);
   else if (tab === 'roster') body = h(Roster, props);
   else if (tab === 'scores') body = h(Scores, props);
-  else if (tab === 'stats') body = h(Stats, props);
-  else body = h(Settings, { prefs, setPrefs, status, reload, showGuide: () => setGuide(true) });
+  else if (tab === 'stats') body = h(Stats, { ...props, goSettings: () => { pos.current.set(key, window.scrollY); setTab('settings'); } });
+  else body = h(Settings, { prefs, setPrefs, status, reload, open, showGuide: () => setGuide(true) });
   const idx = TABS.findIndex((t) => t[0] === tab);
   return html`<div class="app">
     <main key=${key} class=${top ? 'detail' : 'tabpage'}>${body}</main>

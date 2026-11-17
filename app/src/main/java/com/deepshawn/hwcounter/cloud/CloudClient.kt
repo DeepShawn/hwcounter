@@ -22,6 +22,12 @@ import java.net.URLEncoder
 object CloudConfig {
     const val URL = "https://beasxxexggnjcocdbtdl.supabase.co"
     const val KEY = "sb_publishable_85hufMmFQvmLQt2Rz1Hcrw_S4t7BjAO"
+    /** 凭邀请码注册的普通用户：用户名映射成这个域名下的内部邮箱（与 Edge Function hw-register、网页版一致） */
+    const val MEMBER_DOMAIN = "member.hwcounter.invalid"
+    /** 登录框可以填邮箱或用户名：没有 @ 的当作普通用户的用户名 */
+    fun loginEmail(input: String): String = input.trim().let { if ("@" in it) it else "${it.lowercase()}@$MEMBER_DOMAIN" }
+    fun isMemberEmail(email: String?): Boolean = email?.endsWith("@$MEMBER_DOMAIN") == true
+    fun displayEmail(email: String?): String? = email?.let { if (isMemberEmail(it)) it.substringBefore("@") else it }
 }
 
 @Serializable
@@ -83,7 +89,8 @@ class CloudClient(
         val raw = listOf("error_description", "msg", "message", "error").firstNotNullOfOrNull { k -> (o?.get(k) as? JsonPrimitive)?.contentOrNull } ?: r.body.take(200)
         val l = raw.lowercase()
         return when {
-            "invalid login credentials" in l -> "邮箱或密码不对"
+            "invalid login credentials" in l -> "账号或密码不对"
+            "password should contain" in l -> "密码太简单：需要同时包含小写字母、大写字母、数字和符号（如 Abc123!）"
             "email not confirmed" in l -> "邮箱还没验证：请到邮箱里点确认链接后再登录"
             "already registered" in l || "already been registered" in l -> "这个邮箱已经注册过了，直接登录即可"
             "password should be at least" in l || "weak_password" in l -> "密码太短或太简单（至少 6 位）"
@@ -107,8 +114,9 @@ class CloudClient(
         return Session(at, rt, System.currentTimeMillis() + exp * 1000, uid, email)
     }
 
-    suspend fun signIn(email: String, password: String): Session = withContext(Dispatchers.IO) {
-        val body = buildJsonObject { put("email", email.trim()); put("password", password) }.toString()
+    suspend fun signIn(email0: String, password: String): Session = withContext(Dispatchers.IO) {
+        val email = CloudConfig.loginEmail(email0)
+        val body = buildJsonObject { put("email", email); put("password", password) }.toString()
         val r = http("POST", "/auth/v1/token?grant_type=password", body)
         if (r.code !in 200..299) throw CloudException(friendly(r), r.code)
         val s = parseSession(r.body, email) ?: throw CloudException("登录响应异常")
@@ -186,6 +194,14 @@ class CloudClient(
         )
     }
 
+    /** 普通用户：读取所属老师的数据（行级安全只允许读自己老师的那份） */
+    suspend fun pullOf(userId: String): Remote? = withContext(Dispatchers.IO) {
+        val r = http("GET", "/rest/v1/hw_snapshots?select=data,version,updated_at&user_id=eq.${URLEncoder.encode(userId, "UTF-8")}&limit=1", bearer = token())
+        if (r.code !in 200..299) throw CloudException(friendly(r), r.code)
+        val o = (json.parseToJsonElement(r.body) as? JsonArray)?.firstOrNull()?.jsonObject ?: return@withContext null
+        Remote(o["data"] ?: return@withContext null, o["version"]?.jsonPrimitive?.longOrNull ?: 0, (o["updated_at"] as? JsonPrimitive)?.contentOrNull ?: "", null, null)
+    }
+
     /** 未登录预览：读取老师公开的那份数据（只读，不需要登录） */
     suspend fun pullPublic(): Remote? = withContext(Dispatchers.IO) {
         val r = http("GET", "/rest/v1/hw_snapshots?select=data,version,updated_at&public_read=eq.true&order=updated_at.desc&limit=1")
@@ -236,5 +252,39 @@ class CloudClient(
         val r = http("GET", "/rest/v1/hw_snapshot_history?select=data&id=eq.${URLEncoder.encode(id.toString(), "UTF-8")}", bearer = token())
         if (r.code !in 200..299) throw CloudException(friendly(r), r.code)
         (json.parseToJsonElement(r.body) as? JsonArray)?.firstOrNull()?.jsonObject?.get("data") ?: throw CloudException("找不到该历史版本")
+    }
+
+    // ---------------- 通用：调用数据库函数 / 读表（邀请码账号、模拟炒股） ----------------
+
+    /** 调用 /rest/v1/rpc/[name]，返回响应正文；出错时抛出带中文说明的异常 */
+    suspend fun rpc(name: String, body: JsonObject = buildJsonObject { }): String = withContext(Dispatchers.IO) {
+        val r = http("POST", "/rest/v1/rpc/$name", body.toString(), token())
+        if (r.code !in 200..299) throw CloudException(rpcError(r), r.code)
+        r.body
+    }
+
+    /** GET /rest/v1/[pathAndQuery]，返回 JSON 数组正文 */
+    suspend fun select(pathAndQuery: String): String = withContext(Dispatchers.IO) {
+        val r = http("GET", "/rest/v1/$pathAndQuery", bearer = token())
+        if (r.code !in 200..299) throw CloudException(friendly(r), r.code)
+        r.body
+    }
+
+    /** 凭邀请码注册普通用户（Edge Function hw-register），成功后直接登录 */
+    suspend fun registerWithInvite(code: String, username: String, password: String, name: String): Session = withContext(Dispatchers.IO) {
+        val body = buildJsonObject { put("code", code.trim()); put("username", username.trim()); put("password", password); put("name", name.trim()) }.toString()
+        val r = http("POST", "/functions/v1/hw-register", body)
+        if (r.code !in 200..299) {
+            val msg = runCatching { (json.parseToJsonElement(r.body).jsonObject["error"] as? JsonPrimitive)?.contentOrNull }.getOrNull()
+            throw CloudException(msg ?: friendly(r), r.code)
+        }
+        signIn(username, password)
+    }
+
+    /** 数据库函数里 raise 的中文消息直接给用户看 */
+    private fun rpcError(r: Resp): String {
+        val o = runCatching { json.parseToJsonElement(r.body).jsonObject }.getOrNull()
+        val msg = (o?.get("message") as? JsonPrimitive)?.contentOrNull ?: return friendly(r)
+        return if (msg.any { it.code > 0x2E80 }) msg else friendly(r)
     }
 }

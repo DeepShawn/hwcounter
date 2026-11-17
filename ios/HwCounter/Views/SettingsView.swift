@@ -105,6 +105,18 @@ struct SettingsView: View {
                 if store.data.rules.review.enabled {
                     Stepper("复审不合格扣分倍数 ×\(fmtNum(store.data.rules.review.multiplier))", value: Binding(get: { store.data.rules.review.multiplier }, set: { v in store.setSetting { d in var r = d.rules; r.review.multiplier = v; d.rules = r } }), in: 1...5, step: 0.5)
                 }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("信誉分加减分")
+                    Text("信誉分 0–100，越优秀越高：交齐 25%、按时 15%、优秀 10%、连续交 10%、诚信（复审、抄袭）20%、进步 5%、考试 15%；小组信誉分为组员平均").font(.caption).foregroundStyle(.secondary)
+                }
+                Picker("个人信誉分", selection: creditBinding(\.personal)) { ForEach(CreditRules.modes.map { $0.0 }, id: \.self) { m in Text(CreditRules.label(m)).tag(m) } }
+                Picker("小组信誉分", selection: creditBinding(\.group)) { ForEach(CreditRules.modes.map { $0.0 }, id: \.self) { m in Text(CreditRules.label(m)).tag(m) } }
+                if store.data.rules.credit.active {
+                    Picker("结算周期", selection: creditBinding(\.period)) {
+                        Text("每次作业").tag("assignment"); Text("每天").tag("day"); Text("每周").tag("week"); Text("每月").tag("month")
+                    }
+                    Text("\(store.data.rules.credit.bandsText)，其余 0；只加不扣：扣分的段记 0；只扣不加：加分的段记 0；修改后历史积分自动重算（分档可在安卓上调整）").font(.caption).foregroundStyle(.secondary)
+                }
                 Toggle(isOn: Binding(get: { store.data.rules.plagiarism.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.plagiarism.enabled = v; d.rules = r } })) {
                     VStack(alignment: .leading) {
                         Text("抄袭处罚")
@@ -229,6 +241,10 @@ struct SettingsView: View {
     }
 
     /// 修改未交扣分规则的某一项
+    private func creditBinding<T>(_ k: WritableKeyPath<CreditRules, T>) -> Binding<T> {
+        Binding(get: { store.data.rules.credit[keyPath: k] }, set: { v in store.setSetting { d in var r = d.rules; r.credit[keyPath: k] = v; d.rules = r } })
+    }
+
     private func escBinding<T>(_ k: WritableKeyPath<MissingEscalation, T>) -> Binding<T> {
         Binding(get: { store.data.rules.escalation[keyPath: k] }, set: { v in store.setSetting { d in var r = d.rules; r.escalation[keyPath: k] = v; d.rules = r } })
     }

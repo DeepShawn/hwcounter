@@ -146,12 +146,13 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
     var scoreFor by remember { mutableStateOf<Pair<List<String>, String>?>(null) }
     // 关注度：数据一变就重算（实时追踪）
     val attention = remember(c, rules) { com.deepshawn.hwcounter.data.Attention.all(c, rules) }
-    val stockMode = com.deepshawn.hwcounter.ui.theme.LocalUiPrefs.current.stockMode
-    val attentionWeekly = remember(c, rules, mode == 2 && !stockMode) { if (mode == 2 && !stockMode) com.deepshawn.hwcounter.data.Attention.weekly(c, rules) else emptyMap() }
-    // 股票模式：关注度按美股行情显示
+    val attentionWeekly = remember(c, rules, mode == 2) { if (mode == 2) com.deepshawn.hwcounter.data.Attention.weekly(c, rules) else emptyMap() }
+    // 股票栏目（一级）：行情（关注度 / 信誉分 / 小组综合 × 个人 / 小组）与炒股
     val stockUi = rememberStockUi()
-    val stockBoard = if (mode == 2 && stockMode && stockUi.kind == 0) rememberBoard(c, rules, stockUi.span) else null
-    val groupStockBoard = if (mode == 2 && stockMode && stockUi.kind == 1) rememberGroupBoard(c, rules, stockUi.span) else null
+    val stockBoard = if (mode == 5 && stockUi.level2 == 0) rememberStockBoard(c, rules, stockUi.span, stockUi.metric, if (stockUi.metric == 2) 1 else stockUi.kind) else null
+    val creditAll = remember(c, mode == 5) { if (mode == 5) com.deepshawn.hwcounter.data.Credit.all(c) else emptyList() }
+    // 栏目显示顺序：作业 考试 关注 股票 小组 抄袭（mode 值保持不变，股票为 5）
+    val order = listOf(0, 1, 2, 5, 3, 4)
     // 抄袭关系图按作业来：null = 全部作业汇总，否则只看那次作业
     var plagSel by rememberSaveable { mutableStateOf<String?>(null) }
     val plagAssignments = remember(c, mode == 4) { if (mode == 4) com.deepshawn.hwcounter.data.PlagiarismGraph.assignments(c) else emptyList() }
@@ -165,7 +166,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
 
     MiuixPage(
         title = "统计", largeTitle = "数据分析",
-        swipe = Triple(5, mode) { mode = it },
+        swipe = Triple(6, order.indexOf(mode).coerceAtLeast(0)) { mode = order[it] },
         actions = {
             IconButton(onClick = { share = true }, modifier = Modifier.padding(end = 16.dp)) { Icon(Icons.Filled.IosShare, "分析报告", tint = colors.onSurface) }
         },
@@ -173,7 +174,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
         item(key = "mode") {
             Column(Modifier.padding(horizontal = 12.dp)) {
                 Text("${c.name} · ${c.students.size} 人 · ${c.assignments.size} 次作业 · ${c.exams.size} 场考试", fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 16.dp, bottom = 10.dp))
-                HTabs(listOf("作业", "考试", "关注", "小组", "抄袭"), mode, { mode = it })
+                HTabs(listOf("作业", "考试", "关注", "股票", "小组", "抄袭"), order.indexOf(mode).coerceAtLeast(0), { mode = order[it] })
             }
         }
         if (mode == 0) {
@@ -191,16 +192,17 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
         }
         else if (mode == 4) plagReport?.let { pr -> plagiarismSections(c, rules, pr, { kit.nav.push(Route.StudentDetail(it)) }, { kit.nav.push(Route.Assign(it)) }, plagAssignments, plagOnly) { plagSel = it } }
         else if (mode == 3) groupReport?.let { gr -> groupSections(c, rules, gr) { kit.nav.push(Route.Group(it)) } }
-        else if (mode == 2) {
-            item(key = "att-view") {
-                HTabs(
-                    listOf("榜单", "股票"), if (stockMode) 1 else 0,
-                    { v -> com.deepshawn.hwcounter.ui.theme.UiPrefsStore.update(ctx) { it.copy(stockMode = v == 1) } },
-                    Modifier.padding(horizontal = 12.dp, vertical = 6.dp), height = 36.dp,
-                )
+        else if (mode == 2) attentionSections(c, rules, attention, attentionWeekly) { kit.nav.push(Route.Personal(it)) }
+        else if (mode == 5) {
+            item(key = "stk-level2") {
+                HTabs(listOf("行情", "炒股"), stockUi.level2, { stockUi.level2 = it }, Modifier.padding(horizontal = 12.dp, vertical = 6.dp), height = 36.dp)
             }
-            if (stockMode) stockSections(c, stockBoard, stockUi, attention, groupStockBoard, { kit.nav.push(Route.GroupStock(it)) }) { kit.nav.push(Route.Stock(it)) }
-            else attentionSections(c, rules, attention, attentionWeekly) { kit.nav.push(Route.Personal(it)) }
+            fun split(x: String, def: Int) = x.substringBefore("#") to (x.substringAfter("#", "").toIntOrNull() ?: def)
+            if (stockUi.level2 == 0) stockSections(
+                c, stockBoard, stockUi, attention, creditAll,
+                onOpenGroup = { x -> val (g, m) = split(x, if (stockUi.metric == 2) 2 else stockUi.metric); kit.nav.push(Route.GroupStock(g, m)) },
+            ) { x -> val (id, m) = split(x, if (stockUi.metric == 1) 1 else 0); kit.nav.push(Route.Stock(id, m)) }
+            else tradeSections(vm, data, c)
         }
         else examSections(
             c, examReport, subjectsWithExams, examSubject, { examSubject = it }, report.examCorrelation, onOpenExam = { kit.nav.push(Route.Exam(it)) }, onManage = { kit.nav.push(Route.Exams) }, onOpenStudent = { kit.nav.push(Route.StudentDetail(it)) },

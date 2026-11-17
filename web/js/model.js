@@ -27,7 +27,9 @@ export const defaultLeader = () => ({ enabled: true, period: 'week', clean: 3, l
 export const applyMode = (mode, x) => (mode === 'plus' ? Math.max(0, x) : mode === 'minus' ? Math.min(0, x) : x);
 /** 小组对抗排名（与安卓 GroupRank.kt 同算法）：按周期给小组综合排名，按名次给整组每人加减分 */
 export const defaultGroupRank = () => ({ enabled: true, period: 'week', first: 2, second: 1, third: 0, last: -1, wRate: 0.5, wDeduct: 0.25, wExcellent: 0.15, wExam: 0.1, mode: 'both' });
-export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true, review: defaultReview(), plagiarism: defaultPlagiarism(), leader: defaultLeader(), groupRank: defaultGroupRank() });
+/** 信誉分加减分（与安卓 Credit.kt 同算法）：个人 / 小组分别选 both 加分和扣分 / plus 只加不扣 / minus 只扣不加 / none 不计入 */
+export const defaultCredit = () => ({ personal: 'none', group: 'none', period: 'week', excellentAt: 90, excellentPts: 2, goodAt: 80, goodPts: 1, poorBelow: 60, poorPts: -1, badBelow: 40, badPts: -2 });
+export const defaultRules = () => ({ initial: 100, submitted: 0, excellent: 1, late: -1, missing: -2, leave: 0, escalation: defaultEscalation(), streakBonus: defaultStreakBonus(), roundPoints: true, review: defaultReview(), plagiarism: defaultPlagiarism(), leader: defaultLeader(), groupRank: defaultGroupRank(), credit: defaultCredit() });
 /** 这位同学这次作业是否复审不合格（只有状态仍是未交时才算） */
 export const failedReview = (a, sid) => (a.reviewFailed || []).includes(sid) && a.statuses[sid] === 'MISSING';
 /** 抄袭（只有状态仍是“未交”时才算）：这位同学抄了谁的 / 谁抄了这位同学的 / 是否涉及 */
@@ -71,6 +73,7 @@ export function normalizeData(d) {
   out.settings.rules.plagiarism = { ...defaultPlagiarism(), ...(out.settings.rules.plagiarism || {}) };
   out.settings.rules.leader = { ...defaultLeader(), ...(out.settings.rules.leader || {}) };
   out.settings.rules.groupRank = { ...defaultGroupRank(), ...(out.settings.rules.groupRank || {}) };
+  out.settings.rules.credit = { ...defaultCredit(), ...(out.settings.rules.credit || {}) };
   out.settings.ai = { ...base.settings.ai, ...(out.settings.ai || {}) };
   out.classes = (out.classes || []).map((c) => ({
     id: newId(), emoji: '🎒', students: [], assignments: [], scores: [], ...c,
@@ -374,6 +377,136 @@ export function groupRankPoints(c, rules, periods = groupRankPeriods(c, rules)) 
   return out;
 }
 
+// ---------------- 信誉分（0–100，越优秀越高；与安卓 Credit.kt、iPad 同算法） ----------------
+/**
+ * 交齐 25%、按时 15%、优秀 10%（÷30%）、连续交 10%（÷5 次）、诚信 20%（最近 10 次复审不合格 / 抄袭每次 −0.5）、
+ * 进步 5%（最近 5 次比之前 5 次，记录不足 8 次为 0.5）、考试 15%（最近 3 场平均得分率）；没有数据的项不算，权重按比例分配。
+ * 等级：≥90 优秀，75–90 良好，60–75 一般，<60 较差。小组信誉分 = 组员平均（已命名、2 人以上的组）。
+ */
+export const r2 = (x) => Math.round(x * 100) / 100;
+export const creditLevel = (x) => (x >= 90 ? '优秀' : x >= 75 ? '良好' : x >= 60 ? '一般' : '较差');
+export const CREDIT_MODES = [['both', '加分和扣分'], ['plus', '只加不扣'], ['minus', '只扣不加'], ['none', '不计入']];
+export const creditModeLabel = (m) => (CREDIT_MODES.find((x) => x[0] === m) || CREDIT_MODES[3])[1];
+const HANDED_C = new Set(['SUBMITTED', 'EXCELLENT', 'LATE']);
+const pctC = (x) => `${Math.round(x * 100)}%`;
+const byNewest = (a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+const byExamOld = (a, b) => a.date - b.date || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+/** 一位同学的信誉分；newest 为截至某一刻的作业（新 → 旧），exams 为截至这一刻的考试（旧 → 新） */
+export function creditOne(st, newest, exams) {
+  const m = []; for (const a of newest) { const k = a.statuses[st.id] || 'NONE'; if (k !== 'NONE' && k !== 'LEAVE') m.push([a, k]); }
+  const parts = [];
+  if (m.length) {
+    const m10 = m.slice(0, 10); const n = m10.length;
+    const handed = m10.filter(([, k]) => HANDED_C.has(k)).length;
+    const rate = handed / n;
+    parts.push({ key: 'rate', label: '交齐', weight: 0.25, value: rate, detail: `最近 ${n} 次交了 ${handed} 次（${pctC(rate)}）` });
+    const onTime = m10.filter(([, k]) => k === 'SUBMITTED' || k === 'EXCELLENT').length / n;
+    parts.push({ key: 'ontime', label: '按时', weight: 0.15, value: onTime, detail: `按时 ${pctC(onTime)}，迟交 ${m10.filter(([, k]) => k === 'LATE').length} 次` });
+    const excN = m10.filter(([, k]) => k === 'EXCELLENT').length; const exc = excN / n;
+    parts.push({ key: 'excellent', label: '优秀', weight: 0.10, value: Math.min(1, exc / 0.3), detail: `优秀 ${excN} 次（${pctC(exc)}）` });
+    let run = 0; for (const [, k] of m) { if (HANDED_C.has(k)) run++; else break; }
+    parts.push({ key: 'streak', label: '连续交', weight: 0.10, value: Math.min(run, 5) / 5, detail: run === 0 ? '最近一次没交' : `已连续交 ${run} 次` });
+    const bad = m10.filter(([a]) => failedReview(a, st.id) || plagiarized(a, st.id)).length;
+    parts.push({ key: 'integrity', label: '诚信', weight: 0.20, value: Math.max(0, 1 - 0.5 * bad), detail: bad === 0 ? '最近没有复审不合格、抄袭' : `最近 ${n} 次里复审不合格 / 抄袭 ${bad} 次` });
+    let trend = 0.5;
+    if (m.length >= 8) {
+      const a5 = m.slice(0, 5).filter(([, k]) => HANDED_C.has(k)).length / 5;
+      const b = m.slice(5, 10); const b5 = b.filter(([, k]) => HANDED_C.has(k)).length / b.length;
+      trend = Math.min(1, Math.max(0, 0.5 + (a5 - b5) / 0.4 * 0.5));
+    }
+    parts.push({ key: 'trend', label: '进步', weight: 0.05, value: trend, detail: m.length < 8 ? '记录不足 8 次' : trend > 0.5 ? '最近 5 次比之前好' : trend < 0.5 ? '最近 5 次比之前差' : '和之前持平' });
+  }
+  const taken = exams.filter((e) => (e.fullScore || 0) > 0 && e.scores?.[st.id] != null && Number.isFinite(e.scores[st.id])).slice(-3);
+  if (taken.length) {
+    const p = Math.min(1, Math.max(0, taken.reduce((x, e) => x + e.scores[st.id] / e.fullScore, 0) / taken.length));
+    parts.push({ key: 'exam', label: '考试', weight: 0.15, value: p, detail: `最近 ${taken.length} 场平均得分率 ${pctC(p)}` });
+  }
+  if (!parts.length) return { student: st, index: 0, level: '暂无', parts, hasData: false };
+  const wsum = parts.reduce((x, q) => x + q.weight, 0);
+  let sum = 0; for (const q of parts) { q.points = q.weight / wsum * q.value * 100; sum += q.points; }
+  const index = r2(sum);
+  return { student: st, index, level: creditLevel(index), parts, hasData: true };
+}
+const creditCache = new WeakMap();
+/** 全班在时刻 at 的个人信誉分（从高到低；没有数据的排在最后） */
+export function creditAll(c, at = Date.now()) {
+  const useCache = at >= Date.now() - 1000;
+  if (useCache && creditCache.has(c)) return creditCache.get(c);
+  const newest = c.assignments.filter((a) => a.createdAt <= at).sort(byNewest);
+  const exams = (c.exams || []).filter((e) => e.date <= at).sort(byExamOld);
+  const out = c.students.map((s) => creditOne(s, newest, exams)).sort((a, b) => (b.hasData - a.hasData) || b.index - a.index);
+  if (useCache) creditCache.set(c, out);
+  return out;
+}
+/** 已命名、2 人以上的小组 */
+export function creditGroupsOf(c) {
+  const g = {}; for (const s of c.students) if (s.group) (g[s.group] = g[s.group] || []).push(s);
+  for (const k of Object.keys(g)) if (g[k].length < 2) delete g[k];
+  return g;
+}
+/** 各组的小组信誉分（组内有信誉分的同学的平均） */
+export function creditGroups(c, at = Date.now(), personal = creditAll(c, at)) {
+  const by = Object.fromEntries(personal.map((r) => [r.student.id, r]));
+  const out = {};
+  for (const [g, ms] of Object.entries(creditGroupsOf(c))) {
+    const v = ms.map((m) => by[m.id]).filter((r) => r && r.hasData).map((r) => r.index);
+    if (v.length) out[g] = r2(v.reduce((x, y) => x + y, 0) / v.length);
+  }
+  return out;
+}
+export const creditBandPoints = (cr, x) => (x >= cr.excellentAt ? cr.excellentPts : x >= cr.goodAt ? cr.goodPts : x < cr.badBelow ? cr.badPts : x < cr.poorBelow ? cr.poorPts : 0);
+export const applyCreditMode = (m, x) => (m === 'both' ? x : m === 'plus' ? Math.max(0, x) : m === 'minus' ? Math.min(0, x) : 0);
+const fmtC = (x) => { const r = Math.round(x * 10) / 10; return Number.isInteger(r) ? String(r) : String(r); };
+const signedC = (x) => (x > 0 ? '+' + fmtC(x) : fmtC(x));
+export const creditBandsText = (cr) => `≥${fmtC(cr.excellentAt)} ${signedC(cr.excellentPts)}、≥${fmtC(cr.goodAt)} ${signedC(cr.goodPts)}、<${fmtC(cr.poorBelow)} ${signedC(cr.poorPts)}、<${fmtC(cr.badBelow)} ${signedC(cr.badPts)}`;
+const creditPeriodCache = new WeakMap();
+/** 全班每一段的信誉分加减分（旧 → 新）：[{ key, label, time, personal: {sid: [信誉分, 分]}, groups: {组: [信誉分, 每人分]} }] */
+export function creditPeriods(c, rules) {
+  const cr = { ...defaultCredit(), ...(rules.credit || {}) };
+  if ((cr.personal === 'none' && cr.group === 'none') || !c.students.length) return [];
+  let byRules = creditPeriodCache.get(c);
+  if (!byRules) { byRules = new WeakMap(); creditPeriodCache.set(c, byRules); }
+  if (byRules.has(rules)) return byRules.get(rules);
+  const sorted = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const buckets = new Map();
+  for (const a of sorted) { const [k, l] = periodKey(cr, a); if (!buckets.has(k)) buckets.set(k, { label: l, list: [] }); buckets.get(k).list.push(a); }
+  const groups = creditGroupsOf(c);
+  const examsSorted = [...(c.exams || [])].sort(byExamOld);
+  const out = [];
+  for (const [key, { label, list }] of buckets) {
+    const t = list[list.length - 1].createdAt;
+    const active = new Set(c.students.filter((s) => list.some((a) => { const k = a.statuses[s.id] || 'NONE'; return k !== 'NONE' && k !== 'LEAVE'; })).map((s) => s.id));
+    if (!active.size) continue;
+    const newest = sorted.filter((a) => a.createdAt <= t).reverse();
+    const ex = examsSorted.filter((e) => e.date <= t);
+    const res = Object.fromEntries(c.students.map((s) => [s.id, creditOne(s, newest, ex)]));
+    const personal = {};
+    if (cr.personal !== 'none') for (const id of c.students.map((s) => s.id)) if (active.has(id) && res[id].hasData) personal[id] = [res[id].index, applyCreditMode(cr.personal, creditBandPoints(cr, res[id].index))];
+    const gs = {};
+    if (cr.group !== 'none') for (const [g, ms] of Object.entries(groups)) {
+      if (!ms.some((m) => active.has(m.id))) continue;
+      const vals = ms.map((m) => res[m.id]).filter((r) => r.hasData).map((r) => r.index);
+      if (!vals.length) continue;
+      const x = r2(vals.reduce((a, b) => a + b, 0) / vals.length);
+      gs[g] = [x, applyCreditMode(cr.group, creditBandPoints(cr, x))];
+    }
+    out.push({ key, label, time: t, personal, groups: gs });
+  }
+  byRules.set(rules, out);
+  return out;
+}
+/** 每位同学的信誉分加减分（只含不为 0 的）：学生 id → [{ period, group, credit, points }] */
+export function creditPoints(c, rules, periods = creditPeriods(c, rules)) {
+  const out = {};
+  if (!periods.length) return out;
+  const groups = creditGroupsOf(c);
+  for (const p of periods) {
+    for (const [id, [x, d]] of Object.entries(p.personal)) if (d) (out[id] = out[id] || []).push({ period: p, group: null, credit: x, points: d });
+    for (const [g, [x, d]] of Object.entries(p.groups)) if (d) for (const m of groups[g] || []) (out[m.id] = out[m.id] || []).push({ period: p, group: g, credit: x, points: d });
+  }
+  return out;
+}
+
 export function studentStats(c, rules) {
   let byRules = statsCache.get(c);
   if (!byRules) { byRules = new WeakMap(); statsCache.set(c, byRules); }
@@ -383,6 +516,7 @@ export function studentStats(c, rules) {
   for (const e of c.scores) if (entryCounts(e, last[e.studentId])) manual[e.studentId] = (manual[e.studentId] || 0) + pt(rules, e.delta);
   const lead = leaderPeriods(c, rules);
   const rank = groupRankPoints(c, rules);
+  const cred = creditPoints(c, rules);
   const result = c.students.map((st) => {
     const r = last[st.id];
     const counts = Object.fromEntries(STATUS_KEYS.map((k) => [k, 0]));
@@ -392,7 +526,8 @@ export function studentStats(c, rules) {
     let examPts = 0;
     for (const e of c.exams || []) if (!r || rechargeCounts(r, e.date)) examPts += pt(rules, examDelta(rules, e, st.id));
     const leaderPts = (lead[st.id] || []).filter((p) => !r || rechargeCounts(r, p.time)).reduce((n, p) => n + pt(rules, p.points), 0)
-      + (rank[st.id] || []).filter((x) => !r || rechargeCounts(r, x.period.time)).reduce((n, x) => n + pt(rules, x.points), 0);
+      + (rank[st.id] || []).filter((x) => !r || rechargeCounts(r, x.period.time)).reduce((n, x) => n + pt(rules, x.points), 0)
+      + (cred[st.id] || []).filter((x) => !r || rechargeCounts(r, x.period.time)).reduce((n, x) => n + pt(rules, x.points), 0);
     return { student: st, score: shown(rules, (r ? r.target : rules.initial) + auto + (manual[st.id] || 0) + examPts + leaderPts), counts, submitted: counts.SUBMITTED + counts.EXCELLENT, late: counts.LATE, missing: counts.MISSING, recharge: r || null };
   });
   byRules.set(rules, result);

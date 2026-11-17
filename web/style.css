@@ -419,3 +419,22 @@ button.ib:active { background: var(--chip); }
 .stk-hist th:first-child, .stk-hist td:first-child { text-align: left; }
 .mono { font-family: ui-monospace, Menlo, monospace; }
 @media (prefers-reduced-motion: reduce) { .stk-tape-in { animation-duration: 0s !important; } .stk-tape { overflow-x: auto; } .stk-live, .stk-pulse { animation: none; } }
+
+/* 账号、邀请码注册、模拟炒股 */
+.acct { display: flex; flex-direction: column; gap: 8px; }
+.acct input { height: 42px; border: 0; border-radius: 12px; background: var(--chip); color: var(--fg); padding: 0 12px; font: inherit; min-width: 0; }
+.acct .btn1 { height: 44px; border-radius: 14px; font-weight: 600; }
+.acct .btn1:disabled, .guide-btns button:disabled { opacity: .45; }
+.acct .chips { padding: 0; }
+.acct-err { color: #dc2626; font-size: 13px; }
+.acct-note { font-size: 12px; }
+.cell-pad.muted { font-size: 13px; line-height: 1.6; }
+.trade-card .trade-big { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; margin: 4px 0 2px; }
+.trade-card .guide-btns { margin-top: 10px; }
+.trade-me { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 10px; }
+.trade-sheet { max-height: 86vh; overflow: auto; text-align: left; }
+.trade-sheet .chips { flex-wrap: wrap; padding: 6px 0; }
+.trade-list { display: flex; flex-direction: column; max-height: 50vh; overflow: auto; }
+.trade-list .an-row { width: 100%; text-align: left; background: none; }
+.an-row .chips { padding: 6px 0 0; flex-wrap: wrap; gap: 6px; }
+.trade-card .guide-btns button { text-align: center; }

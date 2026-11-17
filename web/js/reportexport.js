@@ -2,7 +2,7 @@
 // 纯函数生成内容，界面只负责触发下载 / 打印。
 import { xlsx, ST } from './xlsx.js';
 import { fmtNum, signed } from './model.js';
-import { rangeTitle, fmtDay, examRanks, difficultyText, discriminationText } from './analytics.js';
+import { rangeTitle, fmtDay, examRanks, difficultyText, discriminationText, creditLines } from './analytics.js';
 
 const pc = (x) => Math.round(x * 1000) / 10;
 const H = (...t) => t.map((v) => ({ v, s: ST.HEADER }));
@@ -87,6 +87,14 @@ export function analysisSheets(c, r, exam, now = Date.now()) {
     H('小组', '组长', '人数', '交齐率%', '缺交', '平均积分', '积分变化', '考试平均得分率%'),
     ...r.groupStats.map((g) => [g.name, g.leader?.name || '', g.size, pc(g.rate), g.missing, fmtNum(g.avgScore), fmtNum(g.scoreDelta), g.examPct != null ? pc(g.examPct) : '']),
   ] });
+  if (r.credit && r.credit.results.length) {
+    const cs = r.credit; const part = (x, k) => { const p = x.parts.find((q) => q.key === k); return p ? pc(p.value) : ''; };
+    const rows = [H('学号', '姓名', '小组', '等级', '信誉分', '交齐%', '按时%', '优秀%', '连续交%', '诚信%', '考试%', '偏弱项')];
+    for (const x of cs.results) rows.push([x.student.no, x.student.name, x.student.group || '', x.level, x.hasData ? x.index : '', part(x, 'rate'), part(x, 'ontime'), part(x, 'excellent'), part(x, 'streak'), part(x, 'integrity'), part(x, 'exam'), x.parts.filter((p) => p.value < 0.6).map((p) => `${p.label}：${p.detail}`).join('；')]);
+    rows.push([]); rows.push(H('小组', '小组信誉分')); for (const [g, v] of cs.groups) rows.push([g, v]);
+    rows.push([]); rows.push(['全班平均', cs.average]); rows.push(['信誉分加减分', creditLines(cs).slice(-1)[0]]);
+    sheets.push({ name: '信誉分', rows, widths: [10, 10, 10, 8, 10, 9, 9, 9, 9, 9, 9, 40] });
+  }
   sheets.push({ name: '积分', widths: [12, 10, 10, 12, 8], rows: [
     H('学号', '姓名', '积分', '本时段变化', '名次'), ...[...r.students].sort((a, b) => a.rank - b.rank).map((s) => [s.student.no, s.student.name, s.score, s.scoreDelta, s.rank]),
   ] });
@@ -182,6 +190,11 @@ export function analysisHtml(c, r, exam, now = Date.now()) {
   if (r.attention.length) warn.push(`<h3>需要关注</h3>${table(['姓名', '缺交', '连续未交', '交齐率'], r.attention.map((x) => [esc(x.student.name), x.missing, x.missingStreak, pct(x.rate)]))}`);
   if (r.risk.length) warn.push(`<h3>缺交风险</h3>${table(['姓名', '风险', '依据'], r.risk.map((x) => [esc(x.student.name), pct(x.prob), esc(x.why)]))}`);
   if (r.weakSubjects.length) warn.push(`<h3>偏科提醒</h3>${table(['姓名', '科目', '该科交齐率', '整体交齐率'], r.weakSubjects.map((x) => [esc(x.student.name), esc(x.subject), pct(x.subjectRate), pct(x.overallRate)]))}`);
+  if (r.credit && r.credit.results.some((x) => x.hasData)) {
+    const has = r.credit.results.filter((x) => x.hasData); const pick = [...has.slice(0, 5), ...has.slice(-5)].filter((x, i, l) => l.findIndex((y) => y.student.id === x.student.id) === i);
+    warn.push(`<h3>信誉分（越高越好）</h3>${creditLines(r.credit).map((x) => `<p>${esc(x)}</p>`).join('')}${table(['姓名', '信誉分', '等级', '偏弱项'], pick.map((x) => { const w = x.parts.filter((p) => p.value < 0.6).sort((a, b) => a.value - b.value)[0];
+      return [esc(x.student.name), `<span class="${x.index >= 75 ? 'good' : x.index < 60 ? 'bad' : ''}">${fmtNum(x.index)}</span>`, x.level, w ? esc(`${w.label}：${w.detail}`) : '—']; }))}`);
+  }
   warn.push(`<h3>学生分层</h3><p>${r.tiers.map((t) => `<b>${esc(t.name)}</b> ${t.students.length} 人（${esc(t.desc)}）`).join('；')}</p>`);
   S.push(`<section>${h2('学生与预警')}${warn.join('')}</section>`);
   S.push(`<section class="break">${h2('学生明细')}${table(['学号', '姓名', '小组', '应交', '已交', '缺交', '迟交', '交齐率', '按时率', '积分', '变化', '名次'],

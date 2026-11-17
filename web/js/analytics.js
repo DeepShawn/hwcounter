@@ -3,7 +3,7 @@
 import {
   summary, studentStats, autoPoints, ruleOf, examDelta, leaderOf, leaderPeriods, groupRankPeriods, latestRecharges,
   rechargeStart, rechargeCounts, startOfDay, fmtNum, signed, defaultGroupRank, copiedFrom, copiedBy, plagiarized, compareStudentNumbers,
-  defaultPlagiarism, plagiarismFactor, UNKNOWN_PROVIDER, unknownProvider,
+  defaultPlagiarism, plagiarismFactor, UNKNOWN_PROVIDER, unknownProvider, creditAll, creditGroups, creditPoints, defaultCredit, r2, creditModeLabel,
 } from './model.js';
 
 const DAY = 86_400_000;
@@ -228,10 +228,38 @@ export function report(c, rules, spec, now = Date.now()) {
     buckets: bks, bucketUnit: unit, sources: sources(c, rules, list, w, examsIn), reasons: reasons(c, w), tiers: tiers(withData),
     streakers: withData.filter((x) => x.handStreak >= 3).sort(byDesc((x) => x.handStreak)).slice(0, 8),
     risk: risk(c), weakSubjects: weakSubjects(c, list, byId), rateMedian: median, rateStd: std, rounds: rounds(c), progress: progress(c, rules), examCount: examsIn.length,
+    credit: creditSummary(c, rules, now, (t) => inWindow(w, t)),
   };
   r.insights = insights(r, corrPairs);
   return r;
 }
+
+/** 分析报告里的信誉分汇总（与安卓 Credit.classSummary 一致） */
+export function creditSummary(c, rules, now = Date.now(), inRange = () => true) {
+  const res = creditAll(c, now); const has = res.filter((x) => x.hasData);
+  const groups = Object.entries(creditGroups(c, now, res)).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  const pts = Object.values(creditPoints(c, rules)).flat().filter((x) => inRange(x.period.time)).map((x) => x.points);
+  const cr = { ...defaultCredit(), ...(rules.credit || {}) };
+  return {
+    results: res, average: has.length ? r2(avg(has.map((x) => x.index))) : 0,
+    levels: ['优秀', '良好', '一般', '较差'].map((l) => [l, has.filter((x) => x.level === l).length]),
+    top: has.slice(0, 5), bottom: has.filter((x) => x.index < 75).slice(-5).reverse(), groups,
+    pointsTotal: sum(pts, (x) => x), pointsPlus: sum(pts.filter((x) => x > 0), (x) => x), pointsMinus: sum(pts.filter((x) => x < 0), (x) => x), rules: cr,
+  };
+}
+const weakOf = (x) => x.parts.filter((p) => p.value < 0.6).sort((a, b) => a.value - b.value);
+/** 报告里信誉分的几行文字（文字报告、PDF 共用） */
+export function creditLines(cs) {
+  const active = cs.rules.personal !== 'none' || cs.rules.group !== 'none';
+  return [
+    `信誉分：全班平均 ${fmtNum(cs.average)}；` + cs.levels.map(([l, n]) => `${l} ${n} 人`).join('，'),
+    cs.top.length ? '信誉最高：' + cs.top.map((x) => `${x.student.name} ${fmtNum(x.index)}`).join('、') : null,
+    cs.bottom.length ? '信誉偏低：' + cs.bottom.map((x) => `${x.student.name} ${fmtNum(x.index)}${weakOf(x)[0] ? `（${weakOf(x)[0].label}：${weakOf(x)[0].detail}）` : ''}`).join('；') : null,
+    cs.groups.length ? '小组信誉分：' + cs.groups.map(([g, v]) => `${g} ${fmtNum(v)}`).join('，') : null,
+    active ? `信誉分加减分（${crPeriodLabel(cs.rules.period)}，个人${creditModeLabel(cs.rules.personal)}、小组${creditModeLabel(cs.rules.group)}）：本时段合计 ${signed(cs.pointsTotal)}（加 ${fmtNum(cs.pointsPlus)}、扣 ${fmtNum(cs.pointsMinus)}）` : '信誉分加减分：不计入积分',
+  ].filter(Boolean);
+}
+const crPeriodLabel = (p) => ({ assignment: '每次作业', day: '每天', month: '每月' }[p] || '每周');
 
 function buckets(points, range) {
   if (points.length < 2 || range === 'DAY') return [[], ''];
@@ -440,6 +468,7 @@ export function text(c, r, now = Date.now(), exam = null) {
   const src = r.sources;
   ln(`积分来源：作业自动 ${signed(src.homework)}，手动加分 +${fmtNum(src.manualPlus)}，手动扣分 ${fmtNum(src.manualMinus)}，考试 ${signed(src.exam)}`);
   if (r.reasons.length) ln('加减分原因：' + r.reasons.slice(0, 6).map((x) => `${x.reason} ${x.count} 次（${signed(x.total)}）`).join('；'));
+  if (r.credit && r.credit.results.length) creditLines(r.credit).forEach((x) => ln(x));
   if (r.buckets.length) ln(`按${r.bucketUnit}汇总交齐率：` + r.buckets.map((x) => `${x.label} ${pct(x.rate)}`).join('，'));
   if (r.rounds.length > 1) ln('各轮对比：' + r.rounds.map((x) => `${x.label} ${x.kpi.assignments} 次 交齐 ${pct(x.kpi.handInRate)}${x.examPct != null ? ` 考试 ${pct(x.examPct)}` : ''}`).join('；'));
   if (exam && exam.exams.length) {
@@ -735,6 +764,50 @@ export function groupStockBoard(c, rules, span, now = Date.now(), win = 10) {
     return sum(sorted.filter((x) => x.createdAt >= a && x.createdAt < b), (x) => ms.filter((m) => st(x, m.id) !== 'NONE').length)
       + sum((c.exams || []).filter((e) => e.date >= a && e.date < b), (e) => ms.filter((m) => e.scores?.[m.id] != null).length); };
   return buildBoard(span, from, step, now, events, valueAt, volumeOf, names);
+}
+
+// ---------------- 信誉分、小组关注度行情（与安卓 MetricStock.kt 同口径） ----------------
+const recordVolume = (c, a, b, ids) => sum(c.assignments.filter((x) => x.createdAt >= a && x.createdAt < b), (x) => Object.entries(x.statuses).filter(([id, k]) => k !== 'NONE' && (!ids || ids.has(id))).length)
+  + sum((c.exams || []).filter((e) => e.date >= a && e.date < b), (e) => Object.keys(e.scores || {}).filter((id) => !ids || ids.has(id)).length);
+const recordEvents = (c) => [...new Set([...c.assignments.map((a) => a.createdAt), ...(c.exams || []).map((e) => e.date)])].sort((a, b) => a - b);
+const avgOf = (m) => (k) => { const v = Object.values(m); return k == null ? (v.length ? avg(v) : 0) : m[k] ?? 0; };
+/** 个人 · 信誉分（越高越好） */
+export function creditStockBoard(c, span, now = Date.now()) {
+  const [from, step] = stockWindow(c, span, now);
+  const ids = c.students.map((s) => s.id);
+  const valueAt = (t) => avgOf(Object.fromEntries(creditAll(c, t).filter((r) => r.hasData).map((r) => [r.student.id, r.index])));
+  return buildBoard(span, from, step, now, recordEvents(c), valueAt, (a, b, id) => recordVolume(c, a, b, id == null ? null : new Set([id])), ids);
+}
+/** 小组 · 信誉分 */
+export function groupCreditBoard(c, span, now = Date.now()) {
+  const groups = namedGroups(c); const names = Object.keys(groups);
+  if (!names.length) return null;
+  const [from, step] = stockWindow(c, span, now);
+  const valueAt = (t) => avgOf(creditGroups(c, t));
+  const volumeOf = (a, b, g) => recordVolume(c, a, b, new Set((g == null ? Object.values(groups).flat() : groups[g]).map((m) => m.id)));
+  return buildBoard(span, from, step, now, recordEvents(c), valueAt, volumeOf, names);
+}
+/** 各组在某一刻的关注度（组员平均） */
+export function groupAttentionAt(c, rules, t = Date.now(), groups = namedGroups(c)) {
+  const by = Object.fromEntries(attention(c, rules, t).map((x) => [x.student.id, x.index]));
+  return Object.fromEntries(Object.entries(groups).map(([g, ms]) => [g, avg(ms.map((m) => by[m.id] ?? 0))]));
+}
+/** 小组 · 关注度（越高越需要关注） */
+export function groupAttentionBoard(c, rules, span, now = Date.now()) {
+  const groups = namedGroups(c); const names = Object.keys(groups);
+  if (!names.length) return null;
+  const [from, step] = stockWindow(c, span, now);
+  const valueAt = (t) => avgOf(groupAttentionAt(c, rules, t, groups));
+  const volumeOf = (a, b, g) => recordVolume(c, a, b, new Set((g == null ? Object.values(groups).flat() : groups[g]).map((m) => m.id)));
+  return buildBoard(span, from, step, now, [...recordEvents(c), ...c.scores.map((e) => e.time)].sort((a, b) => a - b), valueAt, volumeOf, names);
+}
+/** 行情板块：0 个人关注度、1 小组综合、2 个人信誉分、3 小组信誉分、4 小组关注度 */
+export function boardOf(c, rules, kind, span, now = Date.now()) {
+  if (kind === 1) return groupStockBoard(c, rules, span, now);
+  if (kind === 2) return creditStockBoard(c, span, now);
+  if (kind === 3) return groupCreditBoard(c, span, now);
+  if (kind === 4) return groupAttentionBoard(c, rules, span, now);
+  return stockBoard(c, rules, span, now);
 }
 
 // ---------------- 小组分析 ----------------

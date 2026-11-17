@@ -45,6 +45,8 @@ import com.deepshawn.hwcounter.data.Attention
 import com.deepshawn.hwcounter.data.AttentionStock
 import com.deepshawn.hwcounter.data.GroupAnalysis
 import com.deepshawn.hwcounter.data.GroupStock
+import com.deepshawn.hwcounter.data.Credit
+import com.deepshawn.hwcounter.data.MetricStock
 import com.deepshawn.hwcounter.data.HwStatus
 import com.deepshawn.hwcounter.data.PlagiarismGraph
 import com.deepshawn.hwcounter.data.compareStudentNumbers
@@ -59,7 +61,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** 统计页的选择在切换页面后保持 */
-internal object Keep { var mode = 0; var top = 0; var cal = 2; var offset = 0; var from: Long? = null; var to: Long? = null; var examSub = 0; var att = 0; var kind = 0; var span = AttentionStock.Span.M1; var kline = false; var sort = 0; var pill = 0; var plagSel: String? = null }
+internal object Keep { var mode = 0; var top = 0; var cal = 2; var offset = 0; var from: Long? = null; var to: Long? = null; var examSub = 0; var att = 0; var kind = 0; var metric = 0; var span = AttentionStock.Span.M1; var kline = false; var sort = 0; var pill = 0; var plagSel: String? = null }
 
 private val STATUS_ORDER = listOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LEAVE, HwStatus.LATE, HwStatus.MISSING, HwStatus.NONE)
 private fun statusColor(s: HwStatus) = when (s) { HwStatus.SUBMITTED -> View.SUBMITTED.c(); HwStatus.EXCELLENT -> View.EXCELLENT.c(); HwStatus.LATE -> View.LATE.c(); HwStatus.MISSING -> View.MISSING.c(); HwStatus.LEAVE -> View.LEAVE.c(); HwStatus.NONE -> View.NONE.c() }
@@ -72,11 +74,12 @@ fun StatsPage(x: Ctx) {
     val c = x.c
     Page("数据分析", null, actions = { Text("分析报告", Modifier.clip(CircleShape).clickable { share = true }.padding(horizontal = 12.dp, vertical = 6.dp), color = MiuixTheme.colorScheme.primary) }) {
         Meta("${c.name} · ${c.students.size} 人 · ${c.assignments.size} 次作业 · ${c.exams.size} 场考试")
-        Seg(listOf(0 to "作业", 1 to "考试", 2 to "关注", 3 to "小组", 4 to "抄袭"), mode, Modifier.padding(horizontal = 12.dp).padding(bottom = 10.dp)) { mode = it; Keep.mode = it }
+        Seg(listOf(0 to "作业", 1 to "考试", 2 to "关注", 5 to "股票", 3 to "小组", 4 to "抄袭"), mode, Modifier.padding(horizontal = 12.dp).padding(bottom = 10.dp)) { mode = it; Keep.mode = it }
         when (mode) {
             0 -> Homework(x)
             1 -> Exams(x)
             2 -> AttentionTab(x)
+            5 -> StockTop(x)
             3 -> Groups(x)
             else -> Plagiarism(x)
         }
@@ -487,11 +490,30 @@ private fun levelColor(l: Attention.Level) = when (l) { Attention.Level.HIGH -> 
 
 @Composable
 private fun AttentionTab(x: Ctx) {
-    var att by remember { mutableIntStateOf(Keep.att) }
     val list by produceState<List<Attention.Result>?>(null, x.c, x.rules) { value = withContext(Dispatchers.Default) { Attention.all(x.c, x.rules) } }
-    Tabs2(listOf("榜单", "股票"), att) { att = it; Keep.att = it }
     val l = list ?: run { Empty("⏳", "正在计算…"); return }
-    if (att == 0) AttentionBoard(x, l) else StockTab(x, l)
+    AttentionBoard(x, l)
+}
+
+/** 股票（一级栏目）：行情；模拟炒股在安卓和网页版 */
+@Composable
+private fun StockTop(x: Ctx) {
+    val list by produceState<List<Attention.Result>?>(null, x.c, x.rules) { value = withContext(Dispatchers.Default) { Attention.all(x.c, x.rules) } }
+    val credit by produceState<List<Credit.Result>?>(null, x.c) { value = withContext(Dispatchers.Default) { Credit.all(x.c) } }
+    val l = list ?: run { Empty("⏳", "正在计算…"); return }
+    StockTab(x, l, credit.orEmpty())
+    Note("模拟炒股（用老师发的模拟币买卖信誉分、关注度股票）请在安卓 App 或网页版的 统计 → 股票 → 炒股 中使用。")
+}
+
+private fun creditColor(l: Credit.Level) = when (l) { Credit.Level.A -> GOOD; Credit.Level.B -> BLUE; Credit.Level.C -> WARN; Credit.Level.D -> BAD; Credit.Level.NONE -> Color(0xFF9CA3AF) }
+
+/** 行情板块：metric 0 关注度 / 1 信誉分 / 2 小组综合；kind 0 个人 / 1 小组 */
+private fun boardFor(c: com.deepshawn.hwcounter.data.SchoolClass, rules: com.deepshawn.hwcounter.data.ScoreRules, metric: Int, kind: Int, span: AttentionStock.Span): AttentionStock.Board? = when {
+    metric == 2 -> GroupStock.board(c, rules, span)
+    metric == 1 && kind == 0 -> MetricStock.personalCredit(c, span)
+    metric == 1 -> MetricStock.groupCredit(c, span)
+    kind == 1 -> MetricStock.groupAttention(c, rules, span)
+    else -> AttentionStock.board(c, rules, span)
 }
 
 @Composable
@@ -531,8 +553,9 @@ private fun s2(x: Double) = when { x > 0.005 -> "+" + p2(x); x < -0.005 -> "-" +
 private fun candleLabel(k: AttentionStock.Candle) = if (k.end - k.start <= 86_400_000L) md(k.start) else "${md(k.start)}–${md(k.end - 1)}"
 
 @Composable
-private fun StockTab(x: Ctx, list: List<Attention.Result>) {
+private fun StockTab(x: Ctx, list: List<Attention.Result>, credits: List<Credit.Result>) {
     val c = x.c
+    var metric by remember { mutableIntStateOf(Keep.metric) }
     var kind by remember { mutableIntStateOf(Keep.kind) }; var span by remember { mutableStateOf(Keep.span) }; var kline by remember { mutableStateOf(Keep.kline) }
     var sort by remember { mutableIntStateOf(Keep.sort) }; var pill by remember { mutableIntStateOf(Keep.pill) }
     var sel by remember { mutableStateOf<Int?>(null) }
@@ -540,26 +563,31 @@ private fun StockTab(x: Ctx, list: List<Attention.Result>) {
     val cache = remember(c, x.rules) { HashMap<String, AttentionStock.Board?>() }
     var board by remember(c, x.rules) { mutableStateOf<AttentionStock.Board?>(null) }
     var busy by remember { mutableStateOf(true) }
-    LaunchedEffect(c, x.rules, kind, span) {
-        val key = "$kind:$span"
+    val gk = if (metric == 2) 1 else kind
+    LaunchedEffect(c, x.rules, metric, gk, span) {
+        val key = "$metric:$gk:$span"
         busy = true; sel = null
-        val b = cache[key] ?: withContext(Dispatchers.Default) { if (kind == 1) GroupStock.board(c, x.rules, span) else AttentionStock.board(c, x.rules, span) }.also { cache[key] = it }
+        val b = cache[key] ?: withContext(Dispatchers.Default) { boardFor(c, x.rules, metric, gk, span) }.also { cache[key] = it }
         board = b; busy = false
-        for (sp in AttentionStock.Span.entries) { val k2 = "$kind:$sp"; if (!cache.containsKey(k2)) cache[k2] = withContext(Dispatchers.Default) { if (kind == 1) GroupStock.board(c, x.rules, sp) else AttentionStock.board(c, x.rules, sp) } }
+        for (sp in AttentionStock.Span.entries) { val k2 = "$metric:$gk:$sp"; if (!cache.containsKey(k2)) cache[k2] = withContext(Dispatchers.Default) { boardFor(c, x.rules, metric, gk, sp) } }
     }
     val us = LocalLook.current.usColors
     val up = if (us) Color(0xFF12A866) else Color(0xFFE5433A); val down = if (us) Color(0xFFE5433A) else Color(0xFF12A866)
     val sc: (Double) -> Color = { v -> if (v > 0.005) up else if (v < -0.005) down else Color(0xFF8E8E93) }
-    Tabs2(listOf("个人 · 关注度", "小组 · 综合分"), kind) { kind = it; Keep.kind = it; board = null }
+    Tabs2(listOf("关注度", "信誉分", "小组综合"), metric) { metric = it; Keep.metric = it; board = null }
+    if (metric != 2) Tabs2(listOf("个人", "小组"), kind) { kind = it; Keep.kind = it; board = null }
     Tabs2(AttentionStock.Span.entries.map { it.label }, AttentionStock.Span.entries.indexOf(span)) { span = AttentionStock.Span.entries[it]; Keep.span = span }
     val b = board
     if (b == null) { Empty(if (busy) "⏳" else "👥", if (busy) "正在计算行情…" else "还没有小组（每组至少 2 人）"); return }
-    val isGroup = kind == 1
+    val isGroup = gk == 1
+    val isCredit = metric == 1
+    val code = when { metric == 2 -> "GRP"; isGroup && isCredit -> "GCRD"; isGroup -> "GATT"; isCredit -> "CRDT"; else -> "ATTN" }
+    val title = when { metric == 2 -> "小组综合指数 · 各组平均"; isGroup && isCredit -> "小组信誉指数 · 各组平均"; isGroup -> "小组关注指数 · 各组平均"; isCredit -> "信誉指数 · 全班平均"; else -> "关注指数 · 全班平均" }
     val m = b.market
     Group {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (isGroup) "GRP" else "ATTN", fontWeight = FontWeight.Bold, fontSize = 16.sp); Text("  " + if (isGroup) "小组综合指数 · 各组平均" else "关注指数 · 全班平均", fontSize = 13.sp, color = sub())
+                Text(code, fontWeight = FontWeight.Bold, fontSize = 16.sp); Text("  $title", fontSize = 13.sp, color = sub())
                 Spacer(Modifier.weight(1f)); if (busy || b.span != span) Text("正在计算${span.label}…", fontSize = 11.sp, color = MiuixTheme.colorScheme.primary)
             }
             val k = sel?.let { m.candles.getOrNull(it) }; val v = k?.close ?: m.last; val ch = v - m.base
@@ -571,13 +599,16 @@ private fun StockTab(x: Ctx, list: List<Attention.Result>) {
                 listOf("开盘" to p2(m.base), "最高" to p2(m.high), "前收" to p2(m.prevClose), "最低" to p2(m.low), "成交量" to "${m.volume}", "振幅" to (if (m.base < 1) "—" else "%.2f%%".format((m.high - m.low) / m.base * 100)), "上涨" to "${b.up} 家", "下跌" to "${b.down} 家")
                     .forEach { (l, vv) -> Row(Modifier.width(150.dp).padding(vertical = 3.dp)) { Text(l, Modifier.weight(1f), fontSize = 13.sp, color = sub()); Text(vv, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) } }
             }
-            Text(if (isGroup) "综合分越高越好：上涨表示小组在变好。成交量为这段时间的记录条数（作业登记、考试成绩）。" else "指数越高越需要关注：上涨表示情况变差，下跌表示在好转。成交量为这段时间的记录条数（作业登记、加减分、考试成绩）。", Modifier.padding(top = 8.dp), fontSize = 11.sp, color = sub())
+            Text(if (isCredit || metric == 2) "越高越好：上涨表示在变好。成交量为这段时间的记录条数（作业登记、考试成绩）。" else "指数越高越需要关注：上涨表示情况变差，下跌表示在好转。成交量为这段时间的记录条数（作业登记、加减分、考试成绩）。", Modifier.padding(top = 8.dp), fontSize = 11.sp, color = sub())
         }
     }
     val att = list.associateBy { it.student.id }
-    data class R(val id: String, val no: String, val title: String, val sub: String, val q: AttentionStock.Quote, val v: Double, val level: Attention.Level?, val name: String, val open: () -> Unit)
+    val cr = credits.associateBy { it.student.id }
+    data class R(val id: String, val no: String, val title: String, val sub: String, val q: AttentionStock.Quote, val v: Double, val level: Pair<String, Color>?, val name: String, val open: () -> Unit)
     val rows = if (isGroup) b.stocks.map { (g, q) -> R(g, "", g, "${c.students.count { it.group == g }} 人", q, q.last, null, g) { x.open(Route.Group(g)) } }
-    else c.students.mapNotNull { s -> b.stocks[s.id]?.let { q -> R(s.id, s.no, if (s.no.isNotBlank()) "No.${s.no}" else s.name, s.name + (att[s.id]?.top?.firstOrNull()?.let { " · ${it.label}" } ?: ""), q, att[s.id]?.index ?: q.last, att[s.id]?.level, s.name) { x.open(Route.Student(s.id)) } } }
+    else if (isCredit) c.students.mapNotNull { s -> b.stocks[s.id]?.let { q -> val r = cr[s.id]
+        R(s.id, s.no, if (s.no.isNotBlank()) "No.${s.no}" else s.name, s.name + (r?.weak?.firstOrNull()?.let { " · ${it.label}偏弱" } ?: ""), q, r?.takeIf { it.hasData }?.index ?: -1.0, r?.let { it.level.label to creditColor(it.level) }, s.name) { x.open(Route.Student(s.id)) } } }
+    else c.students.mapNotNull { s -> b.stocks[s.id]?.let { q -> R(s.id, s.no, if (s.no.isNotBlank()) "No.${s.no}" else s.name, s.name + (att[s.id]?.top?.firstOrNull()?.let { " · ${it.label}" } ?: ""), q, att[s.id]?.index ?: q.last, att[s.id]?.level?.let { it.label to levelColor(it) }, s.name) { x.open(Route.Student(s.id)) } } }
     val ups = rows.filter { it.q.change > 0.005 }.sortedByDescending { it.q.change }; val downs = rows.filter { it.q.change < -0.005 }.sortedBy { it.q.change }
     Row(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         listOf("领涨" to ups, "领跌" to downs).forEach { (t, l) ->
@@ -586,19 +617,19 @@ private fun StockTab(x: Ctx, list: List<Attention.Result>) {
     }
     Title((if (isGroup) "小组板块" else "自选股") + " · 点胶囊切换涨跌额 / 涨跌幅" + if (isGroup) "" else " / 等级")
     Row(Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(if (isGroup) "综合分" else "关注度", "涨幅", "跌幅", if (isGroup) "名称" else "学号").forEachIndexed { i, t -> Chip(t, sort == i) { sort = i; Keep.sort = i } }
+        listOf(if (isGroup) "指数" else if (isCredit) "信誉分" else "关注度", "涨幅", "跌幅", if (isGroup) "名称" else "学号").forEachIndexed { i, t -> Chip(t, sort == i) { sort = i; Keep.sort = i } }
     }
     val sorted = when (sort) { 1 -> rows.sortedByDescending { it.q.change }; 2 -> rows.sortedBy { it.q.change }; 3 -> rows.sortedWith { a, bb -> compareStudentNumbers(a.no, bb.no).takeIf { it != 0 } ?: a.title.compareTo(bb.title) }; else -> rows.sortedByDescending { it.v } }
     Group {
         sorted.forEach { r ->
             val col = sc(r.q.change); val mode = if (isGroup) pill % 2 else pill
-            val txt = when (mode) { 0 -> s2(r.q.change); 1 -> r.q.pct?.let { p -> (if (p > 0.00005) "+" else if (p < -0.00005) "-" else "") + "%.2f%%".format(abs(p * 100)) } ?: "—"; else -> r.level?.label ?: "—" }
+            val txt = when (mode) { 0 -> s2(r.q.change); 1 -> r.q.pct?.let { p -> (if (p > 0.00005) "+" else if (p < -0.00005) "-" else "") + "%.2f%%".format(abs(p * 100)) } ?: "—"; else -> r.level?.first ?: "—" }
             Row(Modifier.fillMaxWidth().clickable(onClick = r.open).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) { Text(r.title, fontWeight = FontWeight.Bold, fontSize = 16.sp); Text(r.sub, fontSize = 12.sp, color = sub(), maxLines = 1) }
                 MiniChart(r.q, col); Spacer(Modifier.width(12.dp))
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(p2(r.v), fontWeight = FontWeight.SemiBold)
-                    Text(txt, Modifier.padding(top = 3.dp).width(78.dp).clip(RoundedCornerShape(7.dp)).background(if (mode == 2) r.level?.let { levelColor(it) } ?: col else col).clickable { pill = (pill + 1) % (if (isGroup) 2 else 3); Keep.pill = pill }.padding(vertical = 3.dp),
+                    Text(if (r.v < 0) "—" else p2(r.v), fontWeight = FontWeight.SemiBold)
+                    Text(txt, Modifier.padding(top = 3.dp).width(78.dp).clip(RoundedCornerShape(7.dp)).background(if (mode == 2) r.level?.second ?: col else col).clickable { pill = (pill + 1) % (if (isGroup) 2 else 3); Keep.pill = pill }.padding(vertical = 3.dp),
                         color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                 }
             }
