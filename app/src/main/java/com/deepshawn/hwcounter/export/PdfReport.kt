@@ -584,6 +584,11 @@ object PdfReport {
             if (rules.exam.enabled) {
                 p.text("考试按得分率自动加减分：" + rules.exam.bands.sortedByDescending { it.minPct }.joinToString("；") { "${it.minPct.fmt()}%–${it.maxPct.fmt()}% ${it.delta.signed()}" } + if (rules.exam.absent != 0.0) "；缺考 ${rules.exam.absent.signed()}" else "。", 10f)
             }
+            if (rules.credit.active) {
+                val cr = rules.credit
+                p.text("信誉分（0–100，越优秀越高）：由交齐 25%、按时 15%、优秀 10%、连续交 10%、诚信（复审不合格、抄袭）20%、进步 5%、考试 15% 算出，小组信誉分为组员平均。" +
+                    "${cr.periodLabel}结算一次：${cr.bandsText()}，其余 0；个人${com.deepshawn.hwcounter.data.CreditRules.modeLabel(cr.personal)}，小组${com.deepshawn.hwcounter.data.CreditRules.modeLabel(cr.group)}（小组加减分全组每人相同）。", 10f)
+            }
             p.heading("五、积分重置与结算")
             p.text("积分重置：把积分重新设为指定分数，开始新的一轮；之前的加减分记录全部保留，可随时查看。" + (c.autoReset?.takeIf { it.enabled }?.let { " 本班每月 ${it.day} 号自动重置为 ${it.target.fmt()} 分。" } ?: ""), 10.5f)
             p.text("每轮结束时进行结算，按本轮交齐度（已交 + 优秀 + 迟交 ÷ 应交，请假不算应交）加减分，结算分计入下一轮：", 10.5f)
