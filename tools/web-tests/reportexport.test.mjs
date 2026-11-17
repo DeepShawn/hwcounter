@@ -18,10 +18,11 @@ function cls() {
 test('Excel：工作表与安卓一致', () => {
   const c = cls(); const r = report(c, defaultRules(), { range: 'ALL' }, now); const ex = examReport(c);
   const sh = analysisSheets(c, r, ex, now);
-  assert.deepEqual(sh.map((x) => x.name), ['概览', '学生明细', '每次作业', '进步与退步', '各轮与分段', '积分来源与预警', '科目与星期', '小组', '积分', '考试统计', '考试进退与分层', '考试成绩']);
+  assert.deepEqual(sh.map((x) => x.name), ['概览', '学生明细', '每次作业', '进步与退步', '各轮与分段', '积分来源与预警', '科目与星期', '小组', '信誉分', '积分', '考试统计', '考试进退与分层', '考试成绩']);
   assert.equal(sh[1].rows.length, 1 + c.students.length);
   assert.equal(sh[2].rows.length, 1 + c.assignments.length);
-  assert.equal(sh[11].rows[1].length, 2 + 2 + 2);
+  assert.equal(sh[12].rows[1].length, 2 + 2 + 2);
+  assert.equal(sh[8].rows[0][0].v ?? sh[8].rows[0][0], '学号');
   const blob = analysisXlsx(c, r, ex, now);
   assert.ok(blob.size > 2000);
 });

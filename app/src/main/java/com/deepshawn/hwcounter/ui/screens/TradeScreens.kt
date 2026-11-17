@@ -66,7 +66,7 @@ import kotlin.math.abs
 
 private fun m2(x: Double) = "%,.2f".format(x)
 private fun sgn(x: Double) = (if (x > 0.005) "+" else if (x < -0.005) "-" else "") + "%,.2f".format(abs(x))
-private fun day(iso: String) = iso.take(16).replace("T", " ")
+private fun day(iso: String) = iso.take(10)
 
 /** 炒股页面的数据（从云端读取） */
 private class TradeData(

@@ -11,7 +11,7 @@ import { attention, groupAttentionAt } from './analytics.js';
 const html = htm.bind(h);
 const m2 = (x) => Number(x || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const sgn = (x) => (x > 0.005 ? '+' : x < -0.005 ? '-' : '') + m2(Math.abs(x));
-const day = (iso) => String(iso || '').slice(0, 16).replace('T', ' ');
+const day = (iso) => String(iso || '').slice(0, 10);
 const GOOD = '#16a34a'; const BAD = '#dc2626';
 export const KIND_LABEL = { A: '个人关注度', C: '个人信誉分', GA: '小组关注度', GC: '小组信誉分' };
 const px = (p) => Math.max(Number(p.price) || 0, 1);
