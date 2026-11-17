@@ -4,9 +4,9 @@ import { h } from '../vendor/preact.module.js';
 import { useState, useEffect, useMemo } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
 import { analysisXlsx, analysisHtml } from './reportexport.js';
-import { StockTab } from './stockpage.js';
+import { StockTab, creditColor } from './stockpage.js';
 import { Icon } from './icons.js';
-import { STATUS, fmtNum, signed, compareStudentNumbers, rechargeCounts, defaultPlagiarism, plagiarismFactor, copiedFrom, copiedBy, plagiarized, plagiarismDesc } from './model.js';
+import { STATUS, fmtNum, signed, compareStudentNumbers, rechargeCounts, defaultPlagiarism, plagiarismFactor, copiedFrom, copiedBy, plagiarized, plagiarismDesc, creditAll, creditGroups, creditLevel, r2 } from './model.js';
 import {
   report as buildReport, text as reportText, examReport, periodBounds, periodLabel, difficultyText, discriminationText,
   attention, attentionWeekly, ATT_LEVELS, stockBoard, groupStockBoard, SPANS, groupReport, groupDuel, classResets, plagiarismReport, plagiarismAssignments,
@@ -42,10 +42,11 @@ export function StatsPage({ kit, c, rules, open, prefs, setPrefs, trade }) {
   const exams = c.exams || [];
   return html`<${Page} title="统计" large="数据分析" actions=${html`<button class="ib" aria-label="分析报告" onClick=${() => setShare(true)}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg></button>`}>
     <div class="meta">${c.name} · ${c.students.length} 人 · ${c.assignments.length} 次作业 · ${exams.length} 场考试</div>
-    <div class="pad"><${Seg} items=${[['hw', '作业'], ['exam', '考试'], ['att', '关注'], ['stock', '股票'], ['group', '小组'], ['plag', '抄袭']]} value=${mode} onChange=${setMode} /></div>
+    <div class="pad"><${Seg} items=${[['hw', '作业'], ['exam', '考试'], ['att', '关注'], ['credit', '信誉'], ['stock', '股票'], ['group', '小组'], ['plag', '抄袭']]} value=${mode} onChange=${setMode} /></div>
     ${mode === 'hw' && html`<${Homework} kit=${kit} c=${c} rules=${rules} open=${open} share=${share} setShare=${setShare} />`}
     ${mode === 'exam' && html`<${Exams} kit=${kit} c=${c} rules=${rules} open=${open} />`}
     ${mode === 'att' && html`<${AttentionTab} kit=${kit} c=${c} rules=${rules} open=${open} />`}
+    ${mode === 'credit' && html`<${CreditBoard} kit=${kit} c=${c} open=${open} />`}
     ${mode === 'stock' && html`<${StockTop} c=${c} rules=${rules} open=${open} us=${prefs.usColors !== false} setUs=${setPrefs ? (v) => setPrefs({ usColors: v }) : null} trade=${trade} />`}
     ${mode === 'group' && html`<${Groups} kit=${kit} c=${c} rules=${rules} open=${open} />`}
     ${mode === 'plag' && html`<${Plagiarism} kit=${kit} c=${c} rules=${rules} open=${open} />`}
@@ -389,6 +390,45 @@ function Spark({ values, color, w = 48, hgt = 22 }) {
 function AttentionTab({ kit, c, rules, open }) {
   const list = useMemo(() => attention(c, rules), [c, rules]);
   return html`<${AttentionBoard} kit=${kit} c=${c} rules=${rules} list=${list} open=${open} />`;
+}
+/** 每个同学最近 weeks 周每周一个点的信誉分（没有数据的周沿用上一周；与 Kotlin Credit.weekly 相同） */
+export function creditWeekly(c, weeks = 8, now = Date.now()) {
+  const per = [];
+  for (let k = weeks - 1; k >= 0; k--) per.push(Object.fromEntries(creditAll(c, now - k * 7 * 86400000).filter((r) => r.hasData).map((r) => [r.student.id, r.index])));
+  const out = {};
+  for (const s of c.students) {
+    const raw = per.map((m) => m[s.id]); const first = raw.find((v) => v != null) ?? 0; let last = first;
+    out[s.id] = raw.map((v) => (last = v ?? last));
+  }
+  return out;
+}
+const CREDIT_LV = ['优秀', '良好', '一般', '较差'];
+/** 信誉（一级栏目）：信誉榜，版式与关注榜相同；越优秀越高 */
+function CreditBoard({ kit, c, open }) {
+  const { Empty, Avatar } = kit;
+  const list = useMemo(() => creditAll(c), [c]);
+  const groups = useMemo(() => creditGroups(c, Date.now(), list), [c, list]);
+  const weekly = useLater(() => creditWeekly(c), [c]) || {};
+  if (!list.length) return html`<${Empty} emoji="🏅" text="还没有学生" />`;
+  const by = Object.fromEntries(CREDIT_LV.map((l) => [l, list.filter((x) => x.level === l).length]));
+  const has = list.filter((x) => x.hasData);
+  const gs = Object.entries(groups).sort((a, b) => b[1] - a[1]);
+  return html`<section class="grp"><div class="an-pad"><b>信誉分（0–100，越优秀越高）</b>
+      <div class="muted" style=${{ fontSize: '12px', margin: '6px 0 10px' }}>由交齐 25%、按时 15%、优秀 10%、连续交 10%、诚信（复审不合格、抄袭）20%、进步 5%、考试 15% 算出；数据一变立即重算，走势为最近 8 周每周一个点。</div>
+      <div class="an-split">${CREDIT_LV.map((l) => by[l] > 0 && html`<i style=${{ flex: by[l], background: creditColor(l) }}></i>`)}</div>
+      <div class="an-levels">${CREDIT_LV.map((l) => html`<div><b style=${{ color: creditColor(l) }}>${by[l]}</b><small>${l}</small></div>`)}</div>
+      ${has.length > 0 && html`<div class="muted" style=${{ fontSize: '12px', marginTop: '8px' }}>全班平均 ${fmtNum(r2(has.reduce((x, r) => x + r.index, 0) / has.length))}${list.length > has.length ? ` · 暂无记录 ${list.length - has.length} 人` : ''}</div>`}</div></section>
+    ${gs.length > 0 && html`<div class="st">小组信誉分（组员平均）</div><section class="grp">${gs.map(([g, v], i) => { const col = creditColor(creditLevel(v));
+      return html`<button class="an-row" key=${g} onClick=${() => open({ view: 'group', id: g })}><b class="an-idx">${i + 1}</b><span style=${{ width: '88px', flex: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>${g}</span>
+        <span class="an-bar" style=${{ flex: 1, width: 'auto', height: '8px' }}><em style=${{ width: `${Math.max(2, Math.min(100, v))}%`, background: col }}></em></span><b style=${{ color: col, minWidth: '48px', textAlign: 'right' }}>${fmtNum(v)}</b></button>`; })}</section>`}
+    <div class="st">信誉榜 · 点同学查看详情</div>
+    <section class="grp">${list.map((x, i) => { const w = weekly[x.student.id] || []; const delta = w.length >= 2 && x.hasData ? Math.round(x.index - w[w.length - 2]) : 0; const col = creditColor(x.level);
+      const weak = x.parts.filter((p) => p.value < 0.6).sort((a, b) => a.value - b.value).slice(0, 2);
+      return html`<button class="an-row" key=${x.student.id} onClick=${() => open({ view: 'student', id: x.student.id })}>
+        <b class="an-idx" style=${{ color: i < 3 && x.hasData ? col : 'var(--sub)' }}>${i + 1}</b><${Avatar} name=${x.student.name} size=${36} />
+        <div class="an-grow"><b>${x.student.name} <em class="an-tag" style=${{ color: col, background: col + '1f' }}>${x.level}</em></b><small>${!x.hasData ? '还没有作业记录和考试成绩' : weak.map((p) => `${p.label}：${p.detail}`).join(' · ') || '各项都好'}</small></div>
+        <${Spark} values=${x.hasData ? w : []} color=${col} />
+        <div class="an-att"><b style=${{ color: col }}>${x.hasData ? Math.round(x.index) : '—'}</b><small style=${{ color: delta > 0 ? GOOD : delta < 0 ? BAD : 'var(--sub)' }}>${delta > 0 ? `▲${delta}` : delta < 0 ? `▼${-delta}` : '持平'}</small></div></button>`; })}</section>`;
 }
 /** 股票（一级栏目）：行情 / 炒股 */
 function StockTop({ c, rules, open, us, setUs, trade }) {

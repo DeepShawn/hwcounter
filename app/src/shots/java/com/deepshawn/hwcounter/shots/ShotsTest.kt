@@ -169,6 +169,7 @@ class ShotsTest {
             top(); click("小组"); save("${prefix}_34a_groups"); scroll(); save("${prefix}_34b_groups"); scroll(); save("${prefix}_34c_groups"); scroll(); save("${prefix}_34d_groups"); scroll(); save("${prefix}_34e_groups")
             safe { top(); click("抄袭"); save("${prefix}_36a_plagiarism"); scroll(); save("${prefix}_36b_plagiarism"); scroll(); save("${prefix}_36c_plagiarism") }
             top(); click("关注"); save("${prefix}_35a_attention"); scroll(); save("${prefix}_35b_attention")
+            safe { top(); click("信誉"); save("${prefix}_35c_credit"); scroll(); save("${prefix}_35d_credit") }
             safe {
                 top(); click("股票"); waitStock(); save("${prefix}_37a_stock"); scroll(); save("${prefix}_37b_stock"); scroll(); save("${prefix}_37c_stock"); scroll(); save("${prefix}_37d_stock")
                 top(); click("K线"); save("${prefix}_37e_stock_k")

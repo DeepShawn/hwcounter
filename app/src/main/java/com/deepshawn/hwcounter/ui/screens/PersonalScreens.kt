@@ -168,6 +168,89 @@ fun LazyListScope.attentionSections(c: SchoolClass, rules: ScoreRules, list: Lis
     }
 }
 
+// ---------------- 统计页：信誉榜 ----------------
+
+/** 信誉榜：按信誉分从高到低排（越优秀越高），显示等级、偏弱项、近 8 周走势和较上周的变化；另有小组信誉分 */
+fun LazyListScope.creditSections(c: SchoolClass, list: List<com.deepshawn.hwcounter.data.Credit.Result>, weekly: Map<String, List<Double>>, groups: Map<String, Double>, onOpen: (String) -> Unit) {
+    if (list.isEmpty()) { item { EmptyState("🏅", "还没有学生", "") }; return }
+    val levels = listOf(com.deepshawn.hwcounter.data.Credit.Level.A, com.deepshawn.hwcounter.data.Credit.Level.B, com.deepshawn.hwcounter.data.Credit.Level.C, com.deepshawn.hwcounter.data.Credit.Level.D)
+    item(key = "cr-head") {
+        val colors = MiuixTheme.colorScheme
+        HCard(Modifier.padding(horizontal = 12.dp, vertical = 10.dp).fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("信誉分（0–100，越优秀越高）", fontWeight = FontWeight.SemiBold)
+                Text("由交齐 25%、按时 15%、优秀 10%、连续交 10%、诚信（复审不合格、抄袭）20%、进步 5%、考试 15% 算出；数据一变立即重算，走势为最近 8 周每周一个点。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                val byLevel = levels.associateWith { l -> list.count { it.level == l } }
+                Row(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape)) {
+                    levels.forEach { l -> val n = byLevel.getValue(l); if (n > 0) Box(Modifier.weight(n.toFloat()).height(10.dp).background(creditColor(l))) }
+                }
+                Row {
+                    levels.forEach { l ->
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(animatedText("${byLevel.getValue(l)}"), fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = creditColor(l))
+                            Text(l.label, fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
+                        }
+                    }
+                }
+                val has = list.filter { it.hasData }
+                if (has.isNotEmpty()) Text("全班平均 ${com.deepshawn.hwcounter.data.Credit.r2(has.map { it.index }.average()).fmt()}" + (list.size - has.size).let { if (it > 0) " · 暂无记录 $it 人" else "" }, fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+            }
+        }
+    }
+    if (groups.isNotEmpty()) item(key = "cr-groups") {
+        val colors = MiuixTheme.colorScheme
+        HCard(Modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("小组信誉分（组员平均）", fontWeight = FontWeight.SemiBold)
+                groups.entries.sortedByDescending { it.value }.forEachIndexed { i, (g, v) ->
+                    val col = creditColor(com.deepshawn.hwcounter.data.Credit.levelOf(v))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${i + 1}", Modifier.width(22.dp), fontWeight = FontWeight.Bold, color = colors.onSurfaceVariantSummary)
+                        Text(g, Modifier.width(72.dp), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Box(Modifier.weight(1f).height(8.dp).clip(CircleShape).background(colors.secondaryContainer)) {
+                            Box(Modifier.fillMaxWidth((v / 100).toFloat().coerceIn(0.02f, 1f)).height(8.dp).clip(CircleShape).background(col))
+                        }
+                        Text(v.fmt(), Modifier.width(44.dp), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = col, textAlign = TextAlign.End)
+                    }
+                }
+            }
+        }
+    }
+    item(key = "cr-title") { SmallTitle("信誉榜 · 点同学看个人分析") }
+    itemsIndexed(list, key = { _, r -> "cr" + r.student.id }) { i, r ->
+        val colors = MiuixTheme.colorScheme
+        val w = weekly[r.student.id].orEmpty()
+        val delta = if (w.size >= 2 && r.hasData) r.index - w[w.size - 2] else 0.0
+        val col = creditColor(r.level)
+        Row(
+            Modifier.listCell(i, list.size).clickable { onOpen(r.student.id) }.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("${i + 1}", Modifier.width(26.dp), fontWeight = FontWeight.Bold, color = if (i < 3 && r.hasData) col else colors.onSurfaceVariantSummary)
+            Avatar(r.student.name, size = 36.dp)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(r.student.name, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(r.level.label, fontSize = 10.sp, color = col, modifier = Modifier.clip(CircleShape).background(col.copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 1.dp))
+                }
+                Text(
+                    if (!r.hasData) "还没有作业记录和考试成绩" else r.weak.take(2).joinToString(" · ") { "${it.label}：${it.detail}" }.ifBlank { "各项都好" },
+                    fontSize = 11.sp, color = colors.onSurfaceVariantSummary, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (r.hasData) Spark(w, col, Modifier.width(48.dp).height(22.dp))
+            Spacer(Modifier.width(8.dp))
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(48.dp)) {
+                Text(if (r.hasData) animatedText("${r.index.roundToInt()}") else "—", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = col)
+                val d = delta.roundToInt()
+                Text(if (d > 0) "▲$d" else if (d < 0) "▼${-d}" else "持平", fontSize = 10.sp, color = if (d > 0) GOOD else if (d < 0) BAD else colors.onSurfaceVariantSummary)
+            }
+        }
+    }
+}
+
 // ---------------- 个人分析报告 ----------------
 
 private fun share(ctx: Context, c: SchoolClass, name: String, write: (java.io.OutputStream) -> Unit) {
