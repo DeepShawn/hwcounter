@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from '../vendor
 import htm from '../vendor/htm.module.js';
 import {
   STATUS, normalizeData, summary, studentStats, compareStudentNumbers, autoPoints, ruleOf, fmtNum, signed, fmtDate,
-  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, leaderPeriods, leaderOf, groupRankPoints,
+  latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, defaultReview, leaderPeriods, leaderOf, groupRankPoints,
 } from './model.js';
 import { api } from './cloud.js';
 import { StatsPage, PlagGraph } from './statspage.js';
@@ -137,7 +137,8 @@ function ledger(c, rules, sid) {
     if ((r && r.id) !== round) { round = r && r.id; plag = 0; }
     const k = view(a, sid); const d = pts[a.id] ?? ruleOf(rules, a.statuses[sid]);
     let extra = '';
-    if (k === 'PLAG' && pg.enabled) { plag++; extra = `（${plagLine(c, a, sid)}，本轮第 ${plag} 次，扣分 ×${fmtNum(plagiarismFactor(pg, plag))}）`; }
+    if (k === 'PLAG' && pg.enabled) { plag++; const f = plagiarismFactor(pg, plag); const rv = { ...defaultReview(), ...(rules.review || {}) }; const both = rv.enabled && failedReview(a, sid);
+      extra = `（${plagLine(c, a, sid)}，本轮第 ${plag} 次，扣分 ×${fmtNum(f)}${both ? `，复审不合格再 ×${fmtNum(rv.multiplier)}，合计 ×${fmtNum(f * rv.multiplier)}` : ''}）`; }
     if (d) rows.push({ key: 'a' + a.id, t: a.createdAt, d, title: `${a.subject ? a.subject : ''}「${a.title}」${SV(k).label}${extra}`, kind: '作业', counts: assignmentCounts(a, last) });
   }
   for (const e of c.exams || []) {

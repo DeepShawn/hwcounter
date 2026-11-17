@@ -479,7 +479,7 @@ function Duel({ c, r, a, b, setA, setB, names, colorOf }) {
 const PROVIDER = '#e8792c'; const COPIER = '#e5384d'; const BOTH = '#8e44ad'; const PLAGC = '#d9480f';
 const roleColor = (n) => (n.copied > 0 && n.provided > 0 ? BOTH : n.copied > 0 ? COPIER : PROVIDER);
 export const plagiarismText = (rules) => { const pg = { ...defaultPlagiarism(), ...(rules.plagiarism || {}) };
-  return pg.enabled ? `抄袭：抄袭者和提供者都记一次未交，扣分 ×${fmtNum(pg.multiplier)}${pg.escalate ? `，累犯逐次加重（第 n 次再 ×n，最多 ×${pg.maxTimes}）` : ''}` : '抄袭：按普通未交扣分'; };
+  return pg.enabled ? `抄袭：抄袭者和提供者都记一次未交，扣分 ×${fmtNum(pg.multiplier)}${pg.escalate ? `，累犯逐次加重（第 n 次再 ×n，最多 ×${pg.maxTimes}）` : ''}${(rules.review || {}).enabled !== false ? '；同时复审不合格时倍数叠加' : ''}` : '抄袭：按普通未交扣分'; };
 
 /** 关系图：同学排成一圈（同一个抄袭圈的挨在一起），箭头从提供者指向抄袭者 */
 export function PlagGraph({ r, open }) {

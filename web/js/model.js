@@ -160,8 +160,10 @@ export function autoPoints(c, rules, sid) {
       let base;
       if (!esc.enabled) base = ruleOf(rules, s);
       else { const b = total > esc.heavyAfter ? esc.heavyBase : esc.base; let p = b ** streak; if (esc.cap > 0) p = Math.min(p, esc.cap); base = -p; }
-      if (pg.enabled && plagiarized(a, sid)) { plag++; out[a.id] = pt(rules, base * plagiarismFactor(pg, plag)); }
-      else out[a.id] = pt(rules, rv.enabled && failedReview(a, sid) ? base * rv.multiplier : base);
+      // 抄袭与复审不合格可以叠加：两个倍数相乘
+      const plagged = pg.enabled && plagiarized(a, sid); if (plagged) plag++;
+      const f = plagged ? plagiarismFactor(pg, plag) : 1; const r = rv.enabled && failedReview(a, sid) ? rv.multiplier : 1;
+      out[a.id] = pt(rules, base * f * r);
     } else if (s === 'SUBMITTED' || s === 'EXCELLENT' || s === 'LATE') {
       streak = 0;
       const counts = s !== 'LATE' || sb.lateCounts;

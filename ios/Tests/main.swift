@@ -510,6 +510,10 @@ do {
     let a0n = g0.nodes.first { $0.student.id == "a" }!, a2n = g2.nodes.first { $0.student.id == "a" }!
     check(a0n.points == -4 && a0n.roundTimes == 1 && a0n.factor == 2 && a2n.points == -8 && a2n.roundTimes == 2 && a2n.factor == 4, "单次作业的扣分、第几次、倍数")
     check(c.plagiarismReport(R, only: "a3").cases.isEmpty, "没有抄袭的作业是空图")
+    // 抄袭与复审不合格叠加
+    var both = c; both.assignments[0].reviewFailed = ["b"]
+    var noReview = R; noReview.review.enabled = false
+    check(both.autoPoints(R, "b")["a0"] == -8 && both.autoPoints(R, "a")["a0"] == -4 && both.autoPoints(noReview, "b")["a0"] == -4, "抄袭与复审不合格叠加")
 }
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

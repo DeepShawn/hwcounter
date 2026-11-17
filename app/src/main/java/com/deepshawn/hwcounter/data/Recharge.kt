@@ -116,7 +116,8 @@ fun SchoolClass.ledger(rules: ScoreRules, studentId: String): List<LedgerRow> {
                 val from = a.copiedFrom(studentId).mapNotNull { id -> students.firstOrNull { it.id == id }?.name }
                 val by = a.copiedBy(studentId).mapNotNull { id -> students.firstOrNull { it.id == id }?.name }
                 val who = listOfNotNull(from.takeIf { it.isNotEmpty() }?.let { "抄袭 ${it.joinToString("、")}" }, by.takeIf { it.isNotEmpty() }?.let { "提供给 ${it.joinToString("、")} 抄" }).joinToString("；")
-                "（$who，本轮第 ${p.plagiarism} 次，扣分 ×${p.plagiarismFactor.fmt()}${if (p.missStreak >= 2 && rules.escalation.enabled) "，连续第 ${p.missStreak} 次未交" else ""}）"
+                val review = if (p.reviewFailed) "，复审不合格再 ×${rules.review.multiplier.fmt()}，合计 ×${(p.plagiarismFactor * rules.review.multiplier).fmt()}" else ""
+                "（$who，本轮第 ${p.plagiarism} 次，扣分 ×${p.plagiarismFactor.fmt()}$review${if (p.missStreak >= 2 && rules.escalation.enabled) "，连续第 ${p.missStreak} 次未交" else ""}）"
             }
             p != null && p.reviewFailed -> "（复审不合格，扣分 ×${rules.review.multiplier.fmt()}${if (p.missStreak >= 2 && rules.escalation.enabled) "，连续第 ${p.missStreak} 次未交" else ""}）"
             p != null && p.missStreak >= 2 && rules.escalation.enabled -> "（连续第 ${p.missStreak} 次未交）"
