@@ -146,7 +146,7 @@ fun SpineScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     aiNote = "未配置 API Key，已跳过 AI 复核（仅本地识别）"
                 }
                 if (settings.recogMode != RecogMode.LOCAL && settings.ai.vision && aiReady) {
-                    phase = "AI 复核中 ✨"
+                    phase = "AI 复核中"
                     try {
                         val ai = AiRecognizer.recognize(settings.ai, r.bitmap, c.students, "spine")
                         aiCount = ai.count
@@ -222,7 +222,7 @@ fun SpineScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                                     if (unknownCount > 0) "$unknownCount 个学号未对上名单" else null,
                                     stripe?.let { "条纹估计 ≈$it 本" },
                                     aiCount?.let { "AI 数出 $it 本" },
-                                ).joinToString(" · ").ifEmpty { "全部对上名单 👍" },
+                                ).joinToString(" · ").ifEmpty { "全部对上名单" },
                                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -238,7 +238,7 @@ fun SpineScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                             Text("可能还有约 ${estimate - idBooks} 本的学号没读到：可补拍局部，或在下方手动补录", fontSize = 13.sp)
                         }
                     }
-                    if (aiNote.isNotBlank()) Text("🤖 $aiNote", fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    if (aiNote.isNotBlank()) Text("$aiNote", fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 }
             }
             // 图片 + 标注
@@ -282,7 +282,7 @@ fun SpineScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     Legend(Color(0xFFFF4081), "条纹分界")
                 }
             }
-            item { SectionTitle("📚 叠放顺序（点击可剔除 / 指派）", Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
+            item { SectionTitle("叠放顺序（点击可剔除 / 指派）", Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
             itemsIndexed(rows, key = { _, row -> row.key }) { i, row ->
                 val st = row.studentId?.let { byId[it] }
                 val off = excluded[row.key] == true
@@ -317,8 +317,8 @@ fun SpineScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
             }
             item {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { addDialog = true }, Modifier.weight(1f)) { Text("➕ 手动补录") }
-                    OutlinedButton(onClick = { photo.takePhoto() }, Modifier.weight(1f)) { Text("📷 重拍") }
+                    OutlinedButton(onClick = { addDialog = true }, Modifier.weight(1f)) { Text("手动补录") }
+                    OutlinedButton(onClick = { photo.takePhoto() }, Modifier.weight(1f)) { Text("重拍") }
                 }
             }
             item {
@@ -393,11 +393,11 @@ private fun SpineGuide(onCamera: () -> Unit, onGallery: () -> Unit) {
             Text("拍摄小贴士", fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
             listOf(
-                "✍️ 学号写在同一侧、字迹清晰，数字尽量写大一点",
-                "📐 横放竖放都可以，会自动判断方向",
-                "💡 光线均匀，镜头尽量正对侧面、贴近拍满画面",
-                "📚 一摞太厚可以分两次拍",
-                "🏷️ 也可以把学号二维码贴纸贴在侧面",
+                "学号写在同一侧、字迹清晰，数字尽量写大一点",
+                "横放竖放都可以，会自动判断方向",
+                "光线均匀，镜头尽量正对侧面、贴近拍满画面",
+                "一摞太厚可以分两次拍",
+                "也可以把学号二维码贴纸贴在侧面",
             ).forEach { Text(it, fontSize = 13.sp, modifier = Modifier.padding(vertical = 2.dp)) }
         }
         Spacer(Modifier.height(16.dp))

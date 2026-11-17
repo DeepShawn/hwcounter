@@ -286,7 +286,7 @@ fun GroupDetailScreen(vm: AppViewModel, data: AppData, name: String) {
                             Row { Mini("全组交齐", "${t.complete}/${t.played} 次", Modifier.weight(1f)); Mini("当前连续", "${t.completeStreak} 次", Modifier.weight(1f)); Mini("最长连续", "${t.longestComplete} 次", Modifier.weight(1f)) }
                             Row { Mini("人均作业扣分", t.deductPerCapita.fmt(), Modifier.weight(1f)); Mini("考试得分率", t.examPct?.let { pctText(it.toFloat()) } ?: "—", Modifier.weight(1f)); Mini("对抗排名", "${rep.teams.indexOf(t) + 1}/${rep.teams.size}", Modifier.weight(1f)) }
                             if (rep.teams.size >= 2) Text("对抗战绩：单次作业胜 ${t.wins}${if (t.ties > 0) "、并列第一 ${t.ties}" else ""} · 周冠军 ${t.weekWins} 周 · 平均名次 ${"%.1f".format(t.avgRank)}", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
-                            gp?.let { p -> Text((if (p.index >= 0.02) "📈 进步：" else if (p.index <= -0.02) "📉 退步：" else "➖ 持平：") + p.reasons.joinToString(" · ").ifBlank { "变化不大" }, fontSize = 12.sp, color = if (p.index >= 0.02) Color(0xFF16A34A) else if (p.index <= -0.02) Color(0xFFE5384D) else colors.onSurfaceVariantSummary) }
+                            gp?.let { p -> Text((if (p.index >= 0.02) "进步：" else if (p.index <= -0.02) "退步：" else "持平：") + p.reasons.joinToString(" · ").ifBlank { "变化不大" }, fontSize = 12.sp, color = if (p.index >= 0.02) Color(0xFF16A34A) else if (p.index <= -0.02) Color(0xFFE5384D) else colors.onSurfaceVariantSummary) }
                         }
                     }
                 }
@@ -315,7 +315,7 @@ fun GroupDetailScreen(vm: AppViewModel, data: AppData, name: String) {
                         Column(Modifier.padding(vertical = 6.dp)) {
                             (up.map { it to true } + down.map { it to false }).forEach { (p, good) ->
                                 Row(Modifier.fillMaxWidth().clickable { kit.nav.push(Route.StudentDetail(p.student.id)) }.padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(if (good) "⭐" else "⚠️", fontSize = 16.sp); Spacer(Modifier.width(10.dp))
+                                    com.deepshawn.hwcounter.ui.components.LineIcon(if (good) "⭐" else "⚠️", if (good) Color(0xFFE8A400) else Color(0xFFE5384D), size = 16.dp); Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(p.student.name, fontWeight = FontWeight.Medium)
                                         Text(p.reasons.take(2).joinToString(" · ").ifBlank { "综合变化" }, fontSize = 11.5.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)

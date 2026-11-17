@@ -210,9 +210,9 @@ fun App(vm: AppViewModel, data: AppData) {
             val editOnly = r is Route.Recognize || r is Route.Live || r is Route.Voice || r is Route.Spine || r is Route.Stack || r is Route.Paper || r is Route.Seating ||
                 r is Route.Draft || r is Route.Drafts || r is Route.StatTable || r is Route.BatchScore
             when {
-                editOnly && vm.readOnly.value -> { vm.notices.tryEmit("👀 预览模式：登录后才能使用"); false }
+                editOnly && vm.readOnly.value -> { vm.notices.tryEmit("预览模式：登录后才能使用"); false }
                 // 预览模式不显示名单页（统计/热力图照常显示）
-                r is Route.Students && vm.readOnly.value -> { vm.notices.tryEmit("👀 预览模式：登录后才能查看名单"); false }
+                r is Route.Students && vm.readOnly.value -> { vm.notices.tryEmit("预览模式：登录后才能查看名单"); false }
                 else -> true
             }
         }
@@ -469,7 +469,7 @@ private fun PreviewBanner(onLogin: () -> Unit) {
             .padding(horizontal = 14.dp, vertical = 8.dp),
         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
     ) {
-        Text("👀 预览模式 · 只读　", color = androidx.compose.ui.graphics.Color(0xFF6B4300), fontSize = 13.sp)
+        Text("预览模式 · 只读　", color = androidx.compose.ui.graphics.Color(0xFF6B4300), fontSize = 13.sp)
         Text("登录后可修改 ›", color = androidx.compose.ui.graphics.Color(0xFF6B4300), fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
     }
 }

@@ -143,7 +143,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
     if (c == null) {
         WelcomeScreen(onNewClass = { newClass = true }, onImported = { r ->
             val n = vm.importRoster(r, replace = false, asNewClass = true)
-            kit.toast("✅ 已创建「${r.className ?: "新班级"}」，共 $n 人")
+            kit.toast("已创建「${r.className ?: "新班级"}」，共 $n 人")
         })
         if (newClass) ClassDialog(null, { newClass = false }) { n, e -> vm.addClass(n, e); newClass = false }
         return
@@ -157,7 +157,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
     var afterCreate by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var photoTarget by remember { mutableStateOf<String?>(null) }
     fun withTarget(go: (String) -> Unit) {
-        if (vm.readOnly.value) { kit.toast("👀 预览模式：登录后才能使用"); return }
+        if (vm.readOnly.value) { kit.toast("预览模式：登录后才能使用"); return }
         val t = todayTarget
         if (t != null) go(t.id) else { afterCreate = go; showNew = true }
     }
@@ -283,7 +283,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
     com.deepshawn.hwcounter.ui.components.ActionSheet(
         show = classSheet, title = "班级", onDismiss = { classSheet = false },
         actions = data.classes.map { k ->
-            com.deepshawn.hwcounter.ui.components.SheetAction("${k.emoji} ${k.name}" + if (k.id == c.id) "（当前）" else "", "${k.students.size} 人 · ${k.assignments.size} 次作业") { vm.switchClass(k.id) }
+            com.deepshawn.hwcounter.ui.components.SheetAction(k.name + if (k.id == c.id) "（当前）" else "", "${k.students.size} 人 · ${k.assignments.size} 次作业") { vm.switchClass(k.id) }
         } + listOf(
             com.deepshawn.hwcounter.ui.components.SheetAction("编辑当前班级") { classDialog = c },
             com.deepshawn.hwcounter.ui.components.SheetAction("新建班级") { newClass = true },
@@ -309,7 +309,7 @@ fun HomeScreen(vm: AppViewModel, data: AppData) {
             onDraft = if (afterCreate == null) { t, s ->
                 showNew = false
                 val d = com.deepshawn.hwcounter.recog.StatTable.newDraft(c, null, t, s)
-                vm.addDraft(d); kit.toast("📝 已建草稿：只保存在本机，登记完再上传"); kit.nav.push(Route.Draft(d.id))
+                vm.addDraft(d); kit.toast("已建草稿：只保存在本机，登记完再上传"); kit.nav.push(Route.Draft(d.id))
             } else null,
             onDismiss = { showNew = false; afterCreate = null },
         ) { t, s ->
@@ -453,7 +453,7 @@ private fun WelcomeScreen(onNewClass: () -> Unit, onImported: (com.deepshawn.hwc
     Column(Modifier.fillMaxSize()) {
         GradientHeader {
             Spacer(Modifier.height(24.dp))
-            Text("📚", fontSize = 48.sp)
+            com.deepshawn.hwcounter.ui.components.LineIcon("📚", Color.White, size = 48.dp)
             Text("欢迎使用作业通", color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
             Text("拍一张照，就知道谁交了作业", color = Color.White.copy(alpha = 0.85f))
             Spacer(Modifier.height(12.dp))
@@ -462,7 +462,7 @@ private fun WelcomeScreen(onNewClass: () -> Unit, onImported: (com.deepshawn.hwc
             Text("第一步：建立你的班级", style = MaterialTheme.typography.titleMedium)
             AppCard(onClick = { openJson.launch(arrayOf("application/json", "text/*", "*/*")) }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("📥", fontSize = 30.sp)
+                    com.deepshawn.hwcounter.ui.components.LineIcon("📥", MaterialTheme.colorScheme.primary, size = 30.dp)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text("导入名单文件", fontWeight = FontWeight.Bold)
@@ -472,7 +472,7 @@ private fun WelcomeScreen(onNewClass: () -> Unit, onImported: (com.deepshawn.hwc
             }
             AppCard(onClick = onNewClass) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("✏️", fontSize = 30.sp)
+                    com.deepshawn.hwcounter.ui.components.LineIcon("✏️", MaterialTheme.colorScheme.primary, size = 30.dp)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text("手动新建班级", fontWeight = FontWeight.Bold)

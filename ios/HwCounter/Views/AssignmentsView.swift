@@ -56,7 +56,7 @@ struct AssignmentsView: View {
         .safeAreaInset(edge: .top) {
             if !store.readOnly, let c = store.data.currentClass, store.drafts.contains(where: { $0.classId == c.id }) {
                 Button { showDrafts = true } label: {
-                    Text("🗂️ 有 \(store.drafts.filter { $0.classId == c.id }.count) 份草稿只保存在本机，还没上传 · 查看 ›").font(.callout)
+                    Text("有 \(store.drafts.filter { $0.classId == c.id }.count) 份草稿只保存在本机，还没上传 · 查看 ›").font(.callout)
                         .frame(maxWidth: .infinity).padding(10)
                         .background(Color.yellow.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
                 }
@@ -88,10 +88,10 @@ struct AssignmentCard: View {
                     Text(fmtDate(a.date)).font(.caption).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 10) {
-                    Text("✅ \(s.handedIn)").font(.caption)
-                    Text("❌ \(s.c(.MISSING))").font(.caption)
-                    Text("🏖️ \(s.c(.LEAVE))").font(.caption)
-                    Text("⏳ \(s.c(.NONE))").font(.caption).foregroundStyle(.secondary)
+                    Label("\(s.handedIn)", systemImage: lineSymbol("✅")).font(.caption).foregroundStyle(HwStatus.SUBMITTED.color)
+                    Label("\(s.c(.MISSING))", systemImage: lineSymbol("❌")).font(.caption).foregroundStyle(HwStatus.MISSING.color)
+                    Label("\(s.c(.LEAVE))", systemImage: lineSymbol("🏖️")).font(.caption).foregroundStyle(HwStatus.LEAVE.color)
+                    Label("\(s.c(.NONE))", systemImage: lineSymbol("⏳")).font(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)
@@ -119,7 +119,7 @@ struct NewAssignmentSheet: View {
                 Section {
                     Toggle(isOn: $asDraft) {
                         VStack(alignment: .leading) {
-                            Text("📝 先存为草稿")
+                            Text("先存为草稿")
                             Text("登记只保存在本机，确认后再手动上传或定时上传").font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -149,7 +149,7 @@ struct NewAssignmentSheet: View {
                         if asDraft, let c = store.data.currentClass {
                             let d = StatTable.newDraft(c, nil, title: name, subject: subject)
                             store.addDraft(d); dismiss()
-                            store.say("📝 已建草稿：只保存在本机，登记完再上传")
+                            store.say("已建草稿：只保存在本机，登记完再上传")
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { onDraft?(d.id) }
                         } else {
                             store.createAssignment(title: name, subject: subject)

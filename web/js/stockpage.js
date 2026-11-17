@@ -4,6 +4,7 @@ import { h } from '../vendor/preact.module.js';
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
 import { fmtNum, compareStudentNumbers, studentStats, leaderOf } from './model.js';
+import { Icon } from './icons.js';
 import { attention, ATT_LEVELS, stockBoard, groupStockBoard, SPANS, groupsOf, groupReport } from './analytics.js';
 
 const html = htm.bind(h);
@@ -206,13 +207,13 @@ export function StockTab({ c, rules, list, open, us, setUs }) {
   const { board, stale } = useBoard(c, rules, kind, span);
   useEffect(() => setSel(null), [board, kind]);
   const sc = stockColors(us);
-  if (!c.students.length) return html`<div class="empty"><div class="empty-e">📈</div>还没有学生</div>`;
+  if (!c.students.length) return html`<div class="empty"><div class="empty-i"><${Icon} name="📈" size=${44} stroke=${1.5} /></div>还没有学生</div>`;
   const isGroup = kind === 1;
   const head = html`<div class="pad an-picker"><${Tabs} items=${['个人 · 关注度', '小组 · 综合分']} value=${kind} onChange=${(v) => { setKind(v); setSel(null); }} />
     ${!(isGroup && !Object.keys(groupsMin2(c)).length) && html`<${SpanTabs} span=${span} setSpan=${(v) => { setSpan(v); setSel(null); }} />`}</div>`;
-  if (isGroup && !Object.keys(groupsMin2(c)).length) return html`${head}<div class="empty"><div class="empty-e">👥</div>还没有小组：在名单里给同学填写小组（每组至少 2 人）</div>`;
+  if (isGroup && !Object.keys(groupsMin2(c)).length) return html`${head}<div class="empty"><div class="empty-i"><${Icon} name="👥" size=${44} stroke=${1.5} /></div>还没有小组：在名单里给同学填写小组（每组至少 2 人）</div>`;
   if (board === undefined) return html`${head}<div class="empty">正在计算行情…</div>`;
-  if (board === null) return html`${head}<div class="empty"><div class="empty-e">👥</div>还没有小组（每组至少 2 人）</div>`;
+  if (board === null) return html`${head}<div class="empty"><div class="empty-i"><${Icon} name="👥" size=${44} stroke=${1.5} /></div>还没有小组（每组至少 2 人）</div>`;
   const m = board.market; const busy = stale || board.span !== span;
   const market = html`<section class="grp an-pad stk-card">
     <div class="an-mkt"><b>${isGroup ? 'GRP' : 'ATTN'}</b><small>${isGroup ? '小组综合指数 · 各组平均' : '关注指数 · 全班平均'}</small>${busy && html`<small class="an-busy">计算中…</small>`}<i class="stk-live" title="随数据实时更新"></i></div>
@@ -261,7 +262,7 @@ export function StockDetail({ c, rules, id, open, us, setUs }) {
   const list = useMemo(() => attention(c, rules), [c, rules]);
   const score = useMemo(() => studentStats(c, rules).find((x) => x.student.id === id)?.score, [c, rules, id]);
   const a = list.find((x) => x.student.id === id);
-  if (!a) return html`<div class="empty"><div class="empty-e">👤</div>找不到这位同学</div>`;
+  if (!a) return html`<div class="empty"><div class="empty-i"><${Icon} name="👤" size=${44} stroke=${1.5} /></div>找不到这位同学</div>`;
   const s = a.student; const sc = stockColors(us); const q = board?.stocks?.[id]; const col = attColor(a.level);
   const rank = list.findIndex((x) => x.student.id === id) + 1;
   return html`<section class="grp an-pad stk-card">

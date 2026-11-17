@@ -410,7 +410,7 @@ export const rangeTitle = (r) => (RANGES[r.range].calendar || r.range === 'CUSTO
 export function text(c, r, now = Date.now(), exam = null) {
   const L = []; const k = r.kpi; const ln = (s = '') => L.push(s);
   const d = new Date(now);
-  ln(`📊 ${c.name} 作业与成绩分析报告（${rangeTitle(r)}）`);
+  ln(`${c.name} 作业与成绩分析报告（${rangeTitle(r)}）`);
   ln(`范围：${r.window.label}`);
   ln(`生成日期：${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`);
   ln(); ln('一、总体情况');

@@ -62,7 +62,7 @@ fun LazyListScope.groupSections(c: SchoolClass, rules: ScoreRules, r: GroupAnaly
     itemsIndexed(r.teams, key = { _, t -> "grp-" + t.name }) { i, t ->
         val colors = MiuixTheme.colorScheme
         Row(Modifier.listCell(i, r.teams.size).clickable { onGroup(t.name) }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(listOf("🥇", "🥈", "🥉").getOrElse(t.rank - 1) { "${t.rank}" }, Modifier.width(30.dp), fontSize = if (t.rank <= 3) 20.sp else 15.sp, fontWeight = FontWeight.Bold, color = colors.onSurfaceVariantSummary)
+            Box(Modifier.width(30.dp)) { if (t.rank <= 3) com.deepshawn.hwcounter.ui.components.LineIcon("🏅", listOf(Color(0xFFE8A400), Color(0xFF9AA4B2), Color(0xFFC07A3A))[t.rank - 1], size = 20.dp) else Text("${t.rank}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onSurfaceVariantSummary) }
             Box(Modifier.size(10.dp).clip(CircleShape).background(colorOf.getValue(t.name)))
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
@@ -157,7 +157,7 @@ fun LazyListScope.groupSections(c: SchoolClass, rules: ScoreRules, r: GroupAnaly
                 val shownIdx = (p.index * 100).roundToInt()
                 val up = shownIdx >= 2; val down = shownIdx <= -2
                 Row(Modifier.fillMaxWidth().clickable { onGroup(p.group) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (up) "📈" else if (down) "📉" else "➖", fontSize = 18.sp)
+                    com.deepshawn.hwcounter.ui.components.LineIcon(if (up) "📈" else if (down) "📉" else "➖", if (up) Color(0xFF16A34A) else if (down) Color(0xFFE5384D) else colors.onSurfaceVariantSummary, size = 18.dp)
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(p.group + if (up) " · 进步" else if (down) " · 退步" else " · 持平", fontWeight = FontWeight.Medium, color = if (up) UP else if (down) DOWN else colors.onSurface)

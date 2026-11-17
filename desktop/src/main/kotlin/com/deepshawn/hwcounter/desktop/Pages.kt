@@ -162,7 +162,7 @@ fun AssignPage(x: Ctx, id: String) {
         }
         // 这次作业自己的抄袭关系图（每次作业各自一张图）
         val plag = remember(c, x.rules, id) { if (a.plagiarism.isEmpty()) null else com.deepshawn.hwcounter.data.PlagiarismGraph.report(c, x.rules, id) }
-        if (plag != null && plag.cases.isNotEmpty()) Group("🕵️ 本次抄袭关系图 · ${plag.copiers} 人抄袭、${plag.providers} 人提供") {
+        if (plag != null && plag.cases.isNotEmpty()) Group("本次抄袭关系图 · ${plag.copiers} 人抄袭、${plag.providers} 人提供") {
             Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { PlagGraph(plag) { x.open(Route.Student(it)) } }
             Text((plag.cases.filter { it.unknown }.map { "提供者不明 → ${it.receiver.name}" } + plag.edges.map { "${it.provider.name} → ${it.receiver.name}" }).joinToString("　"), Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp), fontSize = 13.sp, color = sub())
         }
@@ -178,7 +178,7 @@ fun AssignPage(x: Ctx, id: String) {
         if (prefs.layout == "list") Group {
             shown.forEach { s ->
                 val k = keys.getValue(s.id); val d = ptsOf[s.id] ?: 0.0
-                Cell(s.name, listOfNotNull(s.no, s.group.ifBlank { null }, if (k == View.PLAG) plagLine(c, a, s.id) else null, a.comments[s.id]?.let { "💬 $it" }).joinToString(" · "),
+                Cell(s.name, listOfNotNull(s.no, s.group.ifBlank { null }, if (k == View.PLAG) plagLine(c, a, s.id) else null, a.comments[s.id]?.let { "$it" }).joinToString(" · "),
                     left = { Avatar(s.name, 38.dp) },
                     right = { Row(verticalAlignment = Alignment.CenterVertically) { if (d != 0.0) Text(d.signed() + "  ", color = pts(d), fontWeight = FontWeight.Bold); Pill(k.label, k.c()) } },
                     onClick = { x.open(Route.Student(s.id)) })
@@ -195,7 +195,7 @@ fun AssignPage(x: Ctx, id: String) {
                     Text(s.name, Modifier.padding(top = 4.dp), fontWeight = FontWeight.Bold, maxLines = 1)
                     Text(s.no, fontSize = 10.5.sp, color = sub(), maxLines = 1)
                     Text((if (k == View.PLAG) plagLine(c, a, s.id).ifBlank { k.label } else k.label) + if (d != 0.0) " ${d.signed()}" else "", fontSize = 12.sp, color = k.c(), fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2)
-                    a.comments[s.id]?.let { Text("💬 $it", fontSize = 10.5.sp, color = sub(), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    a.comments[s.id]?.let { Text("$it", fontSize = 10.5.sp, color = sub(), maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             }
         }
@@ -287,7 +287,7 @@ fun StudentPage(x: Ctx, id: String) {
                 Text(listOfNotNull(s.no, s.group.ifBlank { null }, s.gender.ifBlank { null }, if (s.longLeave) "长期请假" else null).joinToString(" · "), fontSize = 13.sp, color = sub())
                 val roles = listOfNotNull(if (s.id in c.reps) "课代表" else null, if (s.group.isNotBlank() && c.leaderOf(s.group)?.id == s.id) "${s.group}组长" else null)
                 if (roles.isNotEmpty()) Text(roles.joinToString(" · "), fontSize = 13.sp, color = MiuixTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                if (s.note.isNotBlank()) Text("📝 ${s.note}", fontSize = 13.sp, color = sub())
+                if (s.note.isNotBlank()) Text("${s.note}", fontSize = 13.sp, color = sub())
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text((x.scoreOf[id] ?: 0.0).fmt(), fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MiuixTheme.colorScheme.primary)
@@ -346,7 +346,7 @@ fun ScoresPage(x: Ctx) {
         if (mode == "rank") Group {
             x.ranked.forEachIndexed { i, st ->
                 Cell(st.student.name, "${st.student.no}" + (if (st.student.group.isNotBlank()) " · ${st.student.group}" else "") + " · 未交 ${st.missing} 次",
-                    left = { Row(verticalAlignment = Alignment.CenterVertically) { Text(listOf("🥇", "🥈", "🥉").getOrElse(i) { "${i + 1}" }, Modifier.width(30.dp), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, color = sub()); Avatar(st.student.name, 38.dp) } },
+                    left = { Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.width(30.dp), contentAlignment = Alignment.Center) { if (i < 3) LineIcon("🏅", listOf(Color(0xFFE8A400), Color(0xFF9AA4B2), Color(0xFFC07A3A))[i], size = 20.dp) else Text("${i + 1}", textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, color = sub()) }; Avatar(st.student.name, 38.dp) } },
                     right = { Text(st.score.fmt(), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MiuixTheme.colorScheme.primary) }, onClick = { x.open(Route.Student(st.student.id)) })
             }
         } else {
@@ -421,7 +421,7 @@ fun SettingsPage(x: Ctx, reload: () -> Unit) {
             Cell("刷新数据", when (x.state.load) { Load.LOADING -> "正在加载…"; Load.ERROR -> "加载失败，请检查网络"; else -> "重新获取老师公开的最新数据" }, onClick = reload)
         }
         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("📚", fontSize = 30.sp)
+            LineIcon("📚", MiuixTheme.colorScheme.primary, size = 30.dp)
             Text("作业通 · Windows 查看版 v$APP_VERSION", fontWeight = FontWeight.Bold)
             Text("Windows 版只能查看，修改请在手机或 iPad 上操作", fontSize = 12.5.sp, color = sub())
         }

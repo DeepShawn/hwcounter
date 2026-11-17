@@ -150,13 +150,14 @@ button.ib:active { background: var(--chip); }
 .pal.on span { color: var(--fg); font-weight: 600; }
 .about { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 26px 20px; color: var(--sub); font-size: 12.5px; text-align: center; }
 .about b { color: var(--fg); font-size: 15px; }
-.logo { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; font-size: 26px; background: linear-gradient(135deg, var(--accent), var(--accent2)); margin-bottom: 6px; }
+.logo { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2)); margin-bottom: 6px; }
 
 .search { width: 100%; height: 42px; border: 0; border-radius: 12px; background: var(--card); color: var(--fg); padding: 0 14px; font: inherit; font-size: 15px; outline: none; }
 .search:focus { box-shadow: 0 0 0 2px var(--accent); }
 .more { display: block; margin: 4px auto 16px; padding: 10px 20px; border-radius: 99px; background: var(--card); color: var(--accent); font-weight: 600; font-size: 14px; }
 .empty { text-align: center; color: var(--sub); padding: 40px 20px; }
-.empty div { font-size: 46px; margin-bottom: 8px; }
+.empty .empty-i { display: grid; place-items: center; margin-bottom: 10px; color: var(--sub); opacity: .8; }
+.li { display: inline-block; vertical-align: -.15em; flex: none; }
 
 /* 悬浮底栏（毛玻璃胶囊 + 滑动选中块） */
 .tabbar { position: fixed; z-index: 30; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(calc(100% - 36px), 520px); height: 66px; padding: 6px; border-radius: 33px; background: var(--card); box-shadow: var(--shadow); display: grid; grid-template-columns: repeat(5, 1fr); }
@@ -195,7 +196,7 @@ button.ib:active { background: var(--chip); }
 .motion .guide-card { animation: rise .4s cubic-bezier(.2, .8, .2, 1); }
 .guide-top { display: flex; justify-content: space-between; align-items: center; color: var(--sub); font-size: 13px; }
 .guide-skip { color: var(--accent); font-weight: 600; padding: 8px; }
-.guide-icon { width: 80px; height: 80px; border-radius: 24px; margin: 10px auto 12px; display: grid; place-items: center; font-size: 38px; }
+.guide-icon { width: 80px; height: 80px; border-radius: 24px; margin: 10px auto 12px; display: grid; place-items: center; color: #fff; }
 .guide h2 { margin: 0 0 6px; font-size: 21px; }
 .guide p { margin: 0 0 12px; color: var(--sub); font-size: 14px; }
 .guide ul { list-style: none; margin: 0; padding: 12px 14px; background: var(--chip); border-radius: 14px; text-align: left; font-size: 13.5px; }
@@ -313,7 +314,7 @@ button.ib:active { background: var(--chip); }
 .an-att { display: flex; flex-direction: column; align-items: flex-end; min-width: 48px; gap: 2px; }
 .an-att b { font-size: 18px; font-weight: 700; }
 .an-att small { font-size: 10.5px; color: var(--sub); }
-.an-medal { width: 30px; flex: none; text-align: center; font-size: 18px; color: var(--sub); }
+.an-medal { width: 30px; flex: none; display: grid; place-items: center; font-size: 15px; color: var(--sub); }
 .an-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .an-w60 { width: 52px; flex: none; color: var(--sub); font-weight: 600; }
 .an-hist-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }

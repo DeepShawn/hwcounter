@@ -100,8 +100,8 @@ import kotlin.math.hypot
 fun CountModeSwitch(paper: Boolean, assignmentId: String?) {
     val kit = LocalKit.current
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-        SegmentedButton(selected = !paper, onClick = { if (paper) kit.nav.replace(Route.Stack(assignmentId)) }, shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text("📚 数作业本") }
-        SegmentedButton(selected = paper, onClick = { if (!paper) kit.nav.replace(Route.Paper(assignmentId)) }, shape = SegmentedButtonDefaults.itemShape(1, 2)) { Text("📄 数试卷") }
+        SegmentedButton(selected = !paper, onClick = { if (paper) kit.nav.replace(Route.Stack(assignmentId)) }, shape = SegmentedButtonDefaults.itemShape(0, 2)) { Text("数作业本") }
+        SegmentedButton(selected = paper, onClick = { if (!paper) kit.nav.replace(Route.Paper(assignmentId)) }, shape = SegmentedButtonDefaults.itemShape(1, 2)) { Text("数试卷") }
     }
 }
 
@@ -179,14 +179,14 @@ fun PaperCountScreen(vm: AppViewModel, data: AppData, assignmentId: String?) {
                 }
             }
             AppCard(Modifier.padding(16.dp)) {
-                Text("📷 拍出好结果的诀窍", fontWeight = FontWeight.Bold)
+                Text("拍出好结果的诀窍", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(6.dp))
                 listOf(
-                    "🔍 尽量靠近：每张纸在照片里至少 3 个像素厚（100 张一摞时，纸边最好占画面一半高度以上）",
-                    "🎯 点击屏幕对焦在纸边上，手稳住，必要时用 2× 镜头",
-                    "💡 光线从侧前方打过来，纸缝的阴影更明显；避免反光",
-                    "📐 把纸边墩齐；正对拍摄，不要太斜",
-                    "🗂️ 太厚的一摞可以分成几叠分别数",
+                    "尽量靠近：每张纸在照片里至少 3 个像素厚（100 张一摞时，纸边最好占画面一半高度以上）",
+                    "点击屏幕对焦在纸边上，手稳住，必要时用 2× 镜头",
+                    "光线从侧前方打过来，纸缝的阴影更明显；避免反光",
+                    "把纸边墩齐；正对拍摄，不要太斜",
+                    "太厚的一摞可以分成几叠分别数",
                 ).forEach { Text(it, fontSize = 13.sp, modifier = Modifier.padding(vertical = 2.dp)) }
             }
             return@Column
@@ -245,7 +245,7 @@ fun PaperCountScreen(vm: AppViewModel, data: AppData, assignmentId: String?) {
                 if (!res.resolvable || res.pitchPx < 3f) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "⚠️ 纸缝偏细/模糊（每张约 ${"%.1f".format(res.pitchPx)} 像素）。靠近一些、对焦纸边、侧光拍摄，让每张至少 3 像素，结果会准很多。",
+                        "纸缝偏细/模糊（每张约 ${"%.1f".format(res.pitchPx)} 像素）。靠近一些、对焦纸边、侧光拍摄，让每张至少 3 像素，结果会准很多。",
                         fontSize = 12.sp, color = statusColor(HwStatus.LATE),
                         modifier = Modifier.clip(MaterialTheme.shapes.small).background(statusColor(HwStatus.LATE).copy(alpha = 0.12f)).padding(8.dp),
                     )
@@ -351,7 +351,7 @@ fun PaperCountScreen(vm: AppViewModel, data: AppData, assignmentId: String?) {
         // 放大核对条带
         val st = strip
         if (st != null && res != null) {
-            SectionTitle("🔬 放大核对（左右滑动，点击增删标记）", Modifier.padding(horizontal = 12.dp))
+            SectionTitle("放大核对（左右滑动，点击增删标记）", Modifier.padding(horizontal = 12.dp))
             val stripImg = remember(st) { st.asImageBitmap() }
             val wDp = with(density) { st.width.toDp() }
             val hDp = with(density) { st.height.toDp() }

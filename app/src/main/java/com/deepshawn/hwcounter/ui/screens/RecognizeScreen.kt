@@ -163,7 +163,7 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
             val aiReady = settings.ai.apiKey.isNotBlank() || settings.ai.baseUrl.contains("localhost") || settings.ai.baseUrl.contains("192.168.")
             if (settings.recogMode != RecogMode.LOCAL && !aiReady) aiNoteSkip = "未配置 API Key，已跳过 AI（仅本地识别）"
             if (settings.recogMode != RecogMode.LOCAL && aiReady) {
-                phase = "第 ${i + 1}/${uris.size} 张：AI 大模型分析中 ✨"
+                phase = "第 ${i + 1}/${uris.size} 张：AI 大模型分析中"
                 try {
                     val r = if (settings.ai.vision) AiRecognizer.recognize(settings.ai, bmp, roster)
                     else AiRecognizer.recognizeText(settings.ai, ocrLines, roster)
@@ -232,8 +232,8 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
                     Spacer(Modifier.height(10.dp))
                     LinearProgressIndicator(progress = { progress / uris.size.toFloat() }, modifier = Modifier.fillMaxWidth().clip(CircleShape))
                 }
-                results.mapNotNull { it.error }.forEach { Text("⚠️ $it", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
-                results.map { it.aiNote }.filter { it.isNotBlank() }.forEach { Text("🤖 $it", fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
+                results.mapNotNull { it.error }.forEach { Text("$it", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
+                results.map { it.aiNote }.filter { it.isNotBlank() }.forEach { Text("$it", fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
             }
         }
         // 图片 + 标注框
@@ -250,7 +250,7 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
                 Legend(Color(0xFFFF8A3D), "未匹配编号")
             }
         }
-        item { SectionTitle("✅ 已匹配 ${matchedIds.size} 人（点击可取消）", Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
+        item { SectionTitle("已匹配 ${matchedIds.size} 人（点击可取消）", Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
         item {
             FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 allHits.forEach { h ->
@@ -275,7 +275,7 @@ fun RecognizeScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String, uri
         }
         item { RawTextPanel(results.flatMap { it.rawText }.distinct()) }
         item {
-            SectionTitle("➕ 漏识别？点击手动补录", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+            SectionTitle("漏识别？点击手动补录", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
             OutlinedTextField(addQuery, { addQuery = it }, placeholder = { Text("搜索姓名/学号") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
             Spacer(Modifier.height(8.dp))
             val rest = c.students.filter { it.id !in matchedIds && (addQuery.isBlank() || it.name.contains(addQuery) || it.no.contains(addQuery)) }

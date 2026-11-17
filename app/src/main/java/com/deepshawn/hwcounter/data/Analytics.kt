@@ -695,7 +695,7 @@ object Analytics {
     /** 文字版分析报告 */
     fun text(c: SchoolClass, r: Report, now: Long = System.currentTimeMillis(), exam: ExamReport? = null): String = buildString {
         val k = r.kpi
-        appendLine("📊 ${c.name} 作业与成绩分析报告（${rangeTitle(r)}）")
+        appendLine("${c.name} 作业与成绩分析报告（${rangeTitle(r)}）")
         appendLine("范围：${r.window.label}")
         appendLine("生成日期：${java.text.SimpleDateFormat("yyyy年M月d日", java.util.Locale.CHINA).format(java.util.Date(now))}")
         appendLine()

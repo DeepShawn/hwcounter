@@ -128,7 +128,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
     val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) scope.launch {
             val ok = withContext(Dispatchers.IO) { runCatching { ctx.contentResolver.openOutputStream(uri)?.use { it.write(vm.exportBackup().toByteArray()) } }.isSuccess }
-            kit.toast(if (ok) "✅ 备份完成" else "备份失败")
+            kit.toast(if (ok) "备份完成" else "备份失败")
         }
     }
     val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -475,7 +475,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                             DropdownMenu(modelMenu, { modelMenu = false }) {
                                 models.forEach { m ->
                                     DropdownMenuItem(
-                                        text = { Text(m + if (looksVision(m)) "  🖼️" else "") },
+                                        text = { Text(m + if (looksVision(m)) "（识图）" else "") },
                                         onClick = { ai { it.copy(model = m, vision = looksVision(m) || it.vision && m == it.model) }; modelMenu = false },
                                     )
                                 }
@@ -501,9 +501,9 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                                 scope.launch {
                                     try {
                                         val r = AiRecognizer.ping(s.ai)
-                                        kit.toast("✅ 连接成功：${r.take(30)}")
+                                        kit.toast("连接成功：${r.take(30)}")
                                     } catch (e: Exception) {
-                                        kit.toast("❌ ${e.message?.take(120)}")
+                                        kit.toast("${e.message?.take(120)}")
                                     }
                                     testing = false
                                 }
@@ -531,7 +531,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Box(Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(10.dp)).background(Brush.linearGradient(p.gradient)), contentAlignment = Alignment.Center) {
-                                    Text(p.emoji, fontSize = 18.sp)
+                                    com.deepshawn.hwcounter.ui.components.LineIcon(p.emoji, Color.White, size = 18.dp)
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 Text(p.name, fontSize = 11.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
@@ -570,7 +570,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                 group("交互反馈", key = "feedback") {
                     SuperSwitch(checked = s.haptic, onCheckedChange = { v -> vm.updateSettings { it.copy(haptic = v) } }, title = "震动反馈")
                     SuperSwitch(checked = s.sound, onCheckedChange = { v -> vm.updateSettings { it.copy(sound = v) } }, title = "提示音", summary = "扫描识别成功时“嘀”一声")
-                    SuperSwitch(checked = s.confetti, onCheckedChange = { v -> vm.updateSettings { it.copy(confetti = v) } }, title = "彩带庆祝", summary = if (ui.lowPerf) "低性能模式下不显示" else "全员交齐时放彩带 🎉")
+                    SuperSwitch(checked = s.confetti, onCheckedChange = { v -> vm.updateSettings { it.copy(confetti = v) } }, title = "彩带庆祝", summary = if (ui.lowPerf) "低性能模式下不显示" else "全员交齐时放彩带")
                 }
             }
             "data" -> {
@@ -591,7 +591,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
         if (section == null) item(key = "about") {
             Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.size(56.dp).clip(RoundedCornerShape(18.dp)).background(Brush.linearGradient(listOf(Color(0xFF3482FF), Color(0xFF6E5BFF)))), contentAlignment = Alignment.Center) {
-                    Text("📚", fontSize = 26.sp)
+                    com.deepshawn.hwcounter.ui.components.LineIcon("📚", Color.White, size = 28.dp)
                 }
                 Spacer(Modifier.height(8.dp))
                 Text("作业通 v${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.Bold)

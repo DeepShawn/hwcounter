@@ -32,6 +32,8 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation("top.yukonga.miuix.kmp:miuix-desktop:0.8.8")
+    // 纯线条图标（Lucide）：界面不用 emoji
+    implementation("com.composables:icons-lucide-cmp:2.2.1")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
     testImplementation(kotlin("test"))

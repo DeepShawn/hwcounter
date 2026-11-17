@@ -300,7 +300,7 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
     importResult?.let { r ->
         AlertDialog(
             onDismissRequest = { importResult = null },
-            title = { Text("📥 导入 ${r.students.size} 名学生") },
+            title = { Text("导入 ${r.students.size} 名学生") },
             text = {
                 Column {
                     r.className?.let { Text("班级：$it", fontWeight = FontWeight.Bold) }
@@ -322,7 +322,7 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
     if (showTemplate) {
         AlertDialog(
             onDismissRequest = { showTemplate = false },
-            title = { Text("📘 名单 JSON 格式") },
+            title = { Text("名单 JSON 格式") },
             text = {
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                     Text("推荐格式：", fontWeight = FontWeight.Bold)
@@ -341,7 +341,7 @@ fun StudentsScreen(vm: AppViewModel, data: AppData) {
         var text by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { paste = false },
-            title = { Text("📋 粘贴名单") },
+            title = { Text("粘贴名单") },
             text = {
                 Column {
                     Text("从 Excel 复制“学号 姓名”两列直接粘贴，或粘贴 JSON", fontSize = 12.sp)
@@ -512,7 +512,8 @@ fun StudentDetailScreen(vm: AppViewModel, data: AppData, studentId: String) {
                     row.delta >= 0 -> statusColor(HwStatus.SUBMITTED)
                     else -> statusColor(HwStatus.MISSING)
                 }
-                Text(if (isRecharge) "🔄" else row.delta.signed(), fontWeight = FontWeight.Black, color = color.copy(alpha = if (dim) 0.45f else 1f), modifier = Modifier.width(52.dp))
+                if (isRecharge) Box(Modifier.width(52.dp)) { com.deepshawn.hwcounter.ui.components.LineIcon("🔄", color.copy(alpha = if (dim) 0.45f else 1f), size = 18.dp) }
+                else Text(row.delta.signed(), fontWeight = FontWeight.Black, color = color.copy(alpha = if (dim) 0.45f else 1f), modifier = Modifier.width(52.dp))
                 Column(Modifier.weight(1f)) {
                     Text(row.title, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (dim) 0.5f else 1f))
                     Text(

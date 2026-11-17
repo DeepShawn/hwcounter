@@ -25,7 +25,7 @@ struct VoiceSheet: View {
         NavigationStack {
             VStack(spacing: 16) {
                 Picker("登记为", selection: $status) {
-                    ForEach([HwStatus.SUBMITTED, .EXCELLENT, .LATE, .MISSING, .LEAVE]) { s in Text("\(s.emoji) \(s.label)").tag(s) }
+                    ForEach([HwStatus.SUBMITTED, .EXCELLENT, .LATE, .MISSING, .LEAVE]) { s in Text("\(s.label)").tag(s) }
                 }
                 .pickerStyle(.segmented)
 
@@ -67,7 +67,7 @@ struct VoiceSheet: View {
                 .listStyle(.plain)
             }
             .padding()
-            .navigationTitle("🎙️ 语音登记")
+            .navigationTitle("语音登记")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { mic.stop(); dismiss() } } }
             .onAppear { mic.onFinal = { handle($0) } }
@@ -140,7 +140,7 @@ struct PhotoRecognizeSheet: View {
                 }
                 .padding()
             }
-            .navigationTitle("📷 拍照识别")
+            .navigationTitle("拍照识别")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }

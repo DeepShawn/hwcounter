@@ -217,7 +217,7 @@ fun VoiceScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
             Text("念到的同学登记为：", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LATE, HwStatus.MISSING, HwStatus.LEAVE).forEach { s ->
-                    Chip2("${s.emoji} ${s.label}", s == status, { status = s }, color = statusColor(s))
+                    Chip2(s.label, s == status, { status = s }, color = statusColor(s))
                 }
             }
         }
@@ -228,7 +228,7 @@ fun VoiceScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                 Column(Modifier.padding(16.dp)) {
                     if (!VoiceListener.available(ctx)) {
                         Text(
-                            "本机没有系统语音识别服务。请点下面的输入框，用输入法自带的语音输入（搜狗、讯飞、百度、微信键盘上的🎤）连续念，停顿后自动登记。",
+                            "本机没有系统语音识别服务。请点下面的输入框，用输入法自带的语音输入（搜狗、讯飞、百度、微信键盘上的）连续念，停顿后自动登记。",
                             fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(8.dp))

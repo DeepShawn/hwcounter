@@ -229,21 +229,21 @@ fun SeatingScreen(vm: AppViewModel, data: AppData) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { kit.nav.pop() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = Color.White) }
                     Column(Modifier.weight(1f)) {
-                        Text("🪑 座位表", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                        Text("${c.emoji} ${c.name} · ${seating?.seats?.size ?: 0}/${c.students.size} 人已入座", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+                        Text("座位表", color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                        Text("${c.name} · ${seating?.seats?.size ?: 0}/${c.students.size} 人已入座", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
                     }
                 }
             }
         }
         item {
             FlowRow(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip({ photoSheet = true }, { Text("📷 照片识别") })
-                AssistChip({ paste = true }, { Text("📋 粘贴座位表") })
-                AssistChip({ openFile.launch(arrayOf("text/*", "application/json", "*/*")) }, { Text("📄 从文件导入") })
-                AssistChip({ auto = true }, { Text("⚡ 按学号自动排列") })
+                AssistChip({ photoSheet = true }, { Text("照片识别") })
+                AssistChip({ paste = true }, { Text("粘贴座位表") })
+                AssistChip({ openFile.launch(arrayOf("text/*", "application/json", "*/*")) }, { Text("从文件导入") })
+                AssistChip({ auto = true }, { Text("按学号自动排列") })
                 if (seating != null) {
-                    AssistChip({ vm.setSeating { it?.let(SeatingLogic::rotate) }; kit.undoable("讲台已换边") }, { Text("🔄 讲台换边") })
-                    AssistChip({ confirmClear = true }, { Text("🗑️ 清空") })
+                    AssistChip({ vm.setSeating { it?.let(SeatingLogic::rotate) }; kit.undoable("讲台已换边") }, { Text("讲台换边") })
+                    AssistChip({ confirmClear = true }, { Text("清空") })
                 }
             }
         }
@@ -330,7 +330,7 @@ fun SeatingScreen(vm: AppViewModel, data: AppData) {
         var text by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { paste = false },
-            title = { Text("📋 粘贴座位表") },
+            title = { Text("粘贴座位表") },
             text = {
                 Column {
                     Text("每行一排、从讲台那边写起；单元格写姓名或学号，用 Tab（Excel 直接复制）、逗号或空格隔开，空位写“空”。可以加一行“讲台”表示讲台位置。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -351,7 +351,7 @@ fun SeatingScreen(vm: AppViewModel, data: AppData) {
         var cols by remember { mutableIntStateOf(seating?.cols ?: 8) }
         AlertDialog(
             onDismissRequest = { auto = false },
-            title = { Text("⚡ 按学号自动排列") },
+            title = { Text("按学号自动排列") },
             text = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("每排")

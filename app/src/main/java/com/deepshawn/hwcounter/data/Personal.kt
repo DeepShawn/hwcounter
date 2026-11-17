@@ -298,7 +298,7 @@ object Personal {
     /** 文字版个人报告 */
     fun text(c: SchoolClass, r: Report): String = buildString {
         val s = r.student
-        appendLine("👤 ${s.name}（${s.no}）个人分析报告 · ${c.name}")
+        appendLine("${s.name}（${s.no}）个人分析报告 · ${c.name}")
         appendLine("积分 ${r.score.fmt()}，全班第 ${r.rank}/${r.of} 名；关注度指数 ${r.attention.index.roundToInt()}（${r.attention.level.label}）")
         appendLine()
         appendLine("一、作业：应交 ${r.expected} 次，已交 ${r.counts[HwStatus.SUBMITTED]}、优秀 ${r.counts[HwStatus.EXCELLENT]}、迟交 ${r.counts[HwStatus.LATE]}、未交 ${r.counts[HwStatus.MISSING]}、请假 ${r.counts[HwStatus.LEAVE]}")

@@ -60,9 +60,9 @@ struct ScoresView: View {
                                 Button(selecting ? "退出多选" : "多选") { selecting.toggle(); selected.removeAll() }
                                 Menu {
                                     Button("修改基准分") { scoreValueRequest = ScoreValueRequest(classId: nil, studentIds: []) }
-                                    Button("🔄 全班积分重置") { scoreValueRequest = ScoreValueRequest(classId: c.id, studentIds: c.students.map(\.id)) }
+                                    Button("全班积分重置") { scoreValueRequest = ScoreValueRequest(classId: c.id, studentIds: c.students.map(\.id)) }
                                         .disabled(selecting)
-                                    Button("🧾 重置记录（\(c.recharges.count)）") { showRecharges = true }
+                                    Button("重置记录（\(c.recharges.count)）") { showRecharges = true }
                                         .disabled(c.recharges.isEmpty)
                                 } label: { Label("分数设置", systemImage: "ellipsis.circle") }
                             }
@@ -85,7 +85,7 @@ struct ScoresView: View {
                             } label: { Text("批量加减分").frame(maxWidth: .infinity) }
                             .buttonStyle(.borderedProminent)
                             .disabled(picked.isEmpty)
-                            Button("🔄 积分重置") { scoreValueRequest = ScoreValueRequest(classId: c.id, studentIds: picked.map(\.id)) }
+                            Button("积分重置") { scoreValueRequest = ScoreValueRequest(classId: c.id, studentIds: picked.map(\.id)) }
                                 .disabled(picked.isEmpty)
                         }
                         .padding().background(.regularMaterial)
@@ -115,7 +115,7 @@ struct ScoresView: View {
         HStack(alignment: .bottom, spacing: 16) {
             ForEach(Array(top.enumerated()), id: \.element.id) { i, st in
                 VStack(spacing: 6) {
-                    Text(["🥇", "🥈", "🥉"][i]).font(.system(size: 40))
+                    Image(systemName: "medal").font(.system(size: 34)).foregroundStyle([Color(red: 0.91, green: 0.64, blue: 0), Color(red: 0.6, green: 0.64, blue: 0.7), Color(red: 0.75, green: 0.48, blue: 0.23)][i])
                     Text(st.student.name).font(.headline)
                     Text(fmtNum(st.score)).font(.title2.bold().monospacedDigit()).foregroundStyle(Color.accentColor)
                 }
@@ -203,7 +203,7 @@ private struct ScoreValueSheet: View {
                             store.rechargeScores(targets.map(\.id), target: value, note: note, classId: classId,
                                                  effectiveAt: startMode == 2 ? day : nil,
                                                  assignmentId: startMode == 1 && !startAssignment.isEmpty ? startAssignment : nil)
-                            store.say("🔄 已为 \(targets.count) 人重置为 \(fmtNum(value)) 分，历史记录已保留")
+                            store.say("已为 \(targets.count) 人重置为 \(fmtNum(value)) 分，历史记录已保留")
                         } else {
                             store.update { var rules = $0.rules; rules.initial = value; $0.rules = rules }
                             store.say("基准分已改为 \(fmtNum(value))，历史记录已保留")

@@ -2,6 +2,11 @@
 
 package com.deepshawn.hwcounter.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -65,7 +70,7 @@ fun NewAssignmentDialog(
     var title by remember { mutableStateOf(initialTitle) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initialTitle.isBlank()) "📝 新建作业" else "✏️ 编辑作业") },
+        title = { Text(if (initialTitle.isBlank()) "新建作业" else "编辑作业") },
         text = {
             Column {
                 OutlinedTextField(
@@ -113,7 +118,11 @@ fun ClassDialog(
                 OutlinedTextField(name, { name = it }, label = { Text("班级名称") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(12.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ClassEmojis.forEach { e -> Chip2(e, e == emoji, { emoji = e }) }
+                    ClassEmojis.forEach { e ->
+                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(if (e == emoji) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant).clickable { emoji = e }, contentAlignment = Alignment.Center) {
+                            com.deepshawn.hwcounter.ui.components.LineIcon(e, if (e == emoji) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, size = 20.dp)
+                        }
+                    }
                 }
             }
         },
@@ -135,7 +144,7 @@ fun ConfirmDialog(title: String, text: String, confirm: String = "确定", onDis
 
 /** 随机点名：老虎机滚动效果 */
 @Composable
-fun RandomPickDialog(pool: List<Student>, title: String = "🎲 随机点名", onDismiss: () -> Unit, onPicked: ((Student) -> Unit)? = null) {
+fun RandomPickDialog(pool: List<Student>, title: String = "随机点名", onDismiss: () -> Unit, onPicked: ((Student) -> Unit)? = null) {
     val kit = LocalKit.current
     var shown by remember { mutableStateOf(pool.randomOrNull()) }
     var round by remember { mutableIntStateOf(0) }

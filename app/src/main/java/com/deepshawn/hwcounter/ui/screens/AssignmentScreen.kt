@@ -170,7 +170,7 @@ fun rememberTts(): (String) -> Unit {
 fun PhotoSourceSheet(onDismiss: () -> Unit, onCamera: () -> Unit, onGallery: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
-            Text("📸 拍照识别作业", style = MaterialTheme.typography.titleLarge)
+            Text("拍照识别作业", style = MaterialTheme.typography.titleLarge)
             Text(
                 "小技巧：把作业本错开平铺或成摞展开，露出封面学号/姓名；也可以多拍几张一起识别，结果会自动去重合并。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -240,7 +240,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
     var lastRate by remember { mutableStateOf(sm.rate) }
     LaunchedEffect(sm.rate) {
         if (sm.rate >= 1f && lastRate < 1f && sm.expected > 0) {
-            kit.celebrate(); kit.haptic(true); kit.toast("🎉 全员交齐！")
+            kit.celebrate(); kit.haptic(true); kit.toast("全员交齐！")
         }
         lastRate = sm.rate
     }
@@ -250,7 +250,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
             val ok = withContext(Dispatchers.IO) {
                 runCatching { ctx.contentResolver.openOutputStream(uri)?.use { Exporter.writeXlsx(c, settings.rules, it) } }.isSuccess
             }
-            kit.toast(if (ok) "✅ 已导出 Excel" else "导出失败")
+            kit.toast(if (ok) "已导出 Excel" else "导出失败")
         }
     }
 
@@ -314,12 +314,12 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                         Box {
                             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "更多", tint = Color.White) }
                             DropdownMenu(menu, { menu = false }) {
-                                DropdownMenuItem(text = { Text(if (myDraft != null) "📝 打开未上传的草稿（改动 ${com.deepshawn.hwcounter.recog.StatTable.changes(myDraft).size} 人）" else "📝 在草稿里登记（只存本机，稍后上传）") }, onClick = {
+                                DropdownMenuItem(text = { Text(if (myDraft != null) "打开未上传的草稿（改动 ${com.deepshawn.hwcounter.recog.StatTable.changes(myDraft).size} 人）" else "在草稿里登记（只存本机，稍后上传）") }, onClick = {
                                     menu = false
                                     if (myDraft != null) kit.nav.push(Route.Draft(myDraft.id))
                                     else { val d = com.deepshawn.hwcounter.recog.StatTable.newDraft(c, a); vm.addDraft(d); kit.nav.push(Route.Draft(d.id)) }
                                 })
-                                DropdownMenuItem(text = { Text("📋 分享统计名单 Excel") }, onClick = {
+                                DropdownMenuItem(text = { Text("分享统计名单 Excel") }, onClick = {
                                     menu = false
                                     scope.launch {
                                         val f = withContext(Dispatchers.IO) { Exporter.statListFile(ctx, c, a.title, a.subject, a.createdAt, a.statuses, a.comments) }
@@ -327,10 +327,10 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                                     }
                                 })
                                 HorizontalDivider()
-                                DropdownMenuItem(text = { Text("📊 导出 Excel（全班总表）") }, onClick = {
+                                DropdownMenuItem(text = { Text("导出 Excel（全班总表）") }, onClick = {
                                     menu = false; saveXlsx.launch("${c.name}_作业统计_${Exporter.fileStamp()}.xlsx")
                                 })
-                                DropdownMenuItem(text = { Text("📤 分享本次 Excel") }, onClick = {
+                                DropdownMenuItem(text = { Text("分享本次 Excel") }, onClick = {
                                     menu = false
                                     scope.launch {
                                         val f = withContext(Dispatchers.IO) {
@@ -341,13 +341,13 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                                         Exporter.shareFile(ctx, f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                                     }
                                 })
-                                DropdownMenuItem(text = { Text("📄 分享 CSV") }, onClick = {
+                                DropdownMenuItem(text = { Text("分享 CSV") }, onClick = {
                                     menu = false
                                     val f = File(Exporter.exportDir(ctx), "${a.title}_${Exporter.fileStamp()}.csv".replace("/", "_"))
                                     f.writeText(Exporter.csv(c, a, settings.rules))
                                     Exporter.shareFile(ctx, f, "text/csv")
                                 })
-                                DropdownMenuItem(text = { Text("🖼️ 生成战报海报") }, onClick = {
+                                DropdownMenuItem(text = { Text("生成战报海报") }, onClick = {
                                     menu = false
                                     scope.launch {
                                         val f = withContext(Dispatchers.Default) {
@@ -357,13 +357,13 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                                         Exporter.shareFile(ctx, f, "image/png", "分享战报")
                                     }
                                 })
-                                DropdownMenuItem(text = { Text("💬 分享文字通报（发家长群）") }, onClick = {
+                                DropdownMenuItem(text = { Text("分享文字通报（发家长群）") }, onClick = {
                                     menu = false; Exporter.shareText(ctx, Exporter.summaryText(c, a))
                                 })
                                 HorizontalDivider()
-                                DropdownMenuItem(text = { Text("🎲 从未交中随机抽") }, onClick = { menu = false; random = true })
-                                DropdownMenuItem(text = { Text("✏️ 编辑作业信息") }, onClick = { menu = false; edit = true })
-                                DropdownMenuItem(text = { Text("🧹 清空本次登记") }, onClick = {
+                                DropdownMenuItem(text = { Text("从未交中随机抽") }, onClick = { menu = false; random = true })
+                                DropdownMenuItem(text = { Text("编辑作业信息") }, onClick = { menu = false; edit = true })
+                                DropdownMenuItem(text = { Text("清空本次登记") }, onClick = {
                                     menu = false; vm.editAssignment(a.id) { it.copy(statuses = emptyMap()) }; kit.undoable("已清空")
                                 })
                             }
@@ -398,7 +398,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 when {
-                                    diff == 0 -> "实物 $n 本，与登记人数一致 👍"
+                                    diff == 0 -> "实物 $n 本，与登记人数一致"
                                     diff > 0 -> "实物 $n 本，比登记多 $diff 本：可能有人没被识别到"
                                     else -> "实物 $n 本，比登记少 ${-diff} 本：请核对是否误标"
                                 },
@@ -437,7 +437,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                     color = Color(0xFFFFF8E1), shape = MaterialTheme.shapes.medium,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).clip(MaterialTheme.shapes.medium).clickable { kit.nav.push(Route.Draft(myDraft.id)) },
                 ) {
-                    Text("📝 这次作业有一份未上传的草稿（改动 ${com.deepshawn.hwcounter.recog.StatTable.changes(myDraft).size} 人），上传后才会写进这里 ›", color = Color(0xFF5C4400), fontSize = 13.sp, modifier = Modifier.padding(10.dp))
+                    Text("这次作业有一份未上传的草稿（改动 ${com.deepshawn.hwcounter.recog.StatTable.changes(myDraft).size} 人），上传后才会写进这里 ›", color = Color(0xFF5C4400), fontSize = 13.sp, modifier = Modifier.padding(10.dp))
                 }
             }
             if (typing) {
@@ -575,7 +575,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
                             Text(g, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.width(8.dp))
                             Text("$done/${list.size}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                            if (done == list.size) Text("  🏅 全组交齐", fontSize = 12.sp)
+                            if (done == list.size) Text("  全组交齐", fontSize = 12.sp)
                         }
                     }
                     items(list, key = { it.id }) { s ->
@@ -681,7 +681,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
     }
     if (random) {
         val pool = c.students.filter { (a.statuses[it.id] ?: HwStatus.NONE) in setOf(HwStatus.MISSING, HwStatus.NONE) }
-        RandomPickDialog(pool, "🎯 抽一位未交的同学", onDismiss = { random = false })
+        RandomPickDialog(pool, "抽一位未交的同学", onDismiss = { random = false })
     }
 }
 
@@ -752,7 +752,7 @@ private fun ChoiceButton(emoji: String, label: String, col: Color, container: Co
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(emoji, fontSize = 18.sp)
+        com.deepshawn.hwcounter.ui.components.LineIcon(emoji, if (selected) Color.White else col, size = 20.dp)
         Text(label, fontSize = 12.sp, color = if (selected) Color.White else col, fontWeight = FontWeight.Bold)
     }
 }
@@ -775,7 +775,9 @@ private fun StudentCard(s: Student, a: Assignment, delta: Double, batch: Boolean
             Box {
                 Avatar(s.name, size = 42.dp)
                 if (st != HwStatus.NONE) {
-                    Text(if (plag) "🕵️" else if (failed) "⛔" else st.emoji, fontSize = 13.sp, modifier = Modifier.align(Alignment.BottomEnd))
+                    Box(Modifier.align(Alignment.BottomEnd).size(18.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
+                        com.deepshawn.hwcounter.ui.components.LineIcon(if (plag) "🕵️" else if (failed) "⛔" else st.emoji, if (plag) PlagiarismColor else if (failed) ReviewColor else statusColor(st), size = 13.dp)
+                    }
                 }
                 if (batch && sel) {
                     Box(Modifier.size(18.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary).align(Alignment.TopEnd), contentAlignment = Alignment.Center) {
@@ -791,7 +793,7 @@ private fun StudentCard(s: Student, a: Assignment, delta: Double, batch: Boolean
                 Text(if (plag) "抄袭" else if (failed) "复审不合格" else st.label, color = col, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 if (delta != 0.0) Text(" ${delta.signed()}", color = if (delta > 0) statusColor(HwStatus.SUBMITTED) else statusColor(HwStatus.MISSING), fontSize = 11.sp, fontWeight = FontWeight.Black)
             }
-            if (a.comments[s.id] != null) Text("💬 " + a.comments[s.id], fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (a.comments[s.id] != null) Text("" + a.comments[s.id], fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -814,7 +816,7 @@ private fun StudentListRow(s: Student, a: Assignment, delta: Double, batch: Bool
         Column(Modifier.weight(1f)) {
             Text(s.name, fontWeight = FontWeight.Bold)
             Text(
-                listOf(s.no, s.group, a.comments[s.id]?.let { "💬$it" } ?: "").filter { it.isNotBlank() }.joinToString(" · "),
+                listOf(s.no, s.group, a.comments[s.id] ?: "").filter { it.isNotBlank() }.joinToString(" · "),
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
@@ -903,7 +905,7 @@ fun StudentSheet(vm: AppViewModel, data: AppData, c: SchoolClass, a: Assignment,
             if (note.isNotEmpty()) Text(note, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (note.contains(" -")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
             if (a.plagiarized(s.id)) {
                 Row(Modifier.padding(top = 8.dp).fillMaxWidth().clip(MaterialTheme.shapes.medium).background(PlagiarismColor.copy(alpha = 0.1f)).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("🕵️ " + plagiarismLine(c, a, s.id), color = PlagiarismColor, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Text("" + plagiarismLine(c, a, s.id), color = PlagiarismColor, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
                     TextButton(onClick = { vm.clearPlagiarism(a.id, listOf(s.id)); kit.undoable("已取消 ${s.name} 的抄袭标记（仍为未交）") }) { Text("取消抄袭") }
                 }
             }
@@ -933,8 +935,8 @@ fun StudentSheet(vm: AppViewModel, data: AppData, c: SchoolClass, a: Assignment,
                     if (!s.longLeave) vm.setStatus(a.id, listOf(s.id), HwStatus.LEAVE)
                     kit.toast(if (s.longLeave) "已取消长期请假" else "已设为长期请假，之后新作业自动标请假")
                     onDismiss()
-                }, modifier = Modifier.weight(1f)) { Text(if (s.longLeave) "取消长期请假" else "🏖️ 设为长期请假") }
-                FilledTonalButton(onClick = { onDismiss(); kit.nav.push(Route.StudentDetail(s.id)) }, modifier = Modifier.weight(1f)) { Text("📇 个人档案") }
+                }, modifier = Modifier.weight(1f)) { Text(if (s.longLeave) "取消长期请假" else "设为长期请假") }
+                FilledTonalButton(onClick = { onDismiss(); kit.nav.push(Route.StudentDetail(s.id)) }, modifier = Modifier.weight(1f)) { Text("个人档案") }
             }
         }
     }

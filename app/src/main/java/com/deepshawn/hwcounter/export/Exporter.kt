@@ -262,21 +262,21 @@ object Exporter {
         val sm = c.summary(a)
         fun names(s: HwStatus) = c.students.filter { (a.statuses[it.id] ?: HwStatus.NONE) == s }.joinToString("、") { it.name }
         return buildString {
-            append("📚【${c.name}】${a.subject} ${a.title}\n")
-            append("📅 ${fullFmt.format(Date(a.createdAt))}\n")
-            append("✅ 已交 ${sm.handedIn}/${sm.expected}（${(sm.rate * 100).toInt()}%）")
-            a.countedBooks?.let { append("  📦 实数 $it 本") }
+            append("【${c.name}】${a.subject} ${a.title}\n")
+            append("${fullFmt.format(Date(a.createdAt))}\n")
+            append("已交 ${sm.handedIn}/${sm.expected}（${(sm.rate * 100).toInt()}%）")
+            a.countedBooks?.let { append("  实数 $it 本") }
             append('\n')
             val miss = names(HwStatus.MISSING)
             val none = names(HwStatus.NONE)
             val late = names(HwStatus.LATE)
             val leave = names(HwStatus.LEAVE)
-            if (miss.isNotEmpty()) append("❌ 未交：$miss\n")
-            if (none.isNotEmpty()) append("⏳ 未登记：$none\n")
-            if (late.isNotEmpty()) append("🐢 迟交：$late\n")
-            if (leave.isNotEmpty()) append("🏖️ 请假：$leave\n")
+            if (miss.isNotEmpty()) append("未交：$miss\n")
+            if (none.isNotEmpty()) append("未登记：$none\n")
+            if (late.isNotEmpty()) append("迟交：$late\n")
+            if (leave.isNotEmpty()) append("请假：$leave\n")
             val ex = names(HwStatus.EXCELLENT)
-            if (ex.isNotEmpty()) append("🌟 优秀：$ex\n")
+            if (ex.isNotEmpty()) append("优秀：$ex\n")
         }
     }
 
@@ -307,7 +307,7 @@ object Exporter {
         p.clearShadowLayer()
 
         val t = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textSize = 64f; typeface = Typeface.DEFAULT_BOLD }
-        cv.drawText("${c.emoji} ${c.name}", 72f, 140f, t)
+        cv.drawText(c.name, 72f, 140f, t)
         t.textSize = 40f; t.typeface = Typeface.DEFAULT
         cv.drawText("${a.subject}  ${a.title}", 72f, 210f, t)
         t.textSize = 30f; t.color = Color.argb(200, 255, 255, 255)
@@ -329,11 +329,11 @@ object Exporter {
 
         val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 40f; color = 0xFF1B1B1F.toInt() }
         val lines = listOf(
-            "✅ 已交  ${sm.handedIn} / ${sm.expected}",
-            "❌ 未交  ${sm.c(HwStatus.MISSING) + sm.c(HwStatus.NONE)}",
-            "🐢 迟交  ${sm.c(HwStatus.LATE)}",
-            "🏖️ 请假  ${sm.c(HwStatus.LEAVE)}",
-        ) + (a.countedBooks?.let { listOf("📦 实数  $it 本") } ?: emptyList())
+            "已交  ${sm.handedIn} / ${sm.expected}",
+            "未交  ${sm.c(HwStatus.MISSING) + sm.c(HwStatus.NONE)}",
+            "迟交  ${sm.c(HwStatus.LATE)}",
+            "请假  ${sm.c(HwStatus.LEAVE)}",
+        ) + (a.countedBooks?.let { listOf("实数  $it 本") } ?: emptyList())
         lines.forEachIndexed { i, s -> cv.drawText(s, 480f, 440f + i * 64f, label) }
 
         var y = 760f
@@ -357,10 +357,10 @@ object Exporter {
         }
         section("还没交的同学", missing, 0xFFFFE3E3.toInt())
         section("迟交", late, 0xFFFFF1C9.toInt())
-        section("今日之星 🌟", stars, 0xFFFFE9A8.toInt())
+        section("今日之星", stars, 0xFFFFE9A8.toInt())
         if (missing.isEmpty()) {
             label.textSize = 48f; label.typeface = Typeface.DEFAULT_BOLD
-            cv.drawText("🎉 全员交齐，太棒了！", 96f, y + 20f, label)
+            cv.drawText("全员交齐，太棒了！", 96f, y + 20f, label)
         }
         t.color = Color.WHITE; t.textSize = 30f
         cv.drawText("由「作业通」生成", w / 2f - t.measureText("由「作业通」生成") / 2, h - 50f, t)

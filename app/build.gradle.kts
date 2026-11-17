@@ -13,8 +13,8 @@ android {
         applicationId = "com.deepshawn.hwcounter"
         minSdk = 26
         targetSdk = 35
-        versionCode = 48
-        versionName = "2.16.0"
+        versionCode = 49
+        versionName = "2.17.0"
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -105,6 +105,8 @@ dependencies {
 
     // HyperOS 风格组件库 + Liquid Glass 液态玻璃（背景模糊/折射）
     implementation("top.yukonga.miuix.kmp:miuix-android:0.8.8")
+    // 纯线条图标（Lucide）：界面不用 emoji
+    implementation("com.composables:icons-lucide-cmp:2.2.1")
     implementation("io.github.kyant0:backdrop:1.0.6")
 
     implementation("androidx.core:core-ktx:1.16.0")

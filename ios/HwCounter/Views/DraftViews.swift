@@ -40,7 +40,7 @@ struct ScheduleSheet: View {
                 Text("到时间自动写进作业并上传到云端。需要 App 开着（可以在后台短暂运行）；如果到点时 App 没开，下次打开会立即上传。").font(.caption).foregroundStyle(.secondary)
                 if initial != nil { Button("取消定时上传", role: .destructive) { onSave(nil); dismiss() } }
             }
-            .navigationTitle("⏰ 定时上传")
+            .navigationTitle("定时上传")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
@@ -102,10 +102,10 @@ struct DraftDetailView: View {
                 HStack(spacing: 18) {
                     Ring(value: t.rate, color: .purple, line: 10).frame(width: 88, height: 88)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("📝 草稿 · 只保存在本机 · \(d.isNew ? "新作业" : "已有作业") · \(c.name)").font(.caption).foregroundStyle(.secondary)
+                        Text("草稿 · 只保存在本机 · \(d.isNew ? "新作业" : "已有作业") · \(c.name)").font(.caption).foregroundStyle(.secondary)
                         Button { editing = true } label: { Text(d.title.isEmpty ? "未命名作业" : d.title).font(.title2.bold()) }.buttonStyle(.plain)
-                        Text("已交 \(t.handedIn) / 应交 \(t.expected) · 未交 \(t.count(.MISSING)) · 未登记 \(t.count(.NONE)) · ✏️ 改动 \(changed.count) 人").font(.callout).foregroundStyle(.secondary)
-                        Text(d.scheduledAt.map { "⏰ 将在 \(fmtTime($0)) 自动上传" } ?? "还没上传：云端和其它设备暂时看不到这些登记").font(.callout)
+                        Text("已交 \(t.handedIn) / 应交 \(t.expected) · 未交 \(t.count(.MISSING)) · 未登记 \(t.count(.NONE)) · 改动 \(changed.count) 人").font(.callout).foregroundStyle(.secondary)
+                        Text(d.scheduledAt.map { "将在 \(fmtTime($0)) 自动上传" } ?? "还没上传：云端和其它设备暂时看不到这些登记").font(.callout)
                     }
                     Spacer()
                 }
@@ -136,14 +136,14 @@ struct DraftDetailView: View {
                         }
                     }
                 }
-                Text("点一下切换 已交/未登记 · 长按设置状态、备注 · ✏️ = 相对云端改过").font(.caption).foregroundStyle(.secondary)
+                Text("点一下切换 已交/未登记 · 长按设置状态、备注 · 带铅笔图标的 = 相对云端改过").font(.caption).foregroundStyle(.secondary)
                 if let seating = c.seating, seatMode {
                     SeatChart(seating: seating, students: c.students, onCell: { _, st in if let st { toggle(d, st) } }, onLong: { st in picked = st }) { st in
                         let x = st.map { d.status($0.id) } ?? .NONE
                         VStack(spacing: 2) {
                             if let st {
-                                Text((changed.contains(st.id) ? "✏️" : "") + st.name).font(.subheadline.bold()).lineLimit(1).minimumScaleFactor(0.7)
-                                Text("\(x.emoji) \(x.label)").font(.caption2.weight(.semibold)).foregroundStyle(x.color)
+                                ((changed.contains(st.id) ? Text(Image(systemName: "pencil")) + Text(" ") : Text("")) + Text(st.name)).font(.subheadline.bold()).lineLimit(1).minimumScaleFactor(0.7)
+                                Text("\(x.label)").font(.caption2.weight(.semibold)).foregroundStyle(x.color)
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -163,9 +163,9 @@ struct DraftDetailView: View {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 12)], spacing: 12) {
                         ForEach(list) { st in
                             StudentTile(st: st, status: d.status(st.id), comment: d.comments[st.id])
-                                .overlay(alignment: .topLeading) { if changed.contains(st.id) { Text("✏️").font(.caption2).padding(6) } }
+                                .overlay(alignment: .topLeading) { if changed.contains(st.id) { Image(systemName: "pencil").font(.caption2).foregroundStyle(Color.accentColor).padding(6) } }
                                 .onTapGesture { toggle(d, st) }
-                                .contextMenu { ForEach(HwStatus.allCases) { s in Button("\(s.emoji) \(s.label)") { store.setDraftStatus(d.id, [st.id], s) } } }
+                                .contextMenu { ForEach(HwStatus.allCases) { s in Button("\(s.label)") { store.setDraftStatus(d.id, [st.id], s) } } }
                                 .onLongPressGesture { picked = st }
                         }
                     }
@@ -179,7 +179,7 @@ struct DraftDetailView: View {
         .sheet(isPresented: $schedule) {
             ScheduleSheet(initial: d.scheduledAt) { at in
                 store.editDraft(d.id) { $0.scheduledAt = at }
-                store.say(at.map { "⏰ 将在 \(fmtTime($0)) 自动上传" } ?? "已取消定时上传")
+                store.say(at.map { "将在 \(fmtTime($0)) 自动上传" } ?? "已取消定时上传")
             }
         }
         .sheet(isPresented: $importing) { StatTableView(draftId: d.id) }
@@ -281,7 +281,7 @@ struct DraftStudentSheet: View {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
                         ForEach(HwStatus.allCases) { s in
                             Button { store.setDraftStatus(draftId, [student.id], s) } label: {
-                                VStack { Text(s.emoji).font(.title2); Text(s.label).font(.caption) }
+                                VStack { Image(systemName: lineSymbol(s.emoji)).font(.title2).foregroundStyle(s.color); Text(s.label).font(.caption) }
                                     .frame(maxWidth: .infinity).padding(.vertical, 8)
                                     .background(s == cur ? s.color.opacity(0.25) : Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
                             }.buttonStyle(.plain)
@@ -318,8 +318,8 @@ struct DraftListView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text((d.isNew ? "🆕 " : "") + (d.title.isEmpty ? "未命名作业" : d.title)).font(.headline)
-                                Text("\(c.map { "\($0.emoji) \($0.name)" } ?? "⚠️ 班级已删除") · \(d.subject) · 改动 \(StatTable.changes(d).count) 人 · 编辑于 \(fmtEdited(d.updatedAt))").font(.caption).foregroundStyle(.secondary)
-                                if let s = d.scheduledAt { Text("⏰ \(fmtTime(s)) 自动上传").font(.caption).foregroundStyle(Color.accentColor) }
+                                Text("\(c.map(\.name) ?? "班级已删除") · \(d.subject) · 改动 \(StatTable.changes(d).count) 人 · 编辑于 \(fmtEdited(d.updatedAt))").font(.caption).foregroundStyle(.secondary)
+                                if let s = d.scheduledAt { Text("\(fmtTime(s)) 自动上传").font(.caption).foregroundStyle(Color.accentColor) }
                             }
                             Spacer()
                             if let c { let t = StatTable.tally(c.students, d.statuses); Text("\(t.handedIn)/\(t.expected)").font(.headline) }
@@ -332,7 +332,7 @@ struct DraftListView: View {
                     }
                 }
             }
-            .navigationTitle("🗂️ 草稿箱")
+            .navigationTitle("草稿箱")
             .navigationDestination(for: IdBox.self) { b in DraftDetailView(draftId: b.id) }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } }
@@ -379,7 +379,7 @@ struct StatTableView: View {
             Group {
                 if let c = cls { content(c) } else { EmptyHint(emoji: "🏫", title: "还没有班级", detail: "先建立班级、导入名单") }
             }
-            .navigationTitle("📊 统计表识别")
+            .navigationTitle("统计表识别")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } } }
         }
@@ -392,7 +392,7 @@ struct StatTableView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(target.map { "导入到草稿：\($0.title)" } ?? "\(c.emoji) \(c.name) · 认出每个同学交没交，自动统计").font(.headline)
+                    Text(target.map { "导入到草稿：\($0.title)" } ?? "\(c.name) · 认出每个同学交没交，自动统计").font(.headline)
                     Text("拍照（登记表、点名册）、Excel（.xlsx）、CSV，或直接粘贴表格。每行一个同学（姓名或学号），后面是标记：").font(.callout)
                     Text("✓ √ 交 1 → 已交 · 优 A ★ → 优秀 · 迟 补 → 迟交 · × X 未交 缺 0 → 未交 · 假 病 → 请假 · 空白 → 未登记。多列（多次作业）时可以选用哪一列。").font(.caption).foregroundStyle(.secondary)
                     HStack {
@@ -419,8 +419,8 @@ struct StatTableView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("已交 \(t.handedIn) / 应交 \(t.expected)").font(.title3.bold())
                                 Text([HwStatus.SUBMITTED, .EXCELLENT, .LATE, .MISSING, .LEAVE, .NONE].map { "\($0.label) \(t.count($0))" }.joined(separator: " · ")).font(.callout).foregroundStyle(.secondary)
-                                if t.count(.MISSING) > 0 { Text("❌ 未交：" + (t.lists[.MISSING] ?? []).map(\.name).joined(separator: "、")).font(.callout) }
-                                if t.count(.NONE) > 0 { Text("⏳ 未登记：" + (t.lists[.NONE] ?? []).map(\.name).joined(separator: "、")).font(.callout).foregroundStyle(.secondary) }
+                                if t.count(.MISSING) > 0 { Text("未交：" + (t.lists[.MISSING] ?? []).map(\.name).joined(separator: "、")).font(.callout) }
+                                if t.count(.NONE) > 0 { Text("未登记：" + (t.lists[.NONE] ?? []).map(\.name).joined(separator: "、")).font(.callout).foregroundStyle(.secondary) }
                             }
                         }
                         HStack {
@@ -452,8 +452,8 @@ struct StatTableView: View {
                                 }
                                 Spacer()
                                 Menu {
-                                    ForEach(HwStatus.allCases) { x in Button("\(x.emoji) \(x.label)") { if x == .NONE { st.removeValue(forKey: s.id) } else { st[s.id] = x.rawValue } } }
-                                } label: { Text("\(k.emoji) \(k.label)").font(.callout.bold()).foregroundStyle(k.color) }
+                                    ForEach(HwStatus.allCases) { x in Button("\(x.label)") { if x == .NONE { st.removeValue(forKey: s.id) } else { st[s.id] = x.rawValue } } }
+                                } label: { Text("\(k.label)").font(.callout.bold()).foregroundStyle(k.color) }
                             }
                             .padding(10)
                             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
@@ -494,7 +494,7 @@ struct StatTableView: View {
                     TextEditor(text: $pasteText).font(.body.monospaced()).border(Color.secondary.opacity(0.3))
                 }
                 .padding()
-                .navigationTitle("📋 粘贴统计表")
+                .navigationTitle("粘贴统计表")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { pasting = false } }
                     ToolbarItem(placement: .confirmationAction) { Button("识别") { pasting = false; use(StatTable.recognizeTable(StatTable.splitTable(pasteText), c.students), "粘贴的表格", c) }.disabled(pasteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
@@ -518,7 +518,7 @@ struct StatTableView: View {
                         Button("保存") {
                             let d = StatTable.newDraft(c, nil, title: saveTitle ?? "", subject: saveSubject, statuses: st)
                             store.addDraft(d); saveTitle = nil
-                            store.say("📝 已存为草稿（只保存在本机）")
+                            store.say("已存为草稿（只保存在本机）")
                             dismiss(); onDraft?(d.id)
                         }
                     }

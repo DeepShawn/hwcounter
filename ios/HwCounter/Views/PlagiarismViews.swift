@@ -67,7 +67,7 @@ struct AssignmentPlagiarismSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("🕵️ 本次抄袭关系图").bold().foregroundStyle(plagiarismColor)
+                Text("本次抄袭关系图").bold().foregroundStyle(plagiarismColor)
                 Spacer()
                 Text("\(r.copiers) 人抄袭 · \(r.providers) 人提供").font(.caption).foregroundStyle(.secondary)
             }

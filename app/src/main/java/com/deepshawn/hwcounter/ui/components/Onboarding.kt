@@ -100,7 +100,7 @@ fun Onboarding(onDone: () -> Unit) {
                 Column(Modifier.fillMaxSize().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Spacer(Modifier.height(8.dp))
                     Box(Modifier.size(84.dp).clip(RoundedCornerShape(26.dp)).background(Brush.linearGradient(st.colors)), contentAlignment = Alignment.Center) {
-                        Text(st.emoji, fontSize = 40.sp)
+                        LineIcon(st.emoji, Color.White, size = 40.dp)
                     }
                     Spacer(Modifier.height(16.dp))
                     Text(st.title, fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)

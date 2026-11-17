@@ -70,7 +70,7 @@ fun StatsPage(x: Ctx) {
     var mode by remember { mutableIntStateOf(Keep.mode) }
     var share by remember { mutableStateOf(false) }
     val c = x.c
-    Page("数据分析", null, actions = { Text("📤 分析报告", Modifier.clip(CircleShape).clickable { share = true }.padding(horizontal = 12.dp, vertical = 6.dp), color = MiuixTheme.colorScheme.primary) }) {
+    Page("数据分析", null, actions = { Text("分析报告", Modifier.clip(CircleShape).clickable { share = true }.padding(horizontal = 12.dp, vertical = 6.dp), color = MiuixTheme.colorScheme.primary) }) {
         Meta("${c.name} · ${c.students.size} 人 · ${c.assignments.size} 次作业 · ${c.exams.size} 场考试")
         Seg(listOf(0 to "作业", 1 to "考试", 2 to "关注", 3 to "小组", 4 to "抄袭"), mode, Modifier.padding(horizontal = 12.dp).padding(bottom = 10.dp)) { mode = it; Keep.mode = it }
         when (mode) {
@@ -620,7 +620,7 @@ private fun Groups(x: Ctx) {
     Group("小组对抗排名 · 综合分（交齐 50% · 少扣分 25% · 优秀 15% · 考试 10%）") {
         rep.teams.forEach { t ->
             Row(Modifier.fillMaxWidth().clickable { x.open(Route.Group(t.name)) }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(listOf("🥇", "🥈", "🥉").getOrElse(t.rank - 1) { "${t.rank}" }, Modifier.width(32.dp), fontSize = 18.sp, color = sub())
+                Box(Modifier.width(32.dp)) { if (t.rank <= 3) LineIcon("🏅", listOf(Color(0xFFE8A400), Color(0xFF9AA4B2), Color(0xFFC07A3A))[t.rank - 1], size = 20.dp) else Text("${t.rank}", fontSize = 18.sp, color = sub()) }
                 Box(Modifier.size(10.dp).clip(CircleShape).background(colorOf.getValue(t.name))); Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(t.name + (t.leader?.let { " · 组长 ${it.name}" } ?: ""), fontWeight = FontWeight.Medium)
@@ -669,7 +669,7 @@ private fun Groups(x: Ctx) {
     }
     if (rep.progress.isNotEmpty()) Group("小组进步与退步 · ${rep.progressBasis}") {
         rep.progress.forEach { p -> val v = (p.index * 100).roundToInt(); val up = v >= 2; val dn = v <= -2
-            Cell(p.group + if (up) " · 进步" else if (dn) " · 退步" else " · 持平", p.reasons.joinToString(" · ").ifBlank { "变化不大" }, left = { Text(if (up) "📈" else if (dn) "📉" else "➖", fontSize = 18.sp) },
+            Cell(p.group + if (up) " · 进步" else if (dn) " · 退步" else " · 持平", p.reasons.joinToString(" · ").ifBlank { "变化不大" }, left = { LineIcon(if (up) "📈" else if (dn) "📉" else "➖", if (up) GOOD else if (dn) BAD else sub(), size = 18.dp) },
                 right = { Text((if (p.index >= 0) "+" else "") + v, fontWeight = FontWeight.Bold, color = if (up) GOOD else if (dn) BAD else sub()) }, onClick = { x.open(Route.Group(p.group)) }) }
         Note("指数 = 交齐率变化 50% + 每次人均扣分减少 30% + 考试得分率变化 20%（没有考试时按比例分配）")
     }
