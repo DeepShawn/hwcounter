@@ -24,6 +24,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import com.deepshawn.hwcounter.data.countsAfter
+import kotlin.math.roundToInt
+import top.yukonga.miuix.kmp.basic.SmallTitle
+import com.deepshawn.hwcounter.ui.components.HCard
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -113,6 +118,15 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
     var history by remember { mutableStateOf(false) }
     var editBase by remember(c.id, readOnly) { mutableStateOf(false) }
     var editAuto by remember(c.id, readOnly) { mutableStateOf(false) }
+    var missScope by rememberSaveable { mutableIntStateOf(0) }
+    // 本轮缺交 / 迟交：每位同学最近一次积分重置之后的作业
+    val roundOf = remember(c) {
+        val last = c.latestRecharges()
+        c.students.associate { s ->
+            val l = c.assignments.filter { it.countsAfter(last[s.id]) }
+            s.id to (l.count { it.statuses[s.id] == com.deepshawn.hwcounter.data.HwStatus.MISSING } to l.count { it.statuses[s.id] == com.deepshawn.hwcounter.data.HwStatus.LATE })
+        }
+    }
     val stats = remember(c, rules) { c.studentStats(rules).sortedByDescending { it.score } }
     val personalStats = remember(stats, byNumber) { if (byNumber) stats.sortedWith { x, y -> compareStudentNumbers(x.student.no, y.student.no) } else stats }
     val ranks = remember(stats) { stats.mapIndexed { i, st -> st.student.id to i + 1 }.toMap() }
@@ -172,7 +186,7 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
                 })
                 Text(
                     when {
-                        mode != 0 -> if (mode == 1) "按小组平均分排名，点小组给全组加减分" else "按未交、迟交次数排列"
+                        mode != 0 -> if (mode == 1) "按小组平均分排名，点小组给全组加减分" else "按未交、迟交次数排列；本轮 = 最近一次积分重置之后"
                         selecting -> "点学生选择或取消"
                         byNumber -> "学号从小到大 · 行首为积分名次"
                         readOnly -> "长按查看个人详情"
@@ -205,12 +219,19 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
                 }
             }
             else -> {
-                val list = stats.filter { it.missing + it.late > 0 }.sortedWith(compareByDescending<StudentStat> { it.missing }.thenByDescending { it.late })
-                if (list.isEmpty()) item { EmptyState("🎉", "没有欠交记录", "全班都很自觉！") }
+                item(key = "m-scope") {
+                    com.deepshawn.hwcounter.ui.components.HTabs(listOf("本轮缺交", "全部缺交"), missScope, { missScope = it }, Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp), height = 36.dp)
+                }
+                val round = missScope == 0
+                fun miss(st: StudentStat) = if (round) roundOf[st.student.id]?.first ?: 0 else st.missing
+                fun late(st: StudentStat) = if (round) roundOf[st.student.id]?.second ?: 0 else st.late
+                val list = stats.filter { miss(it) + late(it) > 0 }.sortedWith(compareByDescending<StudentStat> { miss(it) }.thenByDescending { late(it) }.thenByDescending { it.missing })
+                if (list.isEmpty()) item(key = "m-empty") { EmptyState("🎉", if (round) "本轮没有欠交" else "没有欠交记录", "全班都很自觉！") }
                 itemsIndexed(list, key = { _, s -> "m" + s.student.id }) { i, st ->
+                    val r = roundOf[st.student.id] ?: (0 to 0)
                     RankRow(
-                        Modifier.listCell(i, list.size), i + 1, st, false, false, valueText = "${st.missing}次",
-                        sub = "迟交 ${st.late} 次 · 积分 ${st.score.fmt()}", warn = true,
+                        Modifier.listCell(i, list.size), i + 1, st, false, false, valueText = "${miss(st)}次",
+                        sub = (if (round) "本轮缺交 ${r.first} · 迟交 ${r.second} · 全部缺交 ${st.missing}" else "全部缺交 ${st.missing} · 迟交 ${st.late} · 本轮缺交 ${r.first}") + " · 积分 ${st.score.fmt()}", warn = true,
                         onClick = { kit.nav.push(Route.StudentDetail(st.student.id)) }, onLong = {},
                     )
                 }
@@ -222,20 +243,19 @@ fun ScoresScreen(vm: AppViewModel, data: AppData) {
         show = menu, title = "积分操作", onDismiss = { menu = false },
         actions = buildList {
             if (!readOnly) {
-                add(SheetAction("批量加减分", "按小组、作业、考试、进步之星等快速选人，可逐人设分值", enabled = c.students.isNotEmpty()) { exitSelect(); kit.nav.push(Route.BatchScore()) })
-                add(SheetAction("结算本轮", "按交齐度与缺交度加减分，可随即开始新一轮", enabled = c.students.isNotEmpty() && c.assignments.isNotEmpty()) { exitSelect(); kit.nav.push(Route.Settlement) })
-                add(SheetAction("全班积分重置", "只重置积分，保留全部历史记录", enabled = c.students.isNotEmpty()) { exitSelect(); rechargeFor = c.students.map { it.id } })
-                add(SheetAction("每月定期重置", c.autoReset?.takeIf { it.enabled }?.let { "已开启：每月 ${it.day} 号重置为 ${it.target.fmt()} 分" } ?: "未开启：每月自动重置全班积分") { editAuto = true })
-                add(SheetAction("全班 +1", "全班表现好", enabled = c.students.isNotEmpty()) {
+                add(SheetAction("批量加减分", "按小组、作业、考试、进步之星等快速选人，可逐人设分值", enabled = c.students.isNotEmpty(), icon = "✨", tint = Color(0xFF3482FF), section = "加减分") { exitSelect(); kit.nav.push(Route.BatchScore()) })
+                add(SheetAction("全班 +1", "全班表现好", enabled = c.students.isNotEmpty(), icon = "🎉", tint = Color(0xFF16A34A), section = "加减分") {
                     vm.addScore(c.students.map { it.id }, 1.0, "全班表现好"); kit.celebrate(); kit.undoable("全班 +1 🎉")
                 })
-                add(SheetAction("修改基准分", "当前 ${rules.initial.fmt()} 分，适用于所有班级") { editBase = true })
+                add(SheetAction("结算本轮", "按交齐度与缺交度加减分，可随即开始新一轮", enabled = c.students.isNotEmpty() && c.assignments.isNotEmpty(), icon = "🧾", tint = Color(0xFFE8792C), section = "结算与重置") { exitSelect(); kit.nav.push(Route.Settlement) })
+                add(SheetAction("积分重置", c.autoReset?.takeIf { it.enabled }?.let { "本轮进度、${daysUntil(it.next())} 天后自动重置为 ${it.target.fmt()} 分；可立即重置或按某次作业重置" } ?: "立即重置或按某次作业重置；可开启每月定期重置", enabled = c.students.isNotEmpty(), icon = "🔄", tint = Color(0xFF7A5CFF), section = "结算与重置") { exitSelect(); kit.nav.push(Route.Reset) })
             }
-            add(SheetAction("积分流水", "全班每一笔加减分，可筛选、导出 Excel / PDF") { kit.nav.push(Route.Ledger()) })
-            add(SheetAction("结算记录", if (c.settlements.isEmpty()) "暂无" else "共 ${c.settlements.size} 次") { kit.nav.push(Route.Settlement) })
-            add(SheetAction("重置记录", if (c.recharges.isEmpty()) "暂无" else "共 ${c.recharges.size} 次", enabled = c.recharges.isNotEmpty()) { history = true })
-            add(SheetAction("导出计分规则通知 PDF", "按当前计分规则生成，可发给学生和家长") { runCatching { com.deepshawn.hwcounter.ui.screens.shareRulesNotice(ctx, c, rules) }.onFailure { kit.toast("导出失败：${it.message}") } })
-            add(SheetAction("修改计分规则", "已交 / 优秀 / 迟交 / 未交 / 请假") { kit.nav.tab(Route.Settings) })
+            add(SheetAction("积分流水", "全班每一笔加减分，可筛选、导出 Excel / PDF", icon = "📒", tint = Color(0xFF12B886), section = "记录") { kit.nav.push(Route.Ledger()) })
+            add(SheetAction("结算记录", if (c.settlements.isEmpty()) "暂无" else "共 ${c.settlements.size} 次", icon = "🗂️", tint = Color(0xFFE8792C), section = "记录") { kit.nav.push(Route.Settlement) })
+            add(SheetAction("重置记录", if (c.recharges.isEmpty()) "暂无" else "共 ${c.recharges.size} 次，可撤销", enabled = c.recharges.isNotEmpty(), icon = "🕘", tint = Color(0xFF7A5CFF), section = "记录") { history = true })
+            add(SheetAction("导出计分规则通知 PDF", "按当前计分规则生成，可发给学生和家长", icon = "📄", tint = Color(0xFFE5384D), section = "规则") { runCatching { com.deepshawn.hwcounter.ui.screens.shareRulesNotice(ctx, c, rules) }.onFailure { kit.toast("导出失败：${it.message}") } })
+            if (!readOnly) add(SheetAction("修改基准分", "当前 ${rules.initial.fmt()} 分，适用于所有班级", icon = "🎯", tint = Color(0xFF1098AD), section = "规则") { editBase = true })
+            add(SheetAction("修改计分规则", "已交 / 优秀 / 迟交 / 未交 / 请假、复审、抄袭、组长与小组", icon = "⚙️", tint = Color(0xFF8E8E93), section = "规则") { kit.nav.tab(Route.Settings) })
         },
     )
 
@@ -340,12 +360,12 @@ private fun RechargeDialog(
     targets: List<Student>, scores: Map<String, Double>, initial: Double,
     assignments: List<com.deepshawn.hwcounter.data.Assignment>,
     preview: (List<String>, Double, Long?, String?) -> Map<String, Double>,
-    onDismiss: () -> Unit, onConfirm: (List<Student>, Double, String, Long?, String?) -> Unit,
+    onDismiss: () -> Unit, initialMode: Int = 0, onConfirm: (List<Student>, Double, String, Long?, String?) -> Unit,
 ) {
     val show = targets.isNotEmpty()
     var text by remember(show) { mutableStateOf(initial.fmt()) }
     var note by remember(show) { mutableStateOf("") }
-    var when_ by remember(show) { mutableIntStateOf(0) }
+    var when_ by remember(show) { mutableIntStateOf(initialMode) }
     var assignmentId by remember(show) { mutableStateOf(assignments.firstOrNull()?.id) }
     var day by remember(show) { mutableStateOf(startOfDay(System.currentTimeMillis())) }
     var pickDay by remember { mutableStateOf(false) }
@@ -600,5 +620,181 @@ private fun GroupRow(rank: Int, name: String, list: List<StudentStat>, avg: Doub
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) { list.take(10).forEach { Avatar(it.student.name, size = 28.dp) } }
         }
+    }
+}
+
+
+// ---------------- 积分重置页（仿“用量”页：进度条 + 剩余天数 + 立即重置） ----------------
+
+private val DAY_MS = 86_400_000L
+
+/** 从今天到 t 那天还有几天（按自然日） */
+fun daysUntil(t: Long, now: Long = System.currentTimeMillis()): Int = ((startOfDay(t) - startOfDay(now) + DAY_MS / 2) / DAY_MS).toInt().coerceAtLeast(0)
+private fun weekName(t: Long) = listOf("周日", "周一", "周二", "周三", "周四", "周五", "周六")[java.util.Calendar.getInstance().apply { timeInMillis = t }.get(java.util.Calendar.DAY_OF_WEEK) - 1]
+private val mdFmt = SimpleDateFormat("M月d日", Locale.CHINA)
+
+@Composable
+private fun OutlinePill(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
+    Text(
+        text, Modifier.clip(CircleShape).border(1.dp, colors.onSurfaceVariantSummary.copy(alpha = if (enabled) 0.6f else 0.25f), CircleShape)
+            .combinedClickable(enabled = enabled, onClick = onClick).padding(horizontal = 18.dp, vertical = 9.dp),
+        fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (enabled) colors.onSurface else colors.onSurfaceVariantSummary,
+    )
+}
+
+@Composable
+private fun UsageBar(frac: Float, color: Color) {
+    Box(Modifier.fillMaxWidth().height(10.dp).clip(CircleShape).background(color.copy(alpha = 0.16f))) {
+        Box(Modifier.fillMaxWidth(frac.coerceIn(0.02f, 1f)).height(10.dp).clip(CircleShape).background(color))
+    }
+}
+
+@Composable
+fun ResetScreen(vm: AppViewModel, data: AppData) {
+    val kit = LocalKit.current
+    val c = vm.currentClass(data) ?: return
+    val rules = data.settings.rules
+    val readOnly by vm.readOnly.collectAsState()
+    val colors = MiuixTheme.colorScheme
+    val now = remember(c) { System.currentTimeMillis() }
+    val ar = c.autoReset?.takeIf { it.enabled }
+    val lastReset = remember(c) { com.deepshawn.hwcounter.data.Analytics.classResets(c).lastOrNull() }
+    val start = lastReset?.start ?: c.assignments.minOfOrNull { it.createdAt } ?: now
+    val next = ar?.next(now)
+    val frac = next?.let { ((now - start).toDouble() / (it - start).coerceAtLeast(1)).toFloat().coerceIn(0f, 1f) }
+    val elapsed = ((startOfDay(now) - startOfDay(start)) / DAY_MS).toInt() + 1
+    val left = next?.let { daysUntil(it, now) }
+    val red = Color(0xFFE5384D)
+    val stats = remember(c, rules) { c.studentStats(rules) }
+    var editAuto by remember { mutableStateOf(false) }
+    var history by remember { mutableStateOf(false) }
+    var resetNow by remember { mutableStateOf(false) }
+    var byAssignment by remember { mutableStateOf(false) }
+    val target = ar?.target ?: rules.initial
+
+    MiuixPage(title = "积分重置", largeTitle = "积分重置", onBack = { kit.nav.pop() }) {
+        item(key = "rs-head") {
+            Text(
+                if (ar != null && next != null) (if (left == 0) "注意：今天 0 点起已到每月重置日" else "注意：按每月定期重置，全班积分将在 $left 天后重置") + "（${mdFmt.format(Date(next))} ${weekName(next)} 0:00，重置为 ${ar.target.fmt()} 分）。"
+                else "还没有开启每月定期重置。本轮从 ${mdFmt.format(Date(start))} 起，已进行 $elapsed 天，可以随时手动重置。",
+                Modifier.padding(horizontal = 24.dp, vertical = 8.dp), fontSize = 16.sp, lineHeight = 24.sp,
+            )
+        }
+        item(key = "rs-round") {
+            HCard(Modifier.padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("本轮积分", fontSize = 19.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text(if (frac != null) "已过 ${(frac * 100).roundToInt()}%" else "已进行 $elapsed 天", fontSize = 16.sp, color = colors.onSurfaceVariantSummary)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    UsageBar(frac ?: 1f, if (frac == null) colors.primary.copy(alpha = 0.5f) else if (frac >= 0.85f) red else colors.primary)
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "从 ${mdFmt.format(Date(start))} 起" + (lastReset?.let { "（重置为 ${it.target.fmt()} 分）" } ?: "") +
+                            if (next != null) " · 将于 ${weekName(next)} ${mdFmt.format(Date(next))} 0:00 重置" else " · 未开启自动重置",
+                        fontSize = 13.sp, color = colors.onSurfaceVariantSummary,
+                    )
+                }
+            }
+        }
+        item(key = "rs-auto-title") { SmallTitle("定期重置") }
+        item(key = "rs-auto") {
+            HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), onClick = if (readOnly) null else ({ editAuto = true })) {
+                Row(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("每月定期重置", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                        Text(ar?.let { "已开启：每月 ${it.day} 号重置为 ${it.target.fmt()} 分" } ?: "未开启：每月指定日期自动重置全班积分", fontSize = 14.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 4.dp))
+                        if (ar != null && next != null) {
+                            Spacer(Modifier.height(10.dp))
+                            UsageBar(1f - (left ?: 0) / 31f, colors.primary)
+                            Text("还剩 $left 天", fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp))
+                        }
+                    }
+                    if (!readOnly) { Spacer(Modifier.width(12.dp)); OutlinePill(if (ar != null) "设置" else "开启") { editAuto = true } }
+                }
+            }
+        }
+        item(key = "rs-now-title") { SmallTitle("立即重置") }
+        item(key = "rs-now") {
+            HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                Column {
+                    Row(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("从今天开始重置", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                                Text(" ⓘ", fontSize = 17.sp, color = colors.onSurfaceVariantSummary)
+                            }
+                            Text("今天 0 点起重新计分，全班重置为 ${target.fmt()} 分", fontSize = 14.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        OutlinePill("立即重置", enabled = !readOnly && c.students.isNotEmpty()) { resetNow = true }
+                    }
+                    Box(Modifier.padding(start = 20.dp).fillMaxWidth().height(0.6.dp).background(colors.dividerLine))
+                    Row(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("按某次作业重置", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                            Text("从选定的作业（含）起重新计分，也可选某一天起", fontSize = 14.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 4.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        OutlinePill("选择作业", enabled = !readOnly && c.students.isNotEmpty()) { byAssignment = true }
+                    }
+                }
+            }
+        }
+        item(key = "rs-hint") {
+            Text("只重置积分并留下重置记录：作业状态、加减分、未交次数和备注全部保留，可随时撤销。", fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+        }
+        item(key = "rs-hist-title") { SmallTitle("重置记录") }
+        item(key = "rs-hist") {
+            val recent = c.recharges.sortedWith(compareByDescending<ScoreRecharge> { it.start }.thenByDescending { it.time }).take(4)
+            HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    if (recent.isEmpty()) Text("还没有重置记录", Modifier.padding(20.dp), color = colors.onSurfaceVariantSummary)
+                    recent.forEach { r ->
+                        Row(Modifier.fillMaxWidth().combinedClickable(onClick = { history = true }).padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("重置为 ${r.target.fmt()} 分" + if (r.isAuto()) " · 每月定期" else "", fontWeight = FontWeight.Medium)
+                                Text(r.startLabel(::fmtDay) + " · ${r.studentIds.size} 人" + if (r.note.isNotBlank()) " · ${r.note}" else "", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                            }
+                            Text(fmtStamp(r.time), fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                        }
+                    }
+                    if (c.recharges.isNotEmpty()) Text("查看全部 ${c.recharges.size} 次 / 撤销 ›", Modifier.fillMaxWidth().combinedClickable(onClick = { history = true }).padding(horizontal = 20.dp, vertical = 12.dp), color = colors.primary, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+
+    NumberDialog(
+        show = resetNow && !readOnly, title = "从今天开始重置", initial = target,
+        summary = "全班 ${c.students.size} 人的积分重置为下面的分数：今天 0 点起布置的作业和加减分在新分数上累计，今天之前的不再计入本轮。只重置积分，历史记录全部保留，可撤销。",
+        label = "重置为（分）", onDismiss = { resetNow = false },
+    ) { v ->
+        vm.rechargeScores(c.students.map { it.id }, v, "立即重置", startOfDay(System.currentTimeMillis()), null)
+        resetNow = false; kit.haptic(true)
+        kit.undoable("已从今天起把全班 ${c.students.size} 人重置为 ${v.fmt()} 分，历史记录已保留")
+    }
+    RechargeDialog(
+        targets = if (byAssignment && !readOnly) c.students else emptyList(),
+        scores = stats.associate { it.student.id to it.score },
+        initial = target,
+        assignments = remember(c.assignments) { c.assignments.sortedByDescending { it.createdAt } },
+        preview = { ids, value, at, aid -> c.recharge(rules, ids, value, effectiveAt = at, assignment = c.assignments.firstOrNull { it.id == aid }).studentStats(rules).associate { it.student.id to it.score } },
+        onDismiss = { byAssignment = false },
+        initialMode = 1,
+    ) { targets, value, note, at, aid ->
+        vm.rechargeScores(targets.map { it.id }, value, note, at, aid)
+        byAssignment = false; kit.haptic(true)
+        val from = when { aid != null -> "从「${c.assignments.firstOrNull { it.id == aid }?.title.orEmpty()}」起"; at != null -> "从 ${fmtDay(at)} 起"; else -> "" }
+        kit.undoable("已为 ${targets.size} 人重置为 ${value.fmt()} 分 $from，历史记录已保留")
+    }
+    AutoResetDialog(editAuto && !readOnly, c.autoReset, rules.initial, onDismiss = { editAuto = false }) { a ->
+        vm.setAutoReset(a); editAuto = false
+        kit.toast(if (a.enabled) "已开启：每月 ${a.day} 号重置为 ${a.target.fmt()} 分，下次 ${fmtDay(a.next())}" else "已关闭每月定期重置")
+    }
+    RechargeHistorySheet(history, c.recharges, c.students, readOnly, onDismiss = { history = false }) { r ->
+        vm.removeRecharge(r.id); kit.undoable("已撤销 ${fmtStamp(r.time)} 的重置")
     }
 }

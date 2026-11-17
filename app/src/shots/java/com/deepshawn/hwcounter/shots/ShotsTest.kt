@@ -137,15 +137,14 @@ class ShotsTest {
         safe { click("第1组"); save("${prefix}_06_group_detail"); scroll(2); save("${prefix}_06b_group_detail"); scroll(2); save("${prefix}_06c_group_detail"); back() }
 
         tab("积分"); save("${prefix}_10_scores")
+        safe { click("催交榜"); save("${prefix}_10b_missing_round"); click("全部缺交"); save("${prefix}_10c_missing_all"); click("个人榜") }
         safe {
             rule.onAllNodes(hasContentDescription("更多")).onFirst().performClick(); save("${prefix}_11_scores_menu")
-            click("全班积分重置"); save("${prefix}_12_reset_dialog")
-            click("取消")
-        }
-        safe {
-            rule.onAllNodes(hasContentDescription("更多")).onFirst().performClick()
-            click("每月定期重置"); save("${prefix}_13_auto_reset")
-            click("取消")
+            click("积分重置"); save("${prefix}_12_reset_page"); scroll(); save("${prefix}_12b_reset_page")
+            safe { click("立即重置"); save("${prefix}_12c_reset_now"); click("取消") }
+            safe { click("选择作业"); save("${prefix}_12d_reset_by_assignment"); click("取消") }
+            safe { top(); rule.onAllNodes((hasText("开启") or hasText("设置")) and hasClickAction()).onFirst().performClick(); save("${prefix}_13_auto_reset"); click("取消") }
+            back()
         }
         safe {
             rule.onAllNodes(hasContentDescription("更多")).onFirst().performClick()

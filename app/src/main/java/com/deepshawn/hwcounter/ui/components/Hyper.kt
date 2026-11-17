@@ -1,6 +1,12 @@
 package com.deepshawn.hwcounter.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -89,19 +95,45 @@ fun NumberDialog(show: Boolean, title: String, summary: String, initial: Double,
     }
 }
 
-data class SheetAction(val title: String, val summary: String? = null, val enabled: Boolean = true, val danger: Boolean = false, val onClick: () -> Unit)
+/**
+ * 操作面板里的一项。[icon]（emoji）和 [tint] 让这一项带一个彩色图标块；[section] 相同的项放在同一张卡片里，卡片上方显示分组名。
+ */
+data class SheetAction(
+    val title: String, val summary: String? = null, val enabled: Boolean = true, val danger: Boolean = false,
+    val icon: String? = null, val tint: Color? = null, val section: String? = null, val onClick: () -> Unit,
+)
 
-/** 底部操作面板（代替下拉菜单，手指更好够到） */
+/** 底部操作面板（代替下拉菜单，手指更好够到）：分组卡片 + 彩色图标 + 标题说明 */
 @Composable
 fun ActionSheet(show: Boolean, title: String, actions: List<SheetAction>, onDismiss: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
     SuperBottomSheet(show = show, title = title, onDismissRequest = onDismiss) {
-        Card(Modifier.padding(bottom = 16.dp)) {
-            actions.forEach { a ->
-                SuperArrow(
-                    title = a.title, summary = a.summary, enabled = a.enabled,
-                    titleColor = top.yukonga.miuix.kmp.basic.BasicComponentDefaults.titleColor(color = if (a.danger) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurface),
-                    onClick = { onDismiss(); a.onClick() },
-                )
+        Column(Modifier.heightIn(max = 620.dp).verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
+            val groups = actions.groupBy { it.section }
+            groups.entries.forEachIndexed { gi, (section, items) ->
+                if (section != null) Text(section, Modifier.padding(start = 12.dp, top = if (gi == 0) 0.dp else 12.dp, bottom = 6.dp), fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = colors.onSurfaceVariantSummary)
+                else if (gi > 0) Spacer(Modifier.height(12.dp))
+                Card {
+                    items.forEachIndexed { i, a ->
+                        val tint = if (a.danger) colors.error else a.tint ?: colors.primary
+                        Row(
+                            Modifier.fillMaxWidth().then(if (a.enabled) Modifier.clickable { onDismiss(); a.onClick() } else Modifier)
+                                .alpha(if (a.enabled) 1f else 0.4f).padding(horizontal = 16.dp, vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (a.icon != null) {
+                                Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) { Text(a.icon, fontSize = 19.sp) }
+                                Spacer(Modifier.width(14.dp))
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(a.title, fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = if (a.danger) colors.error else colors.onSurface)
+                                if (!a.summary.isNullOrBlank()) Text(a.summary, fontSize = 12.5.sp, lineHeight = 17.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 2.dp))
+                            }
+                            Text("›", Modifier.padding(start = 10.dp), fontSize = 22.sp, color = colors.onSurfaceVariantSummary)
+                        }
+                        if (i < items.lastIndex) Box(Modifier.padding(start = if (a.icon != null) 70.dp else 16.dp).fillMaxWidth().height(0.6.dp).background(colors.dividerLine))
+                    }
+                }
             }
         }
     }
