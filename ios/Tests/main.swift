@@ -3,6 +3,8 @@
 import Foundation
 
 var pass = 0, total = 0
+/// 只看连续未交（关闭间断未交平衡）的经典规则，旧用例沿用
+func classicRules() -> Rules { var r = Rules(); r.escalation.gapBalance = false; return r }
 func suite(_ title: String, _ names: [String], _ cases: [(String, String)], initials: Bool = true) {
     var roster = names.enumerated().map { Student(id: "s\($0.offset + 1)", no: "\($0.offset + 1)", name: $0.element) }
     if names.count < 50 { for i in (names.count + 1)...50 { roster.append(Student(id: "s\(i)", no: "\(i)", name: "号\(i)")) } }
@@ -347,13 +349,13 @@ do {
 do {
     print("== 未交连续递增扣分")
     func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
-    let rules = Rules()
+    let rules = classicRules()
     func mk(_ m: [String]) -> SchoolClass {
         var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "张三")])
         for (i, x) in m.enumerated() { var a = Assignment(title: "作业\(i)", subject: "数学"); a.id = "a\(i)"; a.createdAt = Int64((i + 1) * 1000); a.statuses = ["s1": x]; c.assignments.append(a) }
         return c
     }
-    func pts(_ c: SchoolClass, _ r: Rules = Rules()) -> [Double] { let p = c.autoPoints(r, "s1"); return c.assignments.map { p[$0.id] ?? 0 } }
+    func pts(_ c: SchoolClass, _ r: Rules = classicRules()) -> [Double] { let p = c.autoPoints(r, "s1"); return c.assignments.map { p[$0.id] ?? 0 } }
     check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING"])) == [-2, -2, -4, -8] && MissingEscalationAmount.seq(2) == "2、2、4、8…", "连续未交 2、2、4、8")
     check(pts(mk(["MISSING", "LEAVE", "MISSING", "MISSING"])) == [-2, 0, -2, -4], "请假不打断连续")
     check(pts(mk(["MISSING", "MISSING", "SUBMITTED", "MISSING"])) == [-2, -2, 0, -2], "交过一次就重新算")
@@ -363,18 +365,18 @@ do {
     let reset = many.recharging(rules, ids: ["s1"], target: 100, time: 99000, assignmentId: "a14")
     let rp = reset.autoPoints(rules, "s1")
     check(rp["a13"] == -3 && rp["a14"] == -2 && rp["a15"] == -2 && reset.stats(rules)[0].score == 96, "重置后新一轮从 2 开始")
-    var capped = Rules(); capped.escalation.cap = 5
+    var capped = classicRules(); capped.escalation.cap = 5
     check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING"]), capped) == [-2, -2, -4, -5], "单次最多扣分上限")
-    var m1 = Rules(); m1.escalation.mode = 1
+    var m1 = classicRules(); m1.escalation.mode = 1
     check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING", "MISSING"]), m1) == [-2, -4, -8, -16, -30] && MissingEscalationAmount.seq(2, 1) == "2、4、8、16…", "第一种：正常加倍 2、4、8、16，封顶 30")
-    var m3 = Rules(); m3.escalation.mode = 3; m3.escalation.cap = 0
+    var m3 = classicRules(); m3.escalation.mode = 3; m3.escalation.cap = 0
     check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING", "MISSING", "MISSING"]), m3) == [-2, -2, -6, -12, -32, -64], "第三种：在第二种上分段 ×1、×1.5、×2")
     check(m3.escalation.tiersText() == "第 1–2 次 ×1、第 3–4 次 ×1.5、第 5 次起 ×2（按连续未交次数）", "分段说明")
-    var m31 = Rules(); m31.escalation.mode = 3; m31.escalation.tierBase = 1
+    var m31 = classicRules(); m31.escalation.mode = 3; m31.escalation.tierBase = 1
     check(pts(mk(["MISSING", "MISSING", "MISSING", "MISSING", "MISSING"]), m31) == [-2, -4, -12, -24, -30], "第三种：在第一种上分段，乘完再封顶")
-    var m32 = Rules(); m32.escalation.mode = 3; m32.escalation.tiers = [EscalationTier(from: 2, factor: 3)]
+    var m32 = classicRules(); m32.escalation.mode = 3; m32.escalation.tiers = [EscalationTier(from: 2, factor: 3)]
     check(pts(mk(["MISSING", "MISSING", "MISSING"]), m32) == [-2, -6, -12] && m32.escalation.tiersText() == "第 1 次 ×1、第 2 次起 ×3（按连续未交次数）", "自定义分段")
-    var mt = Rules(); mt.escalation.mode = 3; mt.escalation.tierBy = "total"
+    var mt = classicRules(); mt.escalation.mode = 3; mt.escalation.tierBy = "total"
     let alt = mk(["MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING", "SUBMITTED", "MISSING"])
     check(pts(alt, mt).enumerated().filter { $0.offset % 2 == 0 }.map(\.element) == [-2, -2, -3, -3], "按本轮累计次数分段")
     var data = AppData(); var rr = data.rules; rr.escalation.mode = 3; rr.escalation.tierBy = "total"; rr.escalation.tiers = [EscalationTier(from: 4, factor: 2.5)]; data.rules = rr
@@ -537,7 +539,7 @@ do {
     ]
     for (k, (st, p)) in rows.enumerated() { var a = Assignment(title: "作业\(k)", subject: ""); a.id = "a\(k)"; a.createdAt = Int64((k + 1) * 86_400_000); a.statuses = st; a.plagiarism = p; c.assignments.append(a) }
     func pts(_ c: SchoolClass, _ r: Rules, _ id: String) -> [Double] { let p = c.autoPoints(r, id); return c.assignments.map { p[$0.id] ?? 0 } }
-    let R = Rules()
+    let R = classicRules()
     check(pts(c, R, "a") == [-4, 0, -8, -2] && pts(c, R, "b") == [-4, 0, -8, 0] && pts(c, R, "c")[2] == -4 && pts(c, R, "d").reduce(0, +) == 0, "抄袭者和提供者都翻倍，累犯加重")
     check(!c.assignments[3].plagiarized("a") && c.stats(R).first { $0.id == "a" }!.missing == 3, "对方已交不算；抄袭算一次未交")
     let reset = c.recharging(R, ids: c.students.map(\.id), target: 100, time: 10 * 86_400_000, assignmentId: "a2")
@@ -570,6 +572,34 @@ do {
     var unk = c; unk.assignments[1].statuses["d"] = M; unk.assignments[1].plagiarism = ["d": [unknownProviderId]]
     let gu = unk.plagiarismReport(R, only: "a1")
     check(unk.autoPoints(R, "d")["a1"] == -4 && unk.assignments[1].unknownProvider("d") && plagiarismLine(unk, unk.assignments[1], "d") == "抄袭（提供者不明）" && gu.cases.count == 1 && gu.cases[0].unknown && gu.edges.isEmpty && gu.nodes.map(\.student.id) == ["d"], "抄袭：提供者不明")
+}
+// 间断未交平衡：与安卓 GapBalanceTest、网页 gap.test.mjs 同一组用例
+do {
+    print("== 间断未交平衡")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    let M = "MISSING", S = "SUBMITTED", L = "LEAVE"
+    var rules = Rules(); rules.streakBonus.enabled = false
+    func mk(_ m: [String]) -> SchoolClass {
+        var c = SchoolClass(name: "一班", students: [Student(id: "s1", no: "01", name: "甲")])
+        for (i, x) in m.enumerated() { var a = Assignment(title: "作业\(i)", subject: "数学"); a.id = "a\(i)"; a.createdAt = Int64((i + 1) * 1000); a.statuses = ["s1": x]; c.assignments.append(a) }
+        return c
+    }
+    func misses(_ c: SchoolClass, _ r: Rules) -> [Double] { let p = c.autoPoints(r, "s1"); return c.assignments.filter { $0.statuses["s1"] == M }.map { p[$0.id] ?? 0 } }
+    check(MissingEscalation().gapBalance && MissingEscalation().gapWindow == 8, "默认开启、看最近 8 次")
+    let alt = mk([M, S, M, S, M, S, M, S, M, S])
+    var off = rules; off.escalation.gapBalance = false
+    check(misses(alt, rules) == [-2, -2, -4, -8, -8] && misses(alt, off) == [-2, -2, -2, -2, -2], "隔一次不交一次也逐次加重")
+    let a = mk([M, M, M, M, S, S, S, S, S, S, S, S]), b = mk([M, S, M, S, M, S, M, S, M, S, M, S])
+    let sa = misses(a, rules).reduce(0, +), sb = misses(b, rules).reduce(0, +)
+    check(sa == -16 && sb < sa && misses(b, off).reduce(0, +) > misses(a, off).reduce(0, +), "未交率更高的间断未交不会比连续未交扣得少")
+    var w3 = rules; w3.escalation.gapWindow = 3
+    var w3m1 = w3; w3m1.escalation.mode = 1
+    check(misses(mk([M, S, M, S, S, S, M]), w3) == [-2, -2, -2] && misses(mk([M, S, L, L, L, M]), w3m1) == [-2, -4], "窗口滑动；请假不算记录")
+    let c5 = mk([M, S, M, S, M])
+    let reset = c5.recharging(rules, ids: ["s1"], target: 100, time: 4500, assignmentId: "a4")
+    check(c5.autoPoints(rules, "s1")["a4"] == -4 && reset.autoPoints(rules, "s1")["a4"] == -2, "积分重置后窗口清空")
+    var data = AppData(); var rr = data.rules; rr.escalation.gapBalance = false; rr.escalation.gapWindow = 5; data.rules = rr
+    check(data.rules.escalation == rr.escalation, "开关和窗口可存取（与安卓、网页字段一致）")
 }
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)

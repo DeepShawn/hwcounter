@@ -111,7 +111,7 @@ test('每月定期重置：只补开启后的月份，id 固定，撤销后不�
 
 import { autoPoints } from '../../web/js/model.js';
 test('未交连续递增扣分（与安卓 EscalationTest 一致）', () => {
-  const r = defaultRules();
+  const r = defaultRules(); r.escalation.gapBalance = false; // 经典规则（只看连续未交）
   const mk = (...m) => ({ id: 'c', name: '一班', recharges: [], scores: [], students: [{ id: 's1', no: '01', name: '张三' }], assignments: m.map((x, i) => ({ id: `a${i}`, title: `作业${i}`, createdAt: (i + 1) * 1000, statuses: { s1: x } })) });
   const pts = (c, rr = r) => c.assignments.map((a) => autoPoints(c, rr, 's1')[a.id]);
   assert.deepEqual(pts(mk('MISSING', 'MISSING', 'MISSING', 'MISSING')), [-2, -2, -4, -8]);
@@ -131,7 +131,7 @@ test('未交连续递增扣分（与安卓 EscalationTest 一致）', () => {
 
 import { tiersText } from '../../web/js/model.js';
 test('三种扣分方式：正常加倍 / 第 2 次起加倍 / 分段倍率（与安卓、iPad 一致）', () => {
-  const r = defaultRules();
+  const r = defaultRules(); r.escalation.gapBalance = false; // 经典规则（只看连续未交）
   const mk = (...m) => ({ id: 'c', name: '一班', recharges: [], scores: [], students: [{ id: 's1', no: '01', name: '张三' }], assignments: m.map((x, i) => ({ id: `a${i}`, title: `作业${i}`, createdAt: (i + 1) * 1000, statuses: { s1: x } })) });
   const pts = (c, rr = r) => c.assignments.map((a) => autoPoints(c, rr, 's1')[a.id]);
   const esc = (o) => ({ ...r, escalation: { ...r.escalation, ...o } });
@@ -158,7 +158,7 @@ test('三种扣分方式：正常加倍 / 第 2 次起加倍 / 分段倍率（�
 
 import { roundAway, escalationSeq } from '../../web/js/model.js';
 test('连续交奖励与取整（与安卓 StreakBonusAndRoundingTest 一致）', () => {
-  const r = defaultRules();
+  const r = defaultRules(); r.escalation.gapBalance = false; // 经典规则（只看连续未交）
   const mk = (...m) => ({ id: 'c', name: '一班', recharges: [], scores: [], students: [{ id: 's1', no: '01', name: '张三' }], assignments: m.map((x, i) => ({ id: `a${i}`, title: `作业${i}`, createdAt: (i + 1) * 1000, statuses: { s1: x } })) });
   const pts = (c, rr = r) => c.assignments.map((a) => autoPoints(c, rr, 's1')[a.id]);
   const S = 'SUBMITTED';

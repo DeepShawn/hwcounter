@@ -16,7 +16,7 @@ function cls() {
     A(3, { a: M, b: S, c: S, d: S }, { b: ['a'] }),
   ] }] }).classes[0];
 }
-const R = defaultRules();
+const R = defaultRules(); R.escalation.gapBalance = false; // 用例按“只看连续未交”的经典规则
 
 test('抄袭者和提供者都翻倍，累犯加重', () => {
   const c = cls();

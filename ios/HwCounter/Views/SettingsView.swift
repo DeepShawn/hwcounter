@@ -95,6 +95,13 @@ struct SettingsView: View {
                     Stepper("累计超过 \(e.heavyAfter) 次后加重", value: escBinding(\.heavyAfter), in: 1...50)
                     Stepper("加重后的底数 \(fmtNum(e.heavyBase))", value: escBinding(\.heavyBase), in: 1...10, step: 0.5)
                     Stepper("单次最多扣 \(e.cap > 0 ? fmtNum(e.cap) : "不限")", value: escBinding(\.cap), in: 0...200, step: 1)
+                    Toggle(isOn: escBinding(\.gapBalance)) {
+                        VStack(alignment: .leading) {
+                            Text("间断未交平衡")
+                            Text(e.gapBalance ? "隔几次不交一次也会逐次加重：次数取连续未交次数和最近 \(e.gapWindow) 次作业里的未交次数中较大的（请假、未登记不算）" : "已关闭：只看连续未交，交过一次就从第 1 次重新算").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    if e.gapBalance { Stepper("看最近 \(e.gapWindow) 次作业", value: escBinding(\.gapWindow), in: 2...30) }
                 }
                 Toggle(isOn: Binding(get: { store.data.rules.review.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.review.enabled = v; d.rules = r } })) {
                     VStack(alignment: .leading) {
