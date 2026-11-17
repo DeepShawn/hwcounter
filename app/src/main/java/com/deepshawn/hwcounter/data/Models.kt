@@ -62,7 +62,7 @@ data class Assignment(
     val pinned: Boolean = false,
     /** 复审不合格的同学：状态记为未交（多算一次未交），扣分按 [ReviewRules.multiplier] 翻倍 */
     val reviewFailed: List<String> = emptyList(),
-    /** 抄袭：抄袭者 id → 提供者 id 列表。抄袭者和提供者都记为未交，扣分按 [PlagiarismRules] 翻倍、累犯加重 */
+    /** 抄袭：抄袭者 id → 提供者 id 列表（提供者不明时为 [[UNKNOWN_PROVIDER]]）。抄袭者和提供者都记为未交，扣分按 [PlagiarismRules] 翻倍、累犯加重 */
     val plagiarism: Map<String, List<String>> = emptyMap(),
 ) {
     /** 这位同学是否复审不合格（只有状态仍是“未交”时才算） */
@@ -75,6 +75,9 @@ data class Assignment(
     fun copiedBy(studentId: String): List<String> =
         if (statuses[studentId] != HwStatus.MISSING) emptyList() else plagiarism.filter { (r, ps) -> studentId in ps && statuses[r] == HwStatus.MISSING }.keys.toList()
 
+    /** 这次作业记为抄袭但提供者不明 */
+    fun unknownProvider(studentId: String): Boolean = UNKNOWN_PROVIDER in copiedFrom(studentId)
+
     /** 这次作业是否涉及抄袭（抄袭者或提供者） */
     fun plagiarized(studentId: String): Boolean = copiedFrom(studentId).isNotEmpty() || copiedBy(studentId).isNotEmpty()
 
@@ -84,6 +87,21 @@ data class Assignment(
         val set = ids.toSet()
         return copy(plagiarism = plagiarism.filterKeys { it !in set }.mapValues { (_, ps) -> ps - set }.filterValues { it.isNotEmpty() })
     }
+}
+
+/** 抄袭的提供者不明时，提供者列表里放这个占位 id（不是任何同学） */
+const val UNKNOWN_PROVIDER = "?"
+
+/** 这次作业里这位同学的抄袭关系：“抄袭 甲” / “抄袭（提供者不明）” / “提供给 乙 抄”（三端同样的文字） */
+fun SchoolClass.plagiarismDesc(a: Assignment, sid: String): String {
+    fun names(ids: List<String>) = ids.mapNotNull { id -> students.firstOrNull { it.id == id }?.name }.joinToString("、")
+    val from = a.copiedFrom(sid).filter { it != UNKNOWN_PROVIDER }; val by = a.copiedBy(sid)
+    val copied = when {
+        from.isNotEmpty() -> "抄袭 ${names(from)}"
+        a.unknownProvider(sid) -> "抄袭（提供者不明）"
+        else -> null
+    }
+    return listOfNotNull(copied, by.takeIf { it.isNotEmpty() }?.let { "提供给 ${names(it)} 抄" }).joinToString("；")
 }
 
 @Serializable

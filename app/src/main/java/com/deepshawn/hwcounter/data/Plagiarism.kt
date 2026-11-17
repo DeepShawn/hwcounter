@@ -7,7 +7,11 @@ package com.deepshawn.hwcounter.data
  * 关系图按作业来：传入 [only] 时只看这一次作业，每次作业各有一张图；不传则汇总全部作业。
  */
 object PlagiarismGraph {
-    data class Case(val assignment: Assignment, val receiver: Student, val providers: List<Student>)
+    /** [unknown]：提供者不明（这时 providers 可能为空） */
+    data class Case(val assignment: Assignment, val receiver: Student, val providers: List<Student>, val unknown: Boolean = false) {
+        /** “甲” / “提供者不明” / “甲、提供者不明” */
+        val providerText: String get() = (providers.map { it.name } + if (unknown) listOf("提供者不明") else emptyList()).joinToString("、")
+    }
     data class Edge(val provider: Student, val receiver: Student, val assignments: List<Assignment>) {
         val count: Int get() = assignments.size
     }
@@ -34,7 +38,7 @@ object PlagiarismGraph {
     /** 有抄袭记录的作业，最新的在前（关系图按作业切换用） */
     fun assignments(c: SchoolClass): List<Assignment> {
         val ids = c.students.mapTo(HashSet()) { it.id }
-        return c.assignments.filter { a -> a.plagiarism.keys.any { r -> r in ids && a.copiedFrom(r).any { p -> p in ids && (a.statuses[p] ?: HwStatus.NONE) == HwStatus.MISSING } } }
+        return c.assignments.filter { a -> a.plagiarism.keys.any { r -> r in ids && a.copiedFrom(r).any { p -> p == UNKNOWN_PROVIDER || (p in ids && (a.statuses[p] ?: HwStatus.NONE) == HwStatus.MISSING) } } }
             .sortedWith(compareByDescending<Assignment> { it.createdAt }.thenByDescending { it.id })
     }
 
@@ -50,15 +54,17 @@ object PlagiarismGraph {
         for (a in sorted) for ((rid, _) in a.plagiarism) {
             val r = byId[rid] ?: continue
             val ps = a.copiedFrom(rid).filter { (a.statuses[it] ?: HwStatus.NONE) == HwStatus.MISSING }.mapNotNull { byId[it] }
-            if (ps.isEmpty()) continue
-            cases += Case(a, r, ps)
+            val unknown = a.unknownProvider(rid)
+            if (ps.isEmpty() && !unknown) continue
+            cases += Case(a, r, ps, unknown)
             for (p in ps) edges.getOrPut(p.id to r.id) { ArrayList() } += a
         }
-        val involved = (edges.keys.flatMap { listOf(it.first, it.second) }).distinct()
+        // 提供者不明的抄袭者也算涉及（关系图里单独一个点）
+        val involved = (edges.keys.flatMap { listOf(it.first, it.second) } + cases.filter { it.unknown }.map { it.receiver.id }).distinct()
         val last = c.latestRecharges()
         val nodes = involved.mapNotNull { id ->
             val s = byId[id] ?: return@mapNotNull null
-            val copied = sorted.count { it.copiedFrom(id).any { p -> (it.statuses[p] ?: HwStatus.NONE) == HwStatus.MISSING } }
+            val copied = sorted.count { it.copiedFrom(id).any { p -> p == UNKNOWN_PROVIDER || (it.statuses[p] ?: HwStatus.NONE) == HwStatus.MISSING } }
             val provided = sorted.count { a -> a.copiedBy(id).isNotEmpty() }
             val det = c.autoPointDetails(rules, id)
             val list = sorted.filter { it.plagiarized(id) }

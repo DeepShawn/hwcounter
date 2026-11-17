@@ -18,8 +18,8 @@ const names = ['张锦宇', '李子涵', '林静', '王芳', '冉浩', '周杰',
 const students = names.map((n, i) => ({ id: `s${i}`, no: String(i + 1).padStart(2, '0'), name: n, group: `第${(i % 3) + 1}组` }));
 const st = (i, k) => ((i * 7 + k * 3) % 11 === 0 ? 'MISSING' : (i + k) % 9 === 0 ? 'LATE' : (i * 3 + k) % 7 === 0 ? 'EXCELLENT' : (i + k) % 13 === 0 ? 'LEAVE' : 'SUBMITTED');
 const assignments = Array.from({ length: 12 }, (_, k) => ({ id: `a${k}`, title: `练习${k + 1}`, subject: ['语文', '数学', '英语'][k % 3], createdAt: now - (12 - k) * 2 * DAY,
-  statuses: Object.fromEntries(students.map((s, i) => [s.id, (k === 11 && i === 3) || (k === 10 && (i === 2 || i === 4)) || (k === 8 && (i === 6 || i === 7)) ? 'MISSING' : st(i, k)])), comments: k === 11 ? { s1: '字迹潦草' } : {}, reviewFailed: k === 11 ? ['s3'] : [],
-  plagiarism: k === 10 ? { s4: ['s2'] } : k === 8 ? { s7: ['s6'] } : {} }));
+  statuses: Object.fromEntries(students.map((s, i) => [s.id, (k === 11 && i === 3) || (k === 10 && (i === 2 || i === 4)) || (k === 8 && (i === 6 || i === 7)) || (k === 9 && i === 9) ? 'MISSING' : st(i, k)])), comments: k === 11 ? { s1: '字迹潦草' } : {}, reviewFailed: k === 11 ? ['s3'] : [],
+  plagiarism: k === 10 ? { s4: ['s2'] } : k === 8 ? { s7: ['s6'] } : k === 9 ? { s9: ['?'] } : {} }));
 const seed = { version: 1, currentClassId: 'c1', settings: { rules: {} },
   classes: [{ id: 'c1', name: '高一(3)班', emoji: '🚀', students, assignments, groupLeaders: { 第1组: 's0', 第2组: 's1' }, reps: ['s1'],
     scores: [{ id: 'm1', studentId: 's0', delta: 2, reason: '课堂表现好', time: now - DAY }, { id: 'm2', studentId: 's5', delta: -1, reason: '迟到', time: now - 3 * DAY }],
@@ -172,7 +172,8 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   // 抄袭：关系图
   await page.click('.seg button:has-text("抄袭")'); await page.waitForSelector('.an-graph');
   check((await page.locator('.an-graph circle').count()) >= 4 && await page.isVisible('text=冉浩 抄袭 林静') && await page.isVisible('text=胡晨 抄袭 陈浩宏'), '抄袭关系图（全部作业汇总）与记录');
-  check(await page.isVisible('.chip.on:has-text("全部作业 2")'), '按作业切换：全部作业');
+  check(await page.isVisible('.chip.on:has-text("全部作业 3")'), '按作业切换：全部作业');
+  check(await page.isVisible('text=孙悦 抄袭 提供者不明') && await page.isVisible('.an-row:has-text("提供者不明 →"):has-text("孙悦")'), '抄袭：提供者不明（记录与关系列表）');
   await shot('7f-plagiarism');
   // 关系图按作业来：每次作业一张图
   await page.click('.cell:has-text("冉浩 抄袭 林静")'); await page.waitForSelector('text=本次作业的关系图');

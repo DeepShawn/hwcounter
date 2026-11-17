@@ -747,6 +747,12 @@ private fun Plagiarism(x: Ctx) {
         Legend(listOf(ProviderColor to "提供者", CopierColor to "抄袭者", BothColor to "既抄又提供"))
     }
     Group(if (one != null) "本次抄袭关系（提供者 → 抄袭者）" else "抄袭关系（提供者 → 抄袭者）") {
+        r.cases.filter { it.unknown }.groupBy { it.receiver }.forEach { (rc, list) ->
+            Row(Modifier.fillMaxWidth().clickable { x.open(Route.Student(rc.id)) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("提供者不明", color = sub()); Text("  →  ", color = sub()); Text(rc.name, Modifier.weight(1f), color = CopierColor, fontWeight = FontWeight.Medium)
+                if (one == null) Text("${list.size} 次", fontWeight = FontWeight.Bold)
+            }
+        }
         r.edges.forEach { e ->
             Row(Modifier.fillMaxWidth().clickable { x.open(Route.Student(e.receiver.id)) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(e.provider.name, color = ProviderColor, fontWeight = FontWeight.Medium); Text("  →  ", color = sub()); Text(e.receiver.name, Modifier.weight(1f), color = CopierColor, fontWeight = FontWeight.Medium)
@@ -766,5 +772,5 @@ private fun Plagiarism(x: Ctx) {
             r.clusters.filter { it.size >= 2 }.forEachIndexed { i, cl -> Text("第 ${i + 1} 圈 · ${cl.size} 人", fontSize = 13.sp, color = sub()); Chips(cl.map { it.name to "" }, PlagColor) { x.open(Route.Student(cl[it].id)) } }
         }
     }
-    if (one == null) Group("最近的抄袭记录（点按看这次的关系图）") { r.cases.take(20).forEach { k -> Cell("${k.receiver.name} 抄袭 ${k.providers.joinToString("、") { it.name }}", "${fmtDay(k.assignment.createdAt)} · ${k.assignment.subject} ${k.assignment.title}".trim(), onClick = { pick(k.assignment.id) }) } }
+    if (one == null) Group("最近的抄袭记录（点按看这次的关系图）") { r.cases.take(20).forEach { k -> Cell("${k.receiver.name} 抄袭 ${k.providerText}", "${fmtDay(k.assignment.createdAt)} · ${k.assignment.subject} ${k.assignment.title}".trim(), onClick = { pick(k.assignment.id) }) } }
 }

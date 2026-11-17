@@ -113,9 +113,7 @@ fun SchoolClass.ledger(rules: ScoreRules, studentId: String): List<LedgerRow> {
         val d = p?.points ?: rules.of(st)
         val extra = when {
             p != null && p.plagiarism > 0 -> {
-                val from = a.copiedFrom(studentId).mapNotNull { id -> students.firstOrNull { it.id == id }?.name }
-                val by = a.copiedBy(studentId).mapNotNull { id -> students.firstOrNull { it.id == id }?.name }
-                val who = listOfNotNull(from.takeIf { it.isNotEmpty() }?.let { "抄袭 ${it.joinToString("、")}" }, by.takeIf { it.isNotEmpty() }?.let { "提供给 ${it.joinToString("、")} 抄" }).joinToString("；")
+                val who = plagiarismDesc(a, studentId)
                 val review = if (p.reviewFailed) "，复审不合格再 ×${rules.review.multiplier.fmt()}，合计 ×${(p.plagiarismFactor * rules.review.multiplier).fmt()}" else ""
                 "（$who，本轮第 ${p.plagiarism} 次，扣分 ×${p.plagiarismFactor.fmt()}$review${if (p.missStreak >= 2 && rules.escalation.enabled) "，连续第 ${p.missStreak} 次未交" else ""}）"
             }

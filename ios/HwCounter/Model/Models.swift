@@ -179,6 +179,8 @@ struct Assignment: Codable, Identifiable, Equatable {
     }
     /// 这次作业是否涉及抄袭（抄袭者或提供者）
     func plagiarized(_ sid: String) -> Bool { !copiedFrom(sid).isEmpty || !copiedBy(sid).isEmpty }
+    /// 这次作业记为抄袭但提供者不明
+    func unknownProvider(_ sid: String) -> Bool { copiedFrom(sid).contains(unknownProviderId) }
     /// 去掉这些同学的抄袭标记（作为抄袭者和提供者）
     mutating func removePlagiarism(_ ids: [String]) {
         var p: [String: [String]] = [:]
@@ -942,7 +944,22 @@ func fmtDate(_ d: Date) -> String {
 
 // MARK: - 抄袭关系（与安卓 Plagiarism.kt、网页 analytics.js 同算法）
 
-struct PlagiarismCase { var assignment: Assignment; var receiver: Student; var providers: [Student] }
+/// 抄袭的提供者不明时，提供者列表里放这个占位 id（不是任何同学），与安卓、网页一致
+let unknownProviderId = "?"
+
+/// 这次作业里这位同学的抄袭关系（“抄袭 甲” / “抄袭（提供者不明）” / “提供给 乙 抄”）
+func plagiarismLine(_ c: SchoolClass, _ a: Assignment, _ sid: String) -> String {
+    func names(_ ids: [String]) -> String { ids.compactMap { id in c.students.first { $0.id == id }?.name }.joined(separator: "、") }
+    let from = a.copiedFrom(sid).filter { $0 != unknownProviderId }, by = a.copiedBy(sid)
+    let copied: String? = !from.isEmpty ? "抄袭 \(names(from))" : a.unknownProvider(sid) ? "抄袭（提供者不明）" : nil
+    return [copied, by.isEmpty ? nil : "提供给 \(names(by)) 抄"].compactMap { $0 }.joined(separator: "；")
+}
+
+/// unknown：提供者不明（这时 providers 可能为空）
+struct PlagiarismCase {
+    var assignment: Assignment; var receiver: Student; var providers: [Student]; var unknown = false
+    var providerText: String { (providers.map(\.name) + (unknown ? ["提供者不明"] : [])).joined(separator: "、") }
+}
 struct PlagiarismEdge { var provider: Student; var receiver: Student; var assignments: [Assignment]; var count: Int { assignments.count } }
 struct PlagiarismNode {
     var student: Student; var copied: Int; var provided: Int; var points: Double; var roundTimes: Int
@@ -963,7 +980,7 @@ extension SchoolClass {
     /// 有抄袭记录的作业，最新的在前（关系图按作业切换用）
     func plagiarismAssignments() -> [Assignment] {
         let ids = Set(students.map(\.id))
-        return assignments.filter { a in a.plagiarism.keys.contains { r in ids.contains(r) && a.copiedFrom(r).contains { ids.contains($0) && a.status($0) == .MISSING } } }
+        return assignments.filter { a in a.plagiarism.keys.contains { r in ids.contains(r) && a.copiedFrom(r).contains { $0 == unknownProviderId || (ids.contains($0) && a.status($0) == .MISSING) } } }
             .sorted { ($0.createdAt, $0.id) > ($1.createdAt, $1.id) }
     }
 
@@ -1001,8 +1018,9 @@ extension SchoolClass {
             for rid in a.plagiarism.keys.sorted() {
                 guard let r = byId[rid] else { continue }
                 let ps = a.copiedFrom(rid).filter { a.status($0) == .MISSING }.compactMap { byId[$0] }
-                if ps.isEmpty { continue }
-                cases.append(PlagiarismCase(assignment: a, receiver: r, providers: ps))
+                let unknown = a.unknownProvider(rid)
+                if ps.isEmpty && !unknown { continue }
+                cases.append(PlagiarismCase(assignment: a, receiver: r, providers: ps, unknown: unknown))
                 for p in ps {
                     let k = p.id + "\u{0}" + r.id
                     if edges[k] == nil { edges[k] = PlagiarismEdge(provider: p, receiver: r, assignments: []); edgeKeys.append(k) }
@@ -1012,10 +1030,12 @@ extension SchoolClass {
         }
         var involved: [String] = []
         for k in edgeKeys { for id in [edges[k]!.provider.id, edges[k]!.receiver.id] where !involved.contains(id) { involved.append(id) } }
+        // 提供者不明的抄袭者也算涉及（关系图里单独一个点）
+        for k in cases where k.unknown && !involved.contains(k.receiver.id) { involved.append(k.receiver.id) }
         let last = latestRecharges()
         let nodes = involved.compactMap { id -> PlagiarismNode? in
             guard let s = byId[id] else { return nil }
-            let copied = sorted.filter { a in a.copiedFrom(id).contains { a.status($0) == .MISSING } }.count
+            let copied = sorted.filter { a in a.copiedFrom(id).contains { $0 == unknownProviderId || a.status($0) == .MISSING } }.count
             let provided = sorted.filter { !$0.copiedBy(id).isEmpty }.count
             let pts = autoPoints(rules, id)
             let list = sorted.filter { $0.plagiarized(id) }

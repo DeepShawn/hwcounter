@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
 import { analysisXlsx, analysisHtml } from './reportexport.js';
 import { StockTab } from './stockpage.js';
-import { STATUS, fmtNum, signed, compareStudentNumbers, rechargeCounts, defaultPlagiarism, plagiarismFactor, copiedFrom, copiedBy, plagiarized } from './model.js';
+import { STATUS, fmtNum, signed, compareStudentNumbers, rechargeCounts, defaultPlagiarism, plagiarismFactor, copiedFrom, copiedBy, plagiarized, plagiarismDesc } from './model.js';
 import {
   report as buildReport, text as reportText, examReport, periodBounds, periodLabel, difficultyText, discriminationText,
   attention, attentionWeekly, ATT_LEVELS, stockBoard, groupStockBoard, SPANS, groupReport, groupDuel, classResets, plagiarismReport, plagiarismAssignments,
@@ -505,11 +505,7 @@ export function PlagGraph({ r, open }) {
   </svg>`;
 }
 
-const plagLineOf = (c, a, sid) => {
-  const nm = (ids) => ids.map((id) => c.students.find((s) => s.id === id)?.name).filter(Boolean).join('、');
-  const f = copiedFrom(a, sid); const b = copiedBy(a, sid);
-  return [f.length && `抄袭 ${nm(f)}`, b.length && `提供给 ${nm(b)} 抄`].filter(Boolean).join('；');
-};
+const plagLineOf = (c, a, sid) => plagiarismDesc(c, a, sid);
 
 /** 抄袭：关系图按作业来（每次作业一张图），也可看全部作业汇总 */
 function Plagiarism({ kit, c, rules, open }) {
@@ -534,7 +530,8 @@ function Plagiarism({ kit, c, rules, open }) {
     <div class="meta">${plagiarismText(rules)}；改成其他状态即取消。</div>
     <${Card} title=${one ? '本次作业的关系图 · 箭头从提供者指向抄袭者' : '全部作业汇总的关系图 · 线越粗次数越多'}><div class="an-pad"><${PlagGraph} r=${r} open=${open} />
       <div class="legend in" style=${{ padding: '8px 0 0' }}>${[[PROVIDER, '提供者'], [COPIER, '抄袭者'], [BOTH, '既抄又提供']].map(([col, l]) => html`<span><i style=${{ background: col, borderRadius: '50%' }}></i>${l}</span>`)}</div></div></${Card}>
-    <${Card} title=${one ? '本次抄袭关系（提供者 → 抄袭者）' : '抄袭关系（提供者 → 抄袭者）'}>${r.edges.map((e) => html`<button class="an-row" key=${e.provider.id + e.receiver.id} onClick=${() => open({ view: 'student', id: e.receiver.id })}>
+    <${Card} title=${one ? '本次抄袭关系（提供者 → 抄袭者）' : '抄袭关系（提供者 → 抄袭者）'}>${Object.values(r.cases.filter((k) => k.unknown).reduce((m, k) => { (m[k.receiver.id] = m[k.receiver.id] || []).push(k); return m; }, {})).map((l) => html`<button class="an-row" key=${'u' + l[0].receiver.id} onClick=${() => open({ view: 'student', id: l[0].receiver.id })}>
+      <div class="an-grow"><b><span class="muted">提供者不明 →</span> <span style=${{ color: COPIER }}>${l[0].receiver.name}</span></b></div>${!one && html`<b>${l.length} 次</b>`}</button>`)}${r.edges.map((e) => html`<button class="an-row" key=${e.provider.id + e.receiver.id} onClick=${() => open({ view: 'student', id: e.receiver.id })}>
       <div class="an-grow"><b><span style=${{ color: PROVIDER }}>${e.provider.name}</span> <span class="muted">→</span> <span style=${{ color: COPIER }}>${e.receiver.name}</span></b>${!one && html`<small>${e.assignments.slice(-3).map((a) => a.title).join('、')}</small>`}</div>${!one && html`<b>${e.count} 次</b>`}</button>`)}</${Card}>
     <${Card} title=${one ? '本次涉及的同学' : '涉及的同学（按次数）'}>${r.nodes.map((nd) => html`<button class="an-row" key=${nd.student.id} onClick=${() => open({ view: 'student', id: nd.student.id })}><${Avatar} name=${nd.student.name} size=${36} />
       <div class="an-grow"><b>${nd.student.name} <em class="an-tag" style=${{ color: roleColor(nd), background: roleColor(nd) + '1f' }}>${nd.role}</em></b>
@@ -543,6 +540,6 @@ function Plagiarism({ kit, c, rules, open }) {
           : [nd.copied && `抄袭 ${nd.copied} 次`, nd.provided && `提供 ${nd.provided} 次`, `本轮第 ${nd.roundTimes} 次${pg.enabled && pg.escalate && nd.roundTimes > 0 ? `（下次 ×${fmtNum(plagiarismFactor(pg, nd.roundTimes + 1))}）` : ''}`].filter(Boolean).join(' · ')}</small></div>
       <b style=${{ color: COPIER, fontSize: '16px' }}>${fmtNum(nd.points)}</b></button>`)}</${Card}>
     ${r.clusters.some((x) => x.length >= 3) && html`<${Card} title="抄袭圈（互相连在一起的同学）"><div class="an-pad">${r.clusters.filter((x) => x.length >= 2).map((cl, i) => html`<${Chips} title=${`第 ${i + 1} 圈 · ${cl.length} 人`} items=${cl.map((s) => [s, ''])} color=${PLAGC} open=${open} />`)}</div></${Card}>`}
-    ${!one && html`<${Card} title="最近的抄袭记录（点按看这次的关系图）">${r.cases.slice(0, 20).map((k) => html`<${Cell} key=${k.assignment.id + k.receiver.id} title=${`${k.receiver.name} 抄袭 ${k.providers.map((p) => p.name).join('、')}`}
+    ${!one && html`<${Card} title="最近的抄袭记录（点按看这次的关系图）">${r.cases.slice(0, 20).map((k) => html`<${Cell} key=${k.assignment.id + k.receiver.id} title=${`${k.receiver.name} 抄袭 ${k.providerText}`}
       sub=${`${md(k.assignment.createdAt)} · ${k.assignment.subject || ''} ${k.assignment.title}`} onClick=${() => setSel(k.assignment.id)} />`)}</${Card}>`}`;
 }

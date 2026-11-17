@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultRules, defaultPlagiarism, plagiarismFactor, autoPoints, studentStats, normalizeData, rechargeScores, plagiarized } from '../../web/js/model.js';
 import { plagiarismReport, plagiarismAssignments } from '../../web/js/analytics.js';
+import { plagiarismDesc } from '../../web/js/model.js';
 
 const DAY = 86400000; const S = 'SUBMITTED'; const M = 'MISSING';
 function cls() {
@@ -66,4 +67,19 @@ test('抄袭与复审不合格叠加', () => {
   assert.equal(autoPoints(c, R, 'b').a0, -8);
   assert.equal(autoPoints(c, R, 'a').a0, -4);
   assert.equal(autoPoints(c, { ...R, review: { ...R.review, enabled: false } }, 'b').a0, -4);
+});
+
+test('抄袭：提供者不明', () => {
+  const c = cls(); const a = c.assignments[1];
+  a.statuses.d = M; a.plagiarism = { d: ['?'] };
+  assert.equal(autoPoints(c, R, 'd').a1, -4);
+  assert.equal(plagiarized(a, 'd'), true);
+  assert.equal(plagiarismDesc(c, a, 'd'), '抄袭（提供者不明）');
+  const g = plagiarismReport(c, R, 'a1');
+  assert.equal(g.cases.length, 1); assert.equal(g.cases[0].unknown, true); assert.equal(g.cases[0].providerText, '提供者不明');
+  assert.equal(g.edges.length, 0); assert.deepEqual(g.nodes.map((n) => [n.student.id, n.copied, n.provided]), [['d', 1, 0]]);
+  assert.deepEqual(plagiarismAssignments(c).map((x) => x.id), ['a2', 'a1', 'a0']);
+  // 汇总：多出一位抄袭者，关系边不变
+  const all = plagiarismReport(c, R);
+  assert.equal(all.copiers, 3); assert.equal(all.edges.length, 2); assert.equal(all.cases.length, 4);
 });
