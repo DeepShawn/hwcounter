@@ -2,7 +2,10 @@
 
 package com.deepshawn.hwcounter.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -68,53 +71,30 @@ fun CloudSection(vm: AppViewModel) {
     val kit = LocalKit.current
     val scope = rememberCoroutineScope()
     val st by vm.sync.state.collectAsStateWithLifecycle()
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var showPw by remember { mutableStateOf(false) }
     var history by remember { mutableStateOf<List<HistoryItem>?>(null) }
     var confirmRestore by remember { mutableStateOf<HistoryItem?>(null) }
     var changingPw by remember { mutableStateOf(false) }
-    var inviting by remember { mutableStateOf(false) }
     val fmt = remember { SimpleDateFormat("yyyy年M月d日", Locale.CHINA) }
 
     SectionTitle("云端同步", Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
     AppCard(Modifier.padding(horizontal = 12.dp)) {
         if (st.email == null) {
-            Text("现在是预览模式（只读）。老师用邮箱登录后才能修改，数据自动在安卓、iPad、网页版之间同步；凭邀请码注册的用户用用户名登录，只读查看并可模拟炒股。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                email, { email = it.trim() }, label = { Text("邮箱或用户名") }, singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(6.dp))
-            OutlinedTextField(
-                password, { password = it }, label = { Text("密码（至少 6 位）") }, singleLine = true,
-                visualTransformation = if (showPw) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                trailingIcon = { IconButton(onClick = { showPw = !showPw }) { Icon(if (showPw) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null) } },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    enabled = !st.busy && email.isNotBlank() && password.length >= 6,
-                    onClick = { scope.launch { runCatching { vm.sync.signIn(email, password) }.onFailure { kit.toast(it.message ?: "登录失败") } } },
-                    modifier = Modifier.weight(1f),
-                ) { Text("登录") }
-                FilledTonalButton(
-                    enabled = !st.busy && email.isNotBlank() && password.length >= 6,
-                    onClick = {
-                        if ("@" !in email) kit.toast("老师注册请填邮箱；学生、家长请点“用邀请码注册”")
-                        else scope.launch { runCatching { vm.sync.signUp(email, password) }.onFailure { kit.toast(it.message ?: "注册失败") } }
-                    },
-                    modifier = Modifier.weight(1f),
-                ) { Text("老师注册") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.foundation.layout.Box(
+                    Modifier.size(44.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.Filled.CloudOff, null, tint = MaterialTheme.colorScheme.primary) }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("未登录 · 预览模式（只读）", fontWeight = FontWeight.Bold)
+                    Text("老师用邮箱登录后可修改，数据在安卓、iPad、网页、Windows 间同步；学生、家长凭邀请码注册后可模拟炒股。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            FilledTonalButton(enabled = !st.busy, onClick = { inviting = true }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) { Text("用邀请码注册") }
-            TextButton(
-                enabled = email.contains("@"),
-                onClick = { scope.launch { runCatching { vm.sync.recover(email) }.onSuccess { kit.toast("重置密码邮件已发送") }.onFailure { kit.toast(it.message ?: "发送失败") } } },
-            ) { Text("忘记密码？") }
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { kit.nav.push(com.deepshawn.hwcounter.ui.Route.Auth(0)) }, modifier = Modifier.weight(1f)) { Text("登录") }
+                FilledTonalButton(onClick = { kit.nav.push(com.deepshawn.hwcounter.ui.Route.Auth(1)) }, modifier = Modifier.weight(1f)) { Text("注册") }
+            }
         } else if (st.member != null) {
             val m = st.member!!
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -185,7 +165,6 @@ fun CloudSection(vm: AppViewModel) {
     }
 
     if (changingPw) ChangePasswordDialog(vm) { changingPw = false }
-    if (inviting) InviteRegisterDialog(vm) { inviting = false }
 
     history?.let { list ->
         AlertDialog(
@@ -291,52 +270,6 @@ private fun ChangePasswordDialog(vm: AppViewModel, onDismiss: () -> Unit) {
                     }
                 }
             }) { Text(if (busy) "提交中…" else "确认修改") }
-        },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("取消") } },
-    )
-}
-
-
-/** 凭邀请码注册普通用户：邀请码 + 用户名 + 密码 + 显示名 */
-@Composable
-private fun InviteRegisterDialog(vm: AppViewModel, onDismiss: () -> Unit) {
-    val kit = LocalKit.current
-    val scope = rememberCoroutineScope()
-    var code by remember { mutableStateOf("") }
-    var user by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf("") }
-    var pw by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var err by remember { mutableStateOf("") }
-    val okUser = Regex("^[A-Za-z0-9_]{3,20}$").matches(user)
-    val okPw = pw.length >= 6 && pw.any { it.isLowerCase() } && pw.any { it.isUpperCase() } && pw.any { it.isDigit() } && pw.any { !it.isLetterOrDigit() }
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("用邀请码注册") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("邀请码由老师生成，一个码只能注册一个账号。注册后只读查看老师的班级数据，并用老师发的模拟币（与真实货币无关）炒信誉分、关注度股票。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(code, { code = it.uppercase().filter { ch -> ch.isLetterOrDigit() }.take(8) }, label = { Text("邀请码（8 位）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(user, { user = it.trim() }, label = { Text("用户名（3–20 位字母、数字、下划线）") }, singleLine = true, isError = user.isNotEmpty() && !okUser, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(name, { name = it }, label = { Text("显示名（可选，如：张三家长）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(
-                    pw, { pw = it }, label = { Text("密码") }, singleLine = true, isError = pw.isNotEmpty() && !okPw,
-                    supportingText = { Text("至少 6 位，同时包含小写字母、大写字母、数字和符号，如 Abc123!") },
-                    visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth(),
-                )
-                if (err.isNotBlank()) Text(err, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = !busy && code.length == 8 && okUser && okPw, onClick = {
-                busy = true; err = ""
-                scope.launch {
-                    runCatching { vm.sync.registerWithInvite(code, user, pw, name) }
-                        .onSuccess { kit.toast("注册成功，已登录"); onDismiss() }
-                        .onFailure { err = it.message ?: "注册失败" }
-                    busy = false
-                }
-            }) { Text(if (busy) "注册中…" else "注册并登录") }
         },
         dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("取消") } },
     )

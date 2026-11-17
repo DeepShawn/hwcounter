@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
@@ -54,6 +55,10 @@ import com.deepshawn.hwcounter.ui.components.Chip2
 import com.deepshawn.hwcounter.ui.components.EmptyState
 import com.deepshawn.hwcounter.ui.components.HCard
 import com.deepshawn.hwcounter.ui.components.HTabs
+import com.deepshawn.hwcounter.ui.components.Avatar
+import com.deepshawn.hwcounter.ui.components.listCell
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Search
 import com.deepshawn.hwcounter.ui.components.MiuixPage
 import com.deepshawn.hwcounter.ui.components.group
 import kotlinx.coroutines.launch
@@ -69,7 +74,7 @@ private fun sgn(x: Double) = (if (x > 0.005) "+" else if (x < -0.005) "-" else "
 private fun day(iso: String) = iso.take(10)
 
 /** 炒股页面的数据（从云端读取） */
-private class TradeData(
+internal class TradeData(
     val me: Trade.Me? = null,
     val prices: List<Trade.Price> = emptyList(),
     val positions: List<Trade.Position> = emptyList(),
@@ -100,12 +105,12 @@ private fun TradePanel(vm: AppViewModel, data: AppData, c: SchoolClass) {
     var td by remember { mutableStateOf<TradeData?>(null) }
     var err by remember { mutableStateOf("") }
     var tick by remember { mutableIntStateOf(0) }
-    var ordering by remember { mutableStateOf<Pair<Trade.Price?, String>?>(null) }
+    fun order(p: Trade.Price?, side: String) = kit.nav.push(Route.TradeOrder(p?.symbol, side))
     var tab by remember { mutableIntStateOf(0) }
     val loggedIn = st.email != null
     val member = st.member
 
-    LaunchedEffect(st.email, tick) {
+    LaunchedEffect(st.email, tick, tradeTick.intValue) {
         if (!loggedIn) { td = null; return@LaunchedEffect }
         err = ""
         runCatching {
@@ -122,8 +127,8 @@ private fun TradePanel(vm: AppViewModel, data: AppData, c: SchoolClass) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("模拟炒股", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Text("用老师发放的模拟币（与真实货币无关）买卖信誉分、关注度“股票”：个人和小组都有，股价随班级数据变化。", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
-                    Text("· 老师：登录后在 设置 → 用户与邀请码 生成邀请码、发放模拟币\n· 学生 / 家长：在 设置 → 云端同步 点“用邀请码注册”", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
-                    TextButton("去登录 / 注册", onClick = { kit.nav.tab(Route.Settings); kit.nav.push(Route.SettingsPage("account")) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColorsPrimary())
+                    Text("· 老师：登录后在 设置 → 用户与邀请码 生成邀请码、发放模拟币\n· 学生 / 家长：点下面的按钮 → 注册 → 学生 / 家长，填写邀请码", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                    TextButton("去登录 / 注册", onClick = { kit.nav.push(Route.Auth()) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColorsPrimary())
                 }
             }
             return@Column
@@ -180,8 +185,8 @@ private fun TradePanel(vm: AppViewModel, data: AppData, c: SchoolClass) {
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton("买入", onClick = { ordering = null to "buy" }, enabled = me.status == "active", modifier = Modifier.weight(1f), colors = ButtonDefaults.textButtonColorsPrimary())
-                    TextButton("卖出 / 做空", onClick = { ordering = null to "sell" }, enabled = me.status == "active", modifier = Modifier.weight(1f))
+                    TextButton("买入", onClick = { order(null, "buy") }, enabled = me.status == "active", modifier = Modifier.weight(1f), colors = ButtonDefaults.textButtonColorsPrimary())
+                    TextButton("卖出 / 做空", onClick = { order(null, "sell") }, enabled = me.status == "active", modifier = Modifier.weight(1f))
                 }
                 Text("股价最近更新：${updated ?: "老师还没有发布"}。做空需保留 2 倍空头市值的现金。", fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp))
             }
@@ -194,7 +199,7 @@ private fun TradePanel(vm: AppViewModel, data: AppData, c: SchoolClass) {
                     val px = priceOf[p.symbol]
                     val cur = px?.px ?: p.avgPrice
                     val pl = (cur - p.avgPrice) * p.qty
-                    Row(Modifier.fillMaxWidth().clickable { ordering = px to (if (p.qty > 0) "sell" else "buy") }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clickable { order(px, if (p.qty > 0) "sell" else "buy") }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text((px?.name ?: p.symbol) + if (p.qty < 0) "（空）" else "", fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${px?.kindLabel ?: ""} · ${abs(p.qty)} 股 · 成本 ${m2(p.avgPrice)} · 现价 ${m2(cur)}", fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
@@ -242,7 +247,7 @@ private fun TradePanel(vm: AppViewModel, data: AppData, c: SchoolClass) {
                     if (l.isNotEmpty()) {
                         Text(Trade.kindLabel(k), fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
                         l.forEach { p ->
-                            Row(Modifier.fillMaxWidth().clickable { ordering = p to "buy" }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(Modifier.fillMaxWidth().clickable { order(p, "buy") }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(p.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(m2(p.px), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium)
                                 Text("交易", color = colors.primary, fontSize = 12.sp, modifier = Modifier.padding(start = 10.dp))
@@ -255,23 +260,6 @@ private fun TradePanel(vm: AppViewModel, data: AppData, c: SchoolClass) {
         }
     }
 
-    ordering?.let { (p, side) ->
-        val d = td
-        if (d?.me != null) OrderDialog(
-            prices = d.prices.filter { it.active && inClass(c, it.symbol) }, initial = p, initialSide = side,
-            cash = d.me.cash, positions = d.positions.associate { it.symbol to it.qty },
-            onDismiss = { ordering = null },
-        ) { symbol, s, qty, limit ->
-            scope.launch {
-                runCatching { Trade.place(vm.sync.client, symbol, s, qty, limit) }
-                    .onSuccess { r ->
-                        kit.toast(when (r.status) { "filled" -> "已成交，价格 ${r.price?.let { m2(it) } ?: ""}"; "open" -> "已挂单，到价自动成交"; else -> "未成交：${r.reason}" })
-                        ordering = null; tick++
-                    }
-                    .onFailure { kit.toast(it.message ?: "下单失败") }
-            }
-        }
-    }
 }
 
 @Composable
@@ -325,75 +313,247 @@ private fun Leaderboard(ranks: List<Trade.Rank>, me: String?) {
     }
 }
 
-/** 下单：买入 / 卖出 / 做空 / 平空 × 市价 / 限价 */
+/** 截图测试用：不连网，直接用这份行情 */
+internal var tradeFake: TradeData? = null
+
+/** 下单后让炒股页重新读取 */
+internal val tradeTick = androidx.compose.runtime.mutableIntStateOf(0)
+
+/** 选股与下单页：买入 / 卖出 / 做空 / 平空 × 市价 / 限价 */
 @Composable
-private fun OrderDialog(
-    prices: List<Trade.Price>, initial: Trade.Price?, initialSide: String, cash: Double, positions: Map<String, Long>,
-    onDismiss: () -> Unit, onPlace: (symbol: String, side: String, qty: Long, limit: Double?) -> Unit,
-) {
+fun TradeOrderScreen(vm: AppViewModel, data: AppData, symbol: String?, initialSide: String) {
+    val kit = LocalKit.current
+    val scope = rememberCoroutineScope()
     val colors = MiuixTheme.colorScheme
-    var sel by remember { mutableStateOf(initial) }
+    val us = com.deepshawn.hwcounter.ui.theme.LocalUiPrefs.current.usColors
+    val buyColor = if (us) Color(0xFF16A34A) else Color(0xFFE5384D)
+    val sellColor = if (us) Color(0xFFE5384D) else Color(0xFF16A34A)
+    val c = vm.currentClass(data)
+    var td by remember { mutableStateOf<TradeData?>(null) }
+    var err by remember { mutableStateOf("") }
+    var sel by remember { mutableStateOf(symbol) }
     var side by remember { mutableStateOf(initialSide) }
-    var limitMode by remember { mutableStateOf(false) }
+    var limitMode by remember { mutableIntStateOf(0) }
     var qtyText by remember { mutableStateOf("10") }
-    var limitText by remember { mutableStateOf(initial?.px?.let { "%.2f".format(it) } ?: "") }
+    var limitText by remember { mutableStateOf("") }
     var filter by remember { mutableIntStateOf(0) }
-    val qty = qtyText.toLongOrNull() ?: 0
-    val limit = limitText.toDoubleOrNull()
-    val held = sel?.let { positions[it.symbol] } ?: 0
-    val px = sel?.px ?: 0.0
-    val action = when {
-        side == "buy" && held < 0 -> if (qty <= -held) "买入平空" else "平空并买入"
-        side == "buy" -> "买入"
-        held > 0 -> if (qty <= held) "卖出" else "卖出并做空"
-        else -> "卖出做空"
+    var query by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        tradeFake?.let { td = it; return@LaunchedEffect }
+        runCatching {
+            val cl = vm.sync.client
+            val me = Trade.me(cl)
+            TradeData(me, Trade.prices(cl), Trade.positions(cl, me.userId))
+        }.onSuccess { td = it }.onFailure { err = it.message ?: "读取失败" }
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (sel == null) "选择股票" else "${sel!!.name} · ${sel!!.kindLabel}", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (sel == null) {
-                    val kinds = listOf("C", "A", "GC", "GA")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { kinds.forEachIndexed { i, k -> Chip2(Trade.kindLabel(k).replace("个人", "").replace("小组", "组·"), filter == i, { filter = i }) } }
-                    val l = prices.filter { it.kind == kinds[filter] }.sortedByDescending { it.price }
-                    if (l.isEmpty()) Text("没有可交易的股票（老师还没发布股价）", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
-                    l.forEach { p ->
-                        Row(Modifier.fillMaxWidth().clickable { sel = p; limitText = "%.2f".format(p.px) }.padding(vertical = 7.dp)) {
-                            Text(p.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(m2(p.px) + ((positions[p.symbol] ?: 0).takeIf { it != 0L }?.let { " · 持 $it" } ?: ""), fontFamily = FontFamily.Monospace)
+    val d = td
+    val prices = d?.prices.orEmpty().filter { it.active && (c == null || inClass(c, it.symbol)) }
+    val held = d?.positions.orEmpty().associate { it.symbol to it.qty }
+    val cost = d?.positions.orEmpty().associate { it.symbol to it.avgPrice }
+    val p = sel?.let { s -> prices.firstOrNull { it.symbol == s } }
+    LaunchedEffect(p?.symbol) { if (p != null && limitText.isEmpty()) limitText = "%.2f".format(p.px) }
+
+    MiuixPage(
+        title = p?.name ?: "选择股票", largeTitle = p?.name ?: "选择股票",
+        onBack = { if (p != null && symbol == null) { sel = null; limitText = "" } else kit.nav.pop() },
+    ) {
+        if (d == null) {
+            item(key = "loading") { Text(err.ifBlank { "正在读取行情…" }, Modifier.fillMaxWidth().padding(32.dp), textAlign = TextAlign.Center, color = if (err.isBlank()) colors.onSurfaceVariantSummary else colors.error) }
+            return@MiuixPage
+        }
+        val cash = d.me?.cash ?: 0.0
+        if (p == null) {
+            // ---------- 选股 ----------
+            val kinds = listOf("C", "A", "GC", "GA")
+            item(key = "search") {
+                FormField(query, { query = it }, "", Icons.Rounded.Search, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), placeholder = "搜索同学或小组", height = 46.dp)
+            }
+            item(key = "kinds") {
+                HTabs(listOf("个人信誉", "个人关注", "小组信誉", "小组关注"), filter, { filter = it }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp), height = 40.dp)
+            }
+            val l = prices.filter { it.kind == kinds[filter] && (query.isBlank() || query.trim() in it.name) }.sortedByDescending { it.price }
+            item(key = "count") {
+                Text(
+                    if (prices.isEmpty()) "老师还没有发布这个班的股价" else "${Trade.kindLabel(kinds[filter])} · ${l.size} 只 · 现金 ${m2(cash)}",
+                    fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp),
+                )
+            }
+            if (l.isEmpty() && prices.isNotEmpty()) item(key = "none") { Text("没有找到", Modifier.fillMaxWidth().padding(24.dp), textAlign = TextAlign.Center, color = colors.onSurfaceVariantSummary) }
+            l.forEachIndexed { i, x ->
+                item(key = "s-${x.symbol}") {
+                    val h = held[x.symbol] ?: 0L
+                    Row(
+                        Modifier.listCell(i, l.size).clickable { sel = x.symbol; limitText = "%.2f".format(x.px) }.padding(horizontal = 14.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("${i + 1}", Modifier.width(26.dp), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (i < 3) colors.primary else colors.onSurfaceVariantSummary)
+                        Avatar(if (x.kind.startsWith("G")) x.name.take(1) else x.name, size = 38.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(x.name, fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(x.kindLabel + if (h != 0L) " · ${if (h > 0) "持有" else "做空"} ${abs(h)} 股" else "", fontSize = 12.sp, color = if (h != 0L) colors.primary else colors.onSurfaceVariantSummary, maxLines = 1)
                         }
+                        Text(m2(x.px), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                        Text("›", fontSize = 20.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 8.dp))
                     }
-                } else {
-                    Text("现价 ${m2(px)} · 持有 $held 股 · 现金 ${m2(cash)}", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Chip2("买入", side == "buy", { side = "buy" })
-                        Chip2(if (held > 0) "卖出" else "做空", side == "sell", { side = "sell" })
-                        Chip2("市价", !limitMode, { limitMode = false })
-                        Chip2("限价", limitMode, { limitMode = true })
-                    }
-                    if (held != 0L) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Chip2(if (held > 0) "全部卖出 $held" else "全部平空 ${-held}", false, { side = if (held > 0) "sell" else "buy"; qtyText = abs(held).toString() })
-                    }
-                    OutlinedTextField(qtyText, { qtyText = it.filter { ch -> ch.isDigit() }.take(7) }, label = { Text("数量（股）") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                    if (side == "buy" && px > 0) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(4, 2, 1).forEach { k -> Chip2(if (k == 1) "全仓" else "1/$k 仓", false, { qtyText = maxOf(1L, (cash / k / (if (limitMode) (limit ?: px) else px)).toLong()).toString() }) }
-                    }
-                    if (limitMode) OutlinedTextField(limitText, { limitText = it.filter { ch -> ch.isDigit() || ch == '.' }.take(9) }, label = { Text(if (side == "buy") "限价（股价 ≤ 限价时成交）" else "限价（股价 ≥ 限价时成交）") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
-                    val est = qty * (if (limitMode) (limit ?: px) else px)
-                    Text("$action $qty 股，约 ${m2(est)}" + if (limitMode) "（挂单，到价自动成交，可撤单）" else "（按现价立即成交）", fontWeight = FontWeight.Medium)
-                    TextButton("换一只股票", onClick = { sel = null })
                 }
             }
-        },
-        confirmButton = {
-            androidx.compose.material3.TextButton(
-                enabled = sel != null && qty > 0 && (!limitMode || (limit ?: 0.0) > 0),
-                onClick = { sel?.let { onPlace(it.symbol, side, qty, if (limitMode) limit else null) } },
-            ) { Text(if (sel == null) "下单" else action) }
-        },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("取消") } },
-    )
+            item(key = "pad") { Spacer(Modifier.height(24.dp)) }
+            return@MiuixPage
+        }
+
+        // ---------- 下单 ----------
+        val h = held[p.symbol] ?: 0L
+        val px = p.px
+        val qty = qtyText.toLongOrNull() ?: 0L
+        val limit = limitText.toDoubleOrNull()
+        val usePx = if (limitMode == 1) (limit ?: px) else px
+        val est = qty * usePx
+        val action = when {
+            side == "buy" && h < 0 -> if (qty <= -h) "买入平空" else "平空并买入"
+            side == "buy" -> "买入"
+            h > 0 -> if (qty <= h) "卖出" else "卖出并做空"
+            else -> "卖出做空"
+        }
+        val sideColor = if (side == "buy") buyColor else sellColor
+        val cashAfter = if (side == "buy") cash - est else cash + est
+        val warn = when {
+            qty <= 0 -> "请输入数量"
+            limitMode == 1 && (limit ?: 0.0) <= 0 -> "请输入限价"
+            side == "buy" && est > cash + 1e-9 -> "现金不够：最多可买 ${(cash / usePx).toLong()} 股"
+            else -> null
+        }
+        item(key = "quote") {
+            HCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp).fillMaxWidth(), radius = 22.dp) {
+                Column(Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Avatar(if (p.kind.startsWith("G")) p.name.take(1) else p.name, size = 44.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(p.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(p.kindLabel, fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                        }
+                        if (symbol == null) Text("换一只", fontSize = 13.sp, color = colors.primary, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { sel = null; limitText = "" }.padding(6.dp))
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("现价", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                    Text(m2(px), fontSize = 36.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    Spacer(Modifier.height(10.dp))
+                    Row {
+                        QuoteStat("持仓", if (h == 0L) "—" else (if (h < 0) "空 " else "") + "${abs(h)} 股", Modifier.weight(1f))
+                        QuoteStat("成本", cost[p.symbol]?.takeIf { h != 0L }?.let { m2(it) } ?: "—", Modifier.weight(1f))
+                        QuoteStat("可用现金", m2(cash), Modifier.weight(1.3f))
+                    }
+                }
+            }
+        }
+        item(key = "side") {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(48.dp).clip(RoundedCornerShape(16.dp)).background(colors.secondaryContainer).padding(4.dp)) {
+                listOf("buy" to (if (h < 0) "买入平空" else "买入"), "sell" to (if (h > 0) "卖出" else "卖出做空")).forEach { (k, t) ->
+                    val on = side == k
+                    val col = if (k == "buy") buyColor else sellColor
+                    Box(
+                        Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(12.dp)).background(if (on) col else Color.Transparent).clickable { side = k },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(t, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = if (on) Color.White else colors.onSurfaceVariantSummary) }
+                }
+            }
+        }
+        item(key = "type") { HTabs(listOf("市价单", "限价单"), limitMode, { limitMode = it }, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), height = 40.dp) }
+        item(key = "form") {
+            HCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(), radius = 22.dp) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    if (limitMode == 1) FormField(
+                        limitText, { limitText = it.filter { ch -> ch.isDigit() || ch == '.' }.take(9) }, "限价", null,
+                        keyboard = KeyboardType.Decimal, mono = true, fontSize = 18.sp,
+                        hint = if (side == "buy") "股价 ≤ 限价时自动成交；可在 委托 里撤单" else "股价 ≥ 限价时自动成交；可在 委托 里撤单",
+                    )
+                    Column {
+                        Text("数量（股）", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            StepButton("−") { qtyText = maxOf(1L, qty - 1).toString() }
+                            FormField(qtyText, { qtyText = it.filter { ch -> ch.isDigit() }.take(7) }, "", null, Modifier.weight(1f).padding(horizontal = 10.dp), keyboard = KeyboardType.Number, mono = true, fontSize = 22.sp, textAlign = TextAlign.Center)
+                            StepButton("+") { qtyText = (qty + 1).toString() }
+                        }
+                    }
+                    // 快捷数量：买入按现金，卖出按持仓，做空按保证金（2 倍空头市值）
+                    val quick: List<Pair<String, Long>> = when {
+                        side == "buy" && h < 0 -> listOf("平一半" to (-h + 1) / 2, "全部平空" to -h)
+                        side == "buy" -> listOf(4, 3, 2, 1).map { k -> (if (k == 1) "全仓" else "1/$k") to (cash / k / usePx).toLong() }
+                        h > 0 -> listOf(4, 2, 1).map { k -> (if (k == 1) "全部" else "1/$k") to (h / k) }
+                        else -> listOf(4, 2, 1).map { k -> (if (k == 1) "最多" else "1/$k") to (cash / 2 / k / usePx).toLong() }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        quick.forEach { (t, n) ->
+                            Box(
+                                Modifier.weight(1f).height(36.dp).clip(RoundedCornerShape(12.dp)).background(colors.secondaryContainer).clickable(enabled = n > 0) { qtyText = n.toString() },
+                                contentAlignment = Alignment.Center,
+                            ) { Text(t, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = if (n > 0) colors.onSurface else colors.onSurfaceVariantSummary.copy(alpha = 0.5f), maxLines = 1) }
+                        }
+                    }
+                }
+            }
+        }
+        item(key = "summary") {
+            HCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(), radius = 22.dp) {
+                Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SummaryRow("操作", action, sideColor)
+                    SummaryRow("价格", if (limitMode == 1) "限价 ${limit?.let { m2(it) } ?: "—"}" else "市价 ≈ ${m2(px)}")
+                    SummaryRow("预估金额", m2(est), bold = true)
+                    SummaryRow("成交后现金", m2(cashAfter), if (cashAfter < 0) colors.error else null)
+                }
+            }
+        }
+        item(key = "go") {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                warn?.let { Text(it, fontSize = 13.sp, color = colors.error, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)) }
+                if (d.me?.status != "active") Text("账号已被老师停用：不能交易", fontSize = 13.sp, color = colors.error, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+                BigButton("$action ${if (qty > 0) "$qty 股" else ""}".trim(), {
+                    busy = true
+                    scope.launch {
+                        runCatching { Trade.place(vm.sync.client, p.symbol, side, qty, if (limitMode == 1) limit else null) }
+                            .onSuccess { r ->
+                                kit.toast(when (r.status) { "filled" -> "已成交，价格 ${r.price?.let { m2(it) } ?: ""}"; "open" -> "已挂单，到价自动成交"; else -> "未成交：${r.reason}" })
+                                tradeTick.intValue++
+                                if (r.status == "filled" || r.status == "open") kit.nav.pop()
+                            }
+                            .onFailure { kit.toast(it.message ?: "下单失败") }
+                        busy = false
+                    }
+                }, enabled = warn == null && d.me?.status == "active", busy = busy, color = sideColor)
+                Text(
+                    "市价单按老师最近发布的股价立即成交；限价单挂单等待。做空需保留 2 倍空头市值的现金。模拟币与真实货币无关。",
+                    fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 4.dp, top = 10.dp, bottom = 24.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuoteStat(label: String, value: String, modifier: Modifier) {
+    Column(modifier) {
+        Text(label, fontSize = 11.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        Text(value, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+@Composable
+private fun SummaryRow(label: String, value: String, color: Color? = null, bold: Boolean = false) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = 14.sp, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, modifier = Modifier.weight(1f))
+        Text(value, fontSize = if (bold) 17.sp else 14.sp, fontWeight = if (bold || color != null) FontWeight.Bold else FontWeight.Medium, color = color ?: MiuixTheme.colorScheme.onSurface, fontFamily = if (value.firstOrNull()?.isDigit() == true) FontFamily.Monospace else null)
+    }
+}
+
+@Composable
+private fun StepButton(text: String, onClick: () -> Unit) {
+    Box(
+        Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(MiuixTheme.colorScheme.secondaryContainer).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, fontSize = 24.sp, fontWeight = FontWeight.Medium, color = MiuixTheme.colorScheme.primary) }
 }
 
 // ---------------- 管理员：用户与邀请码 ----------------
@@ -437,7 +597,7 @@ fun AccountsScreen(vm: AppViewModel, data: AppData) {
         }
         item(key = "intro") {
             Text(
-                "邀请码一次性有效：学生或家长在 设置 → 云端同步 点“用邀请码注册”，注册后只读查看你的班级数据，用你发的模拟币（与真实货币无关）炒信誉分、关注度股票。",
+                "邀请码一次性有效：学生或家长在 设置 → 账号与云同步 → 注册 里选“学生 / 家长”填写邀请码，注册后只读查看你的班级数据，用你发的模拟币（与真实货币无关）炒信誉分、关注度股票。",
                 fontSize = 12.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
             )
             if (err.isNotBlank()) Text(err, color = colors.error, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 24.dp))

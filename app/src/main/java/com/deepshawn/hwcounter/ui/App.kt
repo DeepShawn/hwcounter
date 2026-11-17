@@ -143,7 +143,14 @@ sealed interface Route {
     data class GroupStock(val name: String, val metric: Int = 2) : Route
     /** 管理员：用户与邀请码 */
     data object Accounts : Route
+    /** 登录 / 注册：mode 0 登录、1 注册 */
+    data class Auth(val mode: Int = 0) : Route
+    /** 炒股：选股与下单 */
+    data class TradeOrder(val symbol: String? = null, val side: String = "buy") : Route
 }
+
+/** 截图测试用：启动时直接打开的页面 */
+internal object ShotHooks { var start: List<Route>? = null }
 
 class Nav(private val stack: MutableList<Route>, private val canOpen: (Route) -> Boolean = { true }) {
     val current: Route get() = stack.last()
@@ -205,7 +212,7 @@ val LocalKit = staticCompositionLocalOf<UiKit> { error("no kit") }
 
 @Composable
 fun App(vm: AppViewModel, data: AppData) {
-    val stack = remember { mutableStateListOf<Route>(Route.Home) }
+    val stack = remember { mutableStateListOf<Route>().apply { addAll(ShotHooks.start ?: listOf(Route.Home)) } }
     val snack = remember { SnackbarHostState() }
     val readOnly by vm.readOnly.collectAsStateWithLifecycle()
     // 预览模式下，只用于登记/计数的页面不让进
@@ -304,7 +311,7 @@ fun App(vm: AppViewModel, data: AppData) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         SnackbarHost(snack) { GlassSnackbar(it) }
-                        if (readOnly) { val mem = vm.sync.isMember; PreviewBanner(mem) { if (mem) nav.tab(Route.Stats) else { nav.tab(Route.Settings); nav.push(Route.SettingsPage("account")) } } }
+                        if (readOnly && nav.current !is Route.Auth && nav.current !is Route.TradeOrder) { val mem = vm.sync.isMember; PreviewBanner(mem) { if (mem) nav.tab(Route.Stats) else nav.push(Route.Auth()) } }
                         if (topLevel) GlassTabBar(
                             tabs = tabs.filter { !(readOnly && it.route == Route.Students) },
                             current = current,
@@ -409,6 +416,8 @@ private fun RouteContent(route: Route, vm: AppViewModel, data: AppData) {
         is Route.Stock -> com.deepshawn.hwcounter.ui.screens.StockDetailScreen(vm, data, route.id, route.metric)
         is Route.GroupStock -> com.deepshawn.hwcounter.ui.screens.GroupStockDetailScreen(vm, data, route.name, route.metric)
         is Route.Accounts -> com.deepshawn.hwcounter.ui.screens.AccountsScreen(vm, data)
+        is Route.Auth -> com.deepshawn.hwcounter.ui.screens.AuthScreen(vm, route.mode)
+        is Route.TradeOrder -> com.deepshawn.hwcounter.ui.screens.TradeOrderScreen(vm, data, route.symbol, route.side)
     }
 }
 
