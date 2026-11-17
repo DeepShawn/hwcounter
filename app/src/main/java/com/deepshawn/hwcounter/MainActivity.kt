@@ -41,11 +41,32 @@ class MainActivity : ComponentActivity() {
             override fun onDestroy(owner: LifecycleOwner) = recomposer.cancel()
         })
         setContent(parent = recomposer) {
+            // 性能模式：请求屏幕最高刷新率（如 120Hz）；关闭时交给系统
+            val ultra = UiPrefsStore.prefs.ultra
+            androidx.compose.runtime.LaunchedEffect(ultra) { applyRefreshRate(ultra) }
             val data by vm.data.collectAsStateWithLifecycle()
             val s = data.settings
             HwTheme(paletteKey = s.theme, darkMode = s.dark, shapeStyle = s.shape, compact = s.compact, ui = UiPrefsStore.prefs) {
                 App(vm, data)
             }
+        }
+    }
+
+    private fun applyRefreshRate(max: Boolean) {
+        runCatching {
+            val attrs = window.attributes
+            if (max) {
+                @Suppress("DEPRECATION")
+                val d = if (android.os.Build.VERSION.SDK_INT >= 30) display else windowManager.defaultDisplay
+                val cur = d?.mode ?: return
+                val best = d.supportedModes.filter { it.physicalWidth == cur.physicalWidth && it.physicalHeight == cur.physicalHeight }.maxByOrNull { it.refreshRate } ?: return
+                attrs.preferredDisplayModeId = best.modeId
+                attrs.preferredRefreshRate = best.refreshRate
+            } else {
+                attrs.preferredDisplayModeId = 0
+                attrs.preferredRefreshRate = 0f
+            }
+            window.attributes = attrs
         }
     }
 }

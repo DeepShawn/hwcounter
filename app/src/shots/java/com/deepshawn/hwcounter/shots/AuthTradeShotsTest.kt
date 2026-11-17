@@ -46,10 +46,10 @@ class AuthTradeShotsTest {
     private fun click(text: String) = rule.onAllNodes(hasText(text) and hasClickAction()).onFirst().performClick()
     private fun scroll() { rule.onRoot().performTouchInput { swipeUp(startY = bottom * 0.78f, endY = top + bottom * 0.2f, durationMillis = 400) }; rule.waitForIdle() }
 
-    private fun start(dark: Int, routes: List<Route>) {
+    private fun start(dark: Int, routes: List<Route>, ui: UiPrefs = UiPrefs(onboarded = true)) {
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
         val vm = AppViewModel(app)
-        com.deepshawn.hwcounter.ui.theme.UiPrefsStore.update(app) { UiPrefs(onboarded = true) }
+        com.deepshawn.hwcounter.ui.theme.UiPrefsStore.update(app) { ui }
         ShotHooks.start = routes
         val d = data(dark)
         rule.setContent { HwTheme(d.settings.theme, dark, 1, false, com.deepshawn.hwcounter.ui.theme.UiPrefsStore.prefs) { App(vm, d) } }
@@ -78,5 +78,28 @@ class AuthTradeShotsTest {
         click("限价单"); save("${prefix}_trade_order_limit")
     }
     @Test fun tradeLight() = trade("light", 1)
+
+    /** 多级页面返回：统计 → 股票 → 炒股 → 下一级页面 → 返回，仍停在“炒股”，不回到第一级 */
+    private fun backKeepsLevel(prefix: String, ui: UiPrefs) {
+        start(1, listOf(Route.Stats), ui)
+        click("股票"); rule.waitForIdle(); click("炒股"); rule.waitForIdle()
+        check(rule.onAllNodes(hasText("模拟炒股")).fetchSemanticsNodes().isNotEmpty()) { "没有进到炒股" }
+        click("去登录 / 注册"); rule.waitForIdle(); rule.mainClock.advanceTimeBy(1500)
+        check(rule.onAllNodes(hasText("欢迎回来")).fetchSemanticsNodes().isNotEmpty()) { "没有打开登录页" }
+        click("去注册"); rule.waitForIdle()
+        rule.onAllNodes(androidx.compose.ui.test.hasContentDescription("返回")).onFirst().performClick()
+        rule.waitForIdle(); rule.mainClock.advanceTimeBy(1500); rule.waitForIdle()
+        save("${prefix}_back_keeps_trade")
+        check(rule.onAllNodes(hasText("模拟炒股")).fetchSemanticsNodes().isNotEmpty()) { "返回后跳回了第一级（行情）" }
+    }
+    @Test fun backKeepsLevelPlain() = backKeepsLevel("plain", UiPrefs(onboarded = true))
+    @Test fun backKeepsLevelPerf() = backKeepsLevel("perf", UiPrefs(onboarded = true, perf = true))
+
+    /** 性能模式下各页面能正常画出来 */
+    @Test fun perfMode() {
+        start(1, listOf(Route.Stats), UiPrefs(onboarded = true, perf = true))
+        rule.mainClock.advanceTimeBy(2000); save("perf_stats")
+        click("信誉"); rule.mainClock.advanceTimeBy(2000); save("perf_stats_credit")
+    }
     @Test fun tradeDark() = trade("dark", 2)
 }

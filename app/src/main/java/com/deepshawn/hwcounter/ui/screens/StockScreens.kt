@@ -142,8 +142,19 @@ fun creditColor(l: com.deepshawn.hwcounter.data.Credit.Level) = when (l) {
 /** 个股列表里每位同学的指数、等级、主要原因 */
 data class StockInfo(val index: Double?, val level: String, val color: Color, val reason: String?)
 
+/** 进下一级页面再返回时保留：区间、排序、个人 / 小组、板块、行情 / 炒股 */
+private val StockUiSaver = androidx.compose.runtime.saveable.listSaver<StockUi, Any>(
+    save = { listOf(it.span.name, it.pill, it.sort, it.kline, it.kind, it.metric, it.level2) },
+    restore = { l ->
+        StockUi().apply {
+            span = runCatching { AttentionStock.Span.valueOf(l[0] as String) }.getOrDefault(AttentionStock.Span.M1)
+            pill = l[1] as Int; sort = l[2] as Int; kline = l[3] as Boolean; kind = l[4] as Int; metric = l[5] as Int; level2 = l[6] as Int
+        }
+    },
+)
+
 @Composable
-fun rememberStockUi() = remember { StockUi() }
+fun rememberStockUi() = androidx.compose.runtime.saveable.rememberSaveable(saver = StockUiSaver) { StockUi() }
 
 /** 后台计算行情；切换区间时先保留旧行情，算好再替换 */
 @Composable

@@ -213,7 +213,7 @@ fun AssignmentScreen(vm: AppViewModel, dataIn: AppData, assignmentId: String) {
     fun ptsOf(s: com.deepshawn.hwcounter.data.Student) = pts[s.id]?.get(a.id) ?: settings.rules.of(a.statuses[s.id] ?: HwStatus.NONE)
     val readOnly by vm.readOnly.collectAsStateWithLifecycle()
     val sm = c.summary(a)
-    var filter by remember { mutableStateOf(Filter.ALL) }
+    var filter by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(Filter.ALL) }
     var query by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
     var batch by remember(c.id, a.id, readOnly) { mutableStateOf(false) }

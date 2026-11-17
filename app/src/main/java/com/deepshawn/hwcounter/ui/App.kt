@@ -17,6 +17,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -249,6 +251,13 @@ fun App(vm: AppViewModel, data: AppData) {
 
     val current = stack.last()
     val screenState = rememberSaveableStateHolder()
+    // 已经返回（出栈）的二级页面不再保留状态，下次打开是新的
+    val savedKeys = remember { mutableSetOf<String>() }
+    stack.forEachIndexed { i, r -> if (i > 0) savedKeys += "${i + 1}|$r" }
+    androidx.compose.runtime.LaunchedEffect(stack.toList()) {
+        val live = stack.mapIndexed { i, r -> "${i + 1}|$r" }.toSet()
+        savedKeys.filter { it !in live }.forEach { screenState.removeState(it); savedKeys -= it }
+    }
     val topLevel = current is Route.Home || current is Route.Students || current is Route.Scores || current is Route.Stats || current is Route.Settings
     val ui = com.deepshawn.hwcounter.ui.theme.LocalUiPrefs.current
     val backdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
@@ -273,11 +282,15 @@ fun App(vm: AppViewModel, data: AppData) {
                         com.deepshawn.hwcounter.ui.components.LocalBottomInset provides bottomInset,
                         com.deepshawn.hwcounter.ui.components.LocalGlassBg provides (if (ui.glassOn) glassBg else null),
                     ) {
-                        val content: @Composable (Route) -> Unit = { route ->
+                        // 每一层页面都保存状态（选项卡、子栏目、滚动位置）：进下一级再返回时停在原来的位置
+                        val content: @Composable (Route, Int) -> Unit = { route, depth ->
                             if (route in listOf(Route.Home, Route.Students, Route.Scores, Route.Stats, Route.Settings)) {
-                                screenState.SaveableStateProvider(route.toString()) { RouteContent(route, vm, data) }
-                            } else Box(Modifier.fillMaxSize().navigationBarsPadding()) { RouteContent(route, vm, data) }
+                                screenState.SaveableStateProvider(if (depth <= 1) route.toString() else "$depth|$route") { RouteContent(route, vm, data) }
+                            } else Box(Modifier.fillMaxSize().navigationBarsPadding()) {
+                                screenState.SaveableStateProvider("$depth|$route") { RouteContent(route, vm, data) }
+                            }
                         }
+                        val ultra = ui.ultra
                         if (ui.motion) {
                             AnimatedContent(
                                 targetState = Pair(current, stack.size),
@@ -287,7 +300,15 @@ fun App(vm: AppViewModel, data: AppData) {
                                     // 固定时长的缓动曲线（约 0.3 秒，没有弹簧的长尾）；旧页面完全淡出，不留重影
                                     val ease = androidx.compose.animation.core.FastOutSlowInEasing
                                     val slide = tween<androidx.compose.ui.unit.IntOffset>(300, easing = ease)
+                                    // 性能模式：弹簧翻页，下层页面缩小后退形成纵深；切换底栏时轻微缩放淡入
+                                    val pageSpring = androidx.compose.animation.core.spring<androidx.compose.ui.unit.IntOffset>(dampingRatio = 0.86f, stiffness = 380f)
+                                    val scaleSpring = androidx.compose.animation.core.spring<Float>(dampingRatio = 0.86f, stiffness = 380f)
                                     val transition = when {
+                                        ultra && forward -> (slideInHorizontally(pageSpring) { it } + fadeIn(tween(200, easing = ease))) togetherWith
+                                            (slideOutHorizontally(pageSpring) { -it / 4 } + scaleOut(scaleSpring, 0.9f) + fadeOut(tween(260)))
+                                        ultra && back -> (slideInHorizontally(pageSpring) { -it / 4 } + scaleIn(scaleSpring, 0.9f) + fadeIn(tween(240, easing = ease))) togetherWith
+                                            (slideOutHorizontally(pageSpring) { it } + fadeOut(tween(260)))
+                                        ultra -> (fadeIn(tween(240, delayMillis = 40, easing = ease)) + scaleIn(scaleSpring, 0.96f)) togetherWith (fadeOut(tween(140)) + scaleOut(scaleSpring, 1.02f))
                                         forward -> (slideInHorizontally(slide) { it } + fadeIn(tween(220, easing = ease))) togetherWith
                                             (slideOutHorizontally(slide) { -it / 3 } + fadeOut(tween(200)))
                                         back -> (slideInHorizontally(slide) { -it / 3 } + fadeIn(tween(240, easing = ease))) togetherWith
@@ -297,10 +318,10 @@ fun App(vm: AppViewModel, data: AppData) {
                                     transition.apply { targetContentZIndex = if (back) -1f else 1f }.using(null)
                                 },
                                 label = "nav",
-                            ) { (route, _) -> content(route) }
+                            ) { (route, depth) -> content(route, depth) }
                         } else {
                             // 动效关闭：直接切换，不保留两份页面，切换最快
-                            androidx.compose.runtime.key(current, stack.size) { content(current) }
+                            androidx.compose.runtime.key(current, stack.size) { content(current, stack.size) }
                         }
                     }
                 }
