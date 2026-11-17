@@ -58,12 +58,13 @@ compose.desktop {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "HwCounter"
             packageVersion = appVersion.split(".").let { p -> (p + listOf("0", "0", "0")).take(3).joinToString(".") }
-            description = "作业通 · Windows 查看版"
+            // 安装包元数据必须是 ASCII（WiX 默认 1252 代码页，中文会导致打包失败）
+            description = "HwCounter homework viewer"
             vendor = "DeepShawn"
-            copyright = "作业通"
+            copyright = "DeepShawn"
             modules("java.net.http", "java.prefs", "jdk.crypto.ec", "jdk.localedata", "jdk.charsets")
             windows {
-                menuGroup = "作业通"
+                menuGroup = "HwCounter"
                 shortcut = true
                 dirChooser = true
                 perUserInstall = true

@@ -29,6 +29,11 @@ jobs:
         shell: bash
         run: ./gradlew --no-daemon :desktop:packageMsi :desktop:createDistributable
 
+      - name: Show packaging logs
+        if: failure()
+        shell: bash
+        run: cat desktop/build/compose/logs/*/*.txt 2>/dev/null | tail -80 || true
+
       - name: Collect files
         shell: pwsh
         run: |
