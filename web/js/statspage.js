@@ -1,5 +1,5 @@
-// 网页查看版 · 统计页：与安卓“统计”页同样的四个栏目（作业 / 考试 / 关注 / 小组）、同样的分析项和算法（analytics.js）。
-// 只读：没有加减分按钮；分析报告可以复制或下载为文字。
+// 网页版 · 统计页：与安卓“统计”页同样的四个栏目（作业 / 考试 / 关注 / 小组）、同样的分析项和算法（analytics.js）。
+// 分析报告可以复制、下载文字，或导出 PDF / Excel。
 import { h } from '../vendor/preact.module.js';
 import { useState, useEffect, useMemo } from '../vendor/hooks.module.js';
 import htm from '../vendor/htm.module.js';
