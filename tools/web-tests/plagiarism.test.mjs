@@ -20,7 +20,7 @@ const R = defaultRules();
 
 test('抄袭者和提供者都翻倍，累犯加重', () => {
   const c = cls();
-  assert.deepEqual(autoPoints(c, R, 'a'), { a0: -4, a1: 0, a2: -8, a3: -4 });
+  assert.deepEqual(autoPoints(c, R, 'a'), { a0: -4, a1: 0, a2: -8, a3: -2 });
   assert.deepEqual(autoPoints(c, R, 'b'), { a0: -4, a1: 0, a2: -8, a3: 0 });
   assert.equal(autoPoints(c, R, 'c').a2, -4);
   assert.equal(Object.values(autoPoints(c, R, 'd')).reduce((a, b) => a + b, 0), 0);

@@ -147,10 +147,15 @@ export function examDelta(rules, e, sid) {
 }
 
 /**
- * 未交连续递增扣分（与安卓 Penalty.kt 同算法）：连续未交第 n 次扣 base^n（2、4、8…）；
+ * 未交连续递增扣分（与安卓 Penalty.kt 同算法）：连续未交第 1、2 次扣 base，第 n 次（n≥2）扣 base^(n-1)（2、2、4、8…）；
  * 请假、未登记不打断也不计次，交过一次即重算；本轮累计超 heavyAfter 次后底数为 heavyBase（3、9、27…）；
  * 每次积分重置开始新一轮。返回 作业id → 分。
  */
+/** 连续第 n 次未交的扣分（不含上限）：b、b、b²、b³……（第 1、2 次相同，之后每次翻 b 倍） */
+export const escalationAmount = (b, n) => b ** Math.max(1, Math.max(1, n) - 1);
+/** 说明文字：“2、2、4、8…” */
+export const escalationSeq = (b) => [1, 2, 3, 4].map((n) => fmtNum(escalationAmount(b, n))).join('、') + '…';
+
 export function autoPoints(c, rules, sid) {
   const esc = { ...defaultEscalation(), ...(rules.escalation || {}) };
   const sb = { ...defaultStreakBonus(), ...(rules.streakBonus || {}) };
@@ -169,7 +174,7 @@ export function autoPoints(c, rules, sid) {
       streak++; total++; run = 0;
       let base;
       if (!esc.enabled) base = ruleOf(rules, s);
-      else { const b = total > esc.heavyAfter ? esc.heavyBase : esc.base; let p = b ** streak; if (esc.cap > 0) p = Math.min(p, esc.cap); base = -p; }
+      else { const b = total > esc.heavyAfter ? esc.heavyBase : esc.base; let p = escalationAmount(b, streak); if (esc.cap > 0) p = Math.min(p, esc.cap); base = -p; }
       // 抄袭与复审不合格可以叠加：两个倍数相乘
       const plagged = pg.enabled && plagiarized(a, sid); if (plagged) plag++;
       const f = plagged ? plagiarismFactor(pg, plag) : 1; const r = rv.enabled && failedReview(a, sid) ? rv.multiplier : 1;

@@ -27,8 +27,8 @@ class PlagiarismTest {
 
     @Test fun bothSidesDoubledAndRepeatEscalates() {
         val c = cls(); val r = ScoreRules()
-        // 甲：a0 第 1 次 2×2=4；a2 第 2 次 2×2×2=8；a3 乙已交 → 普通连续未交（第 2 次连续）4
-        assertEquals(mapOf("a0" to -4.0, "a1" to 0.0, "a2" to -8.0, "a3" to -4.0), pts(c, r, "a"))
+        // 甲：a0 第 1 次 2×2=4；a2 第 2 次 2×2×2=8；a3 乙已交 → 普通连续未交（连续第 2 次，仍扣 2）
+        assertEquals(mapOf("a0" to -4.0, "a1" to 0.0, "a2" to -8.0, "a3" to -2.0), pts(c, r, "a"))
         assertEquals(mapOf("a0" to -4.0, "a1" to 0.0, "a2" to -8.0, "a3" to 0.0), pts(c, r, "b"))
         assertEquals(-4.0, pts(c, r, "c").getValue("a2"), 1e-9)
         assertEquals(0.0, pts(c, r, "d").values.sum(), 1e-9)

@@ -50,7 +50,7 @@ struct SettingsView: View {
                 Toggle(isOn: Binding(get: { store.data.rules.escalation.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.escalation.enabled = v; d.rules = r } })) {
                     VStack(alignment: .leading) {
                         Text("未交连续加倍扣分")
-                        Text("连续未交第 1 次扣 \(fmtNum(store.data.rules.escalation.base))，第 2 次 \(fmtNum(pow(store.data.rules.escalation.base, 2)))，第 3 次 \(fmtNum(pow(store.data.rules.escalation.base, 3)))…；请假不打断，交过一次就重新算；本轮累计超过 \(store.data.rules.escalation.heavyAfter) 次后底数变为 \(fmtNum(store.data.rules.escalation.heavyBase))；每次积分重置后重新开始").font(.caption).foregroundStyle(.secondary)
+                        Text("连续未交依次扣 \(MissingEscalationAmount.seq(store.data.rules.escalation.base))（第 1、2 次相同，之后每次翻倍）；请假不打断，交过一次就重新算；本轮累计超过 \(store.data.rules.escalation.heavyAfter) 次后底数变为 \(fmtNum(store.data.rules.escalation.heavyBase))；每次积分重置后重新开始").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Toggle(isOn: Binding(get: { store.data.rules.review.enabled }, set: { v in store.setSetting { d in var r = d.rules; r.review.enabled = v; d.rules = r } })) {

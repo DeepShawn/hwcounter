@@ -5,9 +5,9 @@ import kotlin.math.pow
 
 /**
  * 未交连续递增扣分（三端同一算法）：
- * - 每位同学按作业先后计算；连续未交第 1 次扣 base，第 2 次扣 base²，第 3 次扣 base³……（默认 2、4、8）；
+ * - 每位同学按作业先后计算；连续未交第 1 次扣 base，第 2 次也扣 base，第 3 次扣 base²，第 4 次扣 base³……（默认 2、2、4、8、16）；
  * - 中间请假、未登记不打断也不计数；只要交过一次（已交 / 优秀 / 迟交）就打断，下次未交重新从第 1 次算；
- * - 本轮累计未交超过 [heavyAfter] 次（默认 6 次）后，底数变为 [heavyBase]（默认 3：3、9、27……）；
+ * - 本轮累计未交超过 [heavyAfter] 次（默认 6 次）后，底数变为 [heavyBase]（默认 3：3、3、9、27……）；
  * - 每次积分重置开始新一轮：连续次数、累计次数清零，底数回到 [base]。
  * - [cap] > 0 时，单次最多扣 cap 分（默认 30）。
  */
@@ -22,8 +22,15 @@ data class MissingEscalation(
     /** 本轮第 total 次未交、连续第 streak 次时应扣的分（正数） */
     fun penalty(streak: Int, total: Int): Double {
         val b = if (total > heavyAfter) heavyBase else base
-        val p = b.pow(streak.coerceAtLeast(1))
+        val p = amount(b, streak)
         return if (cap > 0) minOf(p, cap) else p
+    }
+
+    companion object {
+        /** 连续第 n 次未交的扣分（不含上限）：b、b、b²、b³……（第 1、2 次相同，之后每次翻 b 倍） */
+        fun amount(b: Double, n: Int): Double = b.pow((n.coerceAtLeast(1) - 1).coerceAtLeast(1))
+        /** 说明文字：“2、2、4、8…” */
+        fun seq(b: Double): String = (1..4).joinToString("、") { amount(b, it).fmt() } + "…"
     }
 }
 
@@ -133,7 +140,7 @@ fun SchoolClass.autoPointsAll(rules: ScoreRules): Map<String, Map<String, Double
 
 /** 规则说明（界面上显示） */
 fun ScoreRules.missingText(): String = if (escalation.enabled)
-    "未交连续递增（${escalation.base.fmt()}、${(escalation.base * escalation.base).fmt()}、${(escalation.base * escalation.base * escalation.base).fmt()}…，累计超 ${escalation.heavyAfter} 次后 ${escalation.heavyBase.fmt()}、${(escalation.heavyBase * escalation.heavyBase).fmt()}…）"
+    "未交连续递增（${MissingEscalation.seq(escalation.base)}，累计超 ${escalation.heavyAfter} 次后 ${MissingEscalation.seq(escalation.heavyBase)}）"
 else "未交 ${missing.signed()}"
 
 /** 这次作业这位同学的计分说明，如“本次 -8（抄袭第 1 次 ×2 × 复审不合格 ×2 = ×4）”；没有分数变化时为空 */
