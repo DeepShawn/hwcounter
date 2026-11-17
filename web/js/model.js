@@ -430,7 +430,9 @@ export function creditOne(st, newest, exams) {
 const creditCache = new WeakMap();
 /** 全班在时刻 at 的个人信誉分（从高到低；没有数据的排在最后） */
 export function creditAll(c, at = Date.now()) {
-  const useCache = at >= Date.now() - 1000;
+  // 时刻在全部记录之后时结果都一样，只缓存这一份
+  let lastT = -Infinity; for (const x of c.assignments) if (x.createdAt > lastT) lastT = x.createdAt; for (const e of c.exams || []) if (e.date > lastT) lastT = e.date;
+  const useCache = at >= lastT;
   if (useCache && creditCache.has(c)) return creditCache.get(c);
   const newest = c.assignments.filter((a) => a.createdAt <= at).sort(byNewest);
   const exams = (c.exams || []).filter((e) => e.date <= at).sort(byExamOld);

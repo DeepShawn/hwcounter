@@ -61,3 +61,21 @@ test('小组信誉分加减分', () => {
   assert.equal(sc.s2, 100 - 2 - 1);
   assert.deepEqual(creditGroups(c, 1e12), { A: 57.06 });
 });
+
+import { boardOf } from '../../web/js/analytics.js';
+test('行情：没有数据的时刻不算 0，长区间也要有涨有跌（与安卓 StockOpenTest 同一份数据）', () => {
+  const DAY = 86400000; const now = 1_800_000_000_000;
+  const names = ['张锦宇', '李子涵', '林静', '王芳', '冉浩', '周杰', '陈浩宏', '胡晨', '赵敏', '孙悦', '郑怡', '吴磊'];
+  const students = names.map((n, i) => ({ id: `s${i}`, no: `${i + 1}`, name: n, group: `第${(i % 3) + 1}组` }));
+  const st = (i, k) => ((i * 7 + k * 3) % 11 === 0 ? 'MISSING' : (i + k) % 9 === 0 ? 'LATE' : (i * 3 + k) % 7 === 0 ? 'EXCELLENT' : (i + k) % 13 === 0 ? 'LEAVE' : 'SUBMITTED');
+  const assignments = Array.from({ length: 30 }, (_, k) => ({ id: `a${k}`, title: `练习${k}`, createdAt: now - (30 - k) * 2 * DAY, statuses: Object.fromEntries(students.map((s, i) => [s.id, st(i, k)])), reviewFailed: [], plagiarism: {} }));
+  const c = { id: 'c', name: '一班', students, assignments, scores: [], exams: [], recharges: [] };
+  for (const [k, name] of [[1, '小组综合'], [3, '小组信誉分'], [4, '小组关注度'], [2, '个人信誉分'], [0, '个人关注度']]) {
+    const qs = Object.values(boardOf(c, defaultRules(), k, 'ALL', now).stocks);
+    if (k !== 0 && k !== 4) assert.ok(qs.every((q) => q.base > 0), `${name}：开盘价不能是没有数据时的 0`);
+    assert.ok(qs.some((q) => q.change < -0.005) && qs.some((q) => q.change > 0.005), `${name}：有涨有跌`);
+  }
+  // 与安卓一致：小组信誉分 59.12→84.27、78.82→77.60、63.53→81.18
+  const gc = boardOf(c, defaultRules(), 3, 'ALL', now).stocks;
+  assert.deepEqual(Object.keys(gc).sort().map((g) => [gc[g].base.toFixed(2), gc[g].last.toFixed(2)]), [['59.12', '84.27'], ['78.82', '77.60'], ['63.53', '81.18']]);
+});

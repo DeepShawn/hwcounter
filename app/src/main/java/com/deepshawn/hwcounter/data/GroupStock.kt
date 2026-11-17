@@ -49,8 +49,8 @@ object GroupStock {
         }
         val auto = groups.values.flatten().associate { it.id to c.autoPoints(rules, it.id) }
         val points = (bounds + inner.flatten()).distinct().sorted()
-        val values = points.associateWith { t -> scoresAt(c, rules, groups, auto, sorted, t, window) }
         val names = groups.keys.toList()
+        val values = AttentionStock.fill(points, names, points.associateWith { t -> scoresAt(c, rules, groups, auto, sorted, t, window) })
         fun v(t: Long, g: String?): Double {
             val m = values.getValue(t)
             return if (g == null) (if (m.isEmpty()) 0.0 else m.values.average()) else m[g] ?: 0.0

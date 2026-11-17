@@ -27,7 +27,7 @@ jobs:
 
       - name: Build installer and portable app
         shell: bash
-        run: ./gradlew --no-daemon :desktop:packageMsi :desktop:createDistributable
+        run: ./gradlew --no-daemon :desktop:test :desktop:packageMsi :desktop:createDistributable
 
       - name: Show packaging logs
         if: failure()
