@@ -697,7 +697,7 @@ object Analytics {
         val k = r.kpi
         appendLine("📊 ${c.name} 作业与成绩分析报告（${rangeTitle(r)}）")
         appendLine("范围：${r.window.label}")
-        appendLine("生成时间：${java.text.SimpleDateFormat("yyyy年M月d日 HH:mm", java.util.Locale.CHINA).format(java.util.Date(now))}")
+        appendLine("生成日期：${java.text.SimpleDateFormat("yyyy年M月d日", java.util.Locale.CHINA).format(java.util.Date(now))}")
         appendLine()
         appendLine("一、总体情况")
         appendLine("共 ${k.assignments} 次作业，应交 ${k.expected} 人次。交齐率 ${pct(k.handInRate)}，按时率 ${pct(k.onTimeRate)}，优秀率 ${pct(k.excellentRate)}，缺交率 ${pct(k.missingRate)}，迟交率 ${pct(k.lateRate)}；全员交齐 ${k.perfect} 次（最长连续 ${r.longestPerfectRun} 次）。")

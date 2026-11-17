@@ -409,10 +409,10 @@ export const rangeTitle = (r) => (RANGES[r.range].calendar || r.range === 'CUSTO
 /** 文字版分析报告 */
 export function text(c, r, now = Date.now(), exam = null) {
   const L = []; const k = r.kpi; const ln = (s = '') => L.push(s);
-  const d = new Date(now); const p2 = (n) => String(n).padStart(2, '0');
+  const d = new Date(now);
   ln(`📊 ${c.name} 作业与成绩分析报告（${rangeTitle(r)}）`);
   ln(`范围：${r.window.label}`);
-  ln(`生成时间：${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${p2(d.getHours())}:${p2(d.getMinutes())}`);
+  ln(`生成日期：${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`);
   ln(); ln('一、总体情况');
   ln(`共 ${k.assignments} 次作业，应交 ${k.expected} 人次。交齐率 ${pct(k.handInRate)}，按时率 ${pct(k.onTimeRate)}，优秀率 ${pct(k.excellentRate)}，缺交率 ${pct(k.missingRate)}，迟交率 ${pct(k.lateRate)}；全员交齐 ${k.perfect} 次（最长连续 ${r.longestPerfectRun} 次）。`);
   ln(`缺交 ${k.missing} 人次，迟交 ${k.late} 人次，请假 ${k.leave} 人次，未登记 ${k.unregistered} 人次。`);

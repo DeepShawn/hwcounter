@@ -33,7 +33,7 @@ const SV = (k) => (k === 'PLAG' ? PLAG : k === 'REVIEW' ? REVIEW : STATUS[k] || 
 const HANDED = new Set(['SUBMITTED', 'EXCELLENT', 'LATE']);
 const pct = (x) => (x == null || !Number.isFinite(x) ? '—' : `${Math.round(x * 100)}%`);
 const md = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
-const fmtTime = (t) => { const d = new Date(t); const p = (n) => String(n).padStart(2, '0'); return `${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`; };
+const fmtTime = (t) => { const d = new Date(t); return `${d.getMonth() + 1}月${d.getDate()}日`; }; // 记录只显示日期
 const rateColor = (r) => (r == null ? 'var(--sub)' : r >= 0.95 ? '#16a34a' : r >= 0.8 ? 'var(--accent)' : r >= 0.6 ? '#e8792c' : '#e5384d');
 
 // ---------------- 图标 ----------------

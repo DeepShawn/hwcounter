@@ -4,6 +4,12 @@ import UniformTypeIdentifiers
 
 struct IdBox: Identifiable, Hashable { let id: String }
 
+/// 记录只显示日期
+func fmtEdited(_ ms: Int64) -> String {
+    let f = DateFormatter(); f.locale = Locale(identifier: "zh_CN"); f.dateFormat = "M月d日"
+    return f.string(from: Date(timeIntervalSince1970: Double(ms) / 1000))
+}
+
 func fmtTime(_ ms: Int64) -> String {
     let f = DateFormatter(); f.locale = Locale(identifier: "zh_CN"); f.dateFormat = "M月d日 HH:mm"
     return f.string(from: Date(timeIntervalSince1970: Double(ms) / 1000))
@@ -312,7 +318,7 @@ struct DraftListView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text((d.isNew ? "🆕 " : "") + (d.title.isEmpty ? "未命名作业" : d.title)).font(.headline)
-                                Text("\(c.map { "\($0.emoji) \($0.name)" } ?? "⚠️ 班级已删除") · \(d.subject) · 改动 \(StatTable.changes(d).count) 人 · 编辑于 \(fmtTime(d.updatedAt))").font(.caption).foregroundStyle(.secondary)
+                                Text("\(c.map { "\($0.emoji) \($0.name)" } ?? "⚠️ 班级已删除") · \(d.subject) · 改动 \(StatTable.changes(d).count) 人 · 编辑于 \(fmtEdited(d.updatedAt))").font(.caption).foregroundStyle(.secondary)
                                 if let s = d.scheduledAt { Text("⏰ \(fmtTime(s)) 自动上传").font(.caption).foregroundStyle(Color.accentColor) }
                             }
                             Spacer()

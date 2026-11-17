@@ -348,7 +348,7 @@ private fun AutoResetDialog(show: Boolean, current: com.deepshawn.hwcounter.data
     }
 }
 
-private val stampFmt = SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA)
+private val stampFmt = SimpleDateFormat("yyyy年M月d日", Locale.CHINA)
 fun fmtStamp(t: Long): String = stampFmt.format(Date(t))
 
 /**

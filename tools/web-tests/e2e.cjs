@@ -89,6 +89,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.click('.tabbar button:has-text("积分")'); await page.waitForSelector('text=排行榜');
   await shot('6-scores');
   await page.click('.seg button:has-text("加减分记录")'); check(await page.isVisible('text=课堂表现好'), '加减分记录');
+  check(!/\d{1,2}:\d{2}/.test(await page.textContent('main')), '记录只显示日期，不显示时间点');
   await page.click('.tabbar button:has-text("统计")'); await page.waitForSelector('text=数据分析');
   // 作业：与手机端同样的分析项
   await page.waitForSelector('text=主要发现');
@@ -189,6 +190,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check(await page.isVisible('.cell:has-text("冉浩") .pill:has-text("抄袭")') && await page.isVisible('.cell:has-text("林静") .pill:has-text("抄袭")'), '作业页：抄袭者和提供者都标为抄袭');
   await page.click('.cell:has-text("冉浩")'); await page.waitForSelector('text=积分流水');
   check(await page.isVisible('text=抄袭 林静，本轮第 1 次，扣分 ×2'), '积分流水写明抄袭了谁、第几次、倍数');
+  check(!/\d{1,2}:\d{2}/.test(await page.textContent('main')), '积分流水只显示日期');
   await page.goBack(); await page.goBack(); await page.waitForSelector('.an-graph');
   await page.click('.seg button:has-text("作业")');
   await page.click('.tabbar button:has-text("设置")'); await page.waitForSelector('text=主题配色');

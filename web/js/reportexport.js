@@ -12,7 +12,7 @@ const DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周�
 /** 多表 Excel 分析报告（工作表与安卓一致） */
 export function analysisSheets(c, r, exam, now = Date.now()) {
   const k = r.kpi; const p = r.previous; const sheets = [];
-  const ov = [T(`${c.name} 作业与成绩分析报告（${rangeTitle(r)}）`), ['范围', r.window.label], ['生成时间', fmtDay(now)], [], H('指标', '本时段', '上一时段', '说明')];
+  const ov = [T(`${c.name} 作业与成绩分析报告（${rangeTitle(r)}）`), ['范围', r.window.label], ['生成日期', fmtDay(now)], [], H('指标', '本时段', '上一时段', '说明')];
   const line = (n, v, pv, d) => ov.push([n, v, pv ?? '', d]);
   line('作业次数', k.assignments, p?.assignments, p ? `对比：${r.window.prevLabel}` : '');
   line('应交人次', k.expected, p?.expected, '去掉请假');
@@ -158,10 +158,10 @@ function stackBar(totals) {
 }
 
 export function analysisHtml(c, r, exam, now = Date.now()) {
-  const k = r.kpi; const d = new Date(now); const p2 = (n) => String(n).padStart(2, '0');
+  const k = r.kpi; const d = new Date(now);
   const kp = [['交齐率', pct(k.handInRate), r.previous && pct(r.previous.handInRate)], ['按时率', pct(k.onTimeRate), r.previous && pct(r.previous.onTimeRate)], ['优秀率', pct(k.excellentRate), r.previous && pct(r.previous.excellentRate)], ['缺交率', pct(k.missingRate), r.previous && pct(r.previous.missingRate)], ['作业', `${k.assignments} 次`, r.previous && `${r.previous.assignments} 次`], ['平均积分', fmtNum(r.avgScore), null]];
   const S = []; const NUM = '一二三四五六七八九十'; let no = 0; const h2 = (t) => `<h2>${NUM[no++]}、${t}</h2>`;
-  S.push(`<header><h1>${esc(c.name)} 作业与成绩分析报告</h1><p>${esc(rangeTitle(r))} · ${esc(r.window.label)} · 生成于 ${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${p2(d.getHours())}:${p2(d.getMinutes())}</p></header>`);
+  S.push(`<header><h1>${esc(c.name)} 作业与成绩分析报告</h1><p>${esc(rangeTitle(r))} · ${esc(r.window.label)} · 生成于 ${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日</p></header>`);
   S.push(`<section>${h2('总体情况')}<div class="kpis">${kp.map(([l, v, pv]) => `<div><b>${v}</b><span>${l}</span>${pv ? `<small>上一时段 ${pv}</small>` : ''}</div>`).join('')}</div>
     <p>共 ${k.assignments} 次作业，应交 ${k.expected} 人次；缺交 ${k.missing} 人次，迟交 ${k.late} 人次，请假 ${k.leave} 人次，未登记 ${k.unregistered} 人次；全员交齐 ${k.perfect} 次（最长连续 ${r.longestPerfectRun} 次）。</p>
     ${stackBar(r.totals)}${r.points.length >= 2 ? `<h3>每次作业交齐率</h3>${trendSvg(r.points)}` : ''}</section>`);
