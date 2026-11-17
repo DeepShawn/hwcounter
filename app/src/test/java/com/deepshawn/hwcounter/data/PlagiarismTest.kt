@@ -71,4 +71,22 @@ class PlagiarismTest {
         val cleared = c.assignments[2].withoutPlagiarism(listOf("a"))
         assertTrue(cleared.plagiarism.isEmpty())
     }
+
+    @Test fun graphPerAssignment() {
+        val c = cls(); val r = ScoreRules()
+        // 只有 a0、a2 有有效的抄袭记录，最新的在前
+        assertEquals(listOf("a2", "a0"), PlagiarismGraph.assignments(c).map { it.id })
+        val g0 = PlagiarismGraph.report(c, r, "a0")
+        assertEquals(listOf("a→b" to 1), g0.edges.map { "${it.provider.id}→${it.receiver.id}" to it.count })
+        assertEquals(setOf("a", "b"), g0.nodes.map { it.student.id }.toSet())
+        val a0 = g0.nodes.first { it.student.id == "a" }
+        assertEquals(-4.0, a0.points, 1e-9); assertEquals(1, a0.roundTimes); assertEquals(2.0, a0.factor, 1e-9)
+        val g2 = PlagiarismGraph.report(c, r, "a2")
+        assertEquals(listOf("a→b" to 1, "a→c" to 1), g2.edges.map { "${it.provider.id}→${it.receiver.id}" to it.count })
+        val a2 = g2.nodes.first { it.student.id == "a" }
+        assertEquals(-8.0, a2.points, 1e-9); assertEquals(2, a2.roundTimes); assertEquals(4.0, a2.factor, 1e-9)
+        assertEquals(2, g2.copiers); assertEquals(1, g2.providers)
+        // 没有抄袭的作业：空图
+        assertTrue(PlagiarismGraph.report(c, r, "a3").cases.isEmpty())
+    }
 }

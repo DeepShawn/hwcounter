@@ -152,7 +152,11 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
     val stockUi = rememberStockUi()
     val stockBoard = if (mode == 2 && stockMode && stockUi.kind == 0) rememberBoard(c, rules, stockUi.span) else null
     val groupStockBoard = if (mode == 2 && stockMode && stockUi.kind == 1) rememberGroupBoard(c, rules, stockUi.span) else null
-    val plagReport = remember(c, rules, mode == 4) { if (mode == 4) com.deepshawn.hwcounter.data.PlagiarismGraph.report(c, rules) else null }
+    // 抄袭关系图按作业来：null = 全部作业汇总，否则只看那次作业
+    var plagSel by rememberSaveable { mutableStateOf<String?>(null) }
+    val plagAssignments = remember(c, mode == 4) { if (mode == 4) com.deepshawn.hwcounter.data.PlagiarismGraph.assignments(c) else emptyList() }
+    val plagOnly = plagSel?.takeIf { id -> plagAssignments.any { it.id == id } }
+    val plagReport = remember(c, rules, mode == 4, plagOnly) { if (mode == 4) com.deepshawn.hwcounter.data.PlagiarismGraph.report(c, rules, plagOnly) else null }
     val groupReport = remember(c, rules, mode == 3) { if (mode == 3) com.deepshawn.hwcounter.data.GroupAnalysis.report(c, rules) else null }
     val subjectsWithExams = remember(c.exams) { c.exams.map { it.subject }.filter { it.isNotBlank() }.distinct() }
     var examSubject by rememberSaveable { mutableIntStateOf(0) }
@@ -185,7 +189,7 @@ fun StatsScreen(vm: AppViewModel, data: AppData) {
                 onBatch = if (readOnly) null else { ids, reason -> kit.nav.push(Route.BatchScore(ids, reason)) },
             )
         }
-        else if (mode == 4) plagReport?.let { pr -> plagiarismSections(c, rules, pr, { kit.nav.push(Route.StudentDetail(it)) }) { kit.nav.push(Route.Assign(it)) } }
+        else if (mode == 4) plagReport?.let { pr -> plagiarismSections(c, rules, pr, { kit.nav.push(Route.StudentDetail(it)) }, { kit.nav.push(Route.Assign(it)) }, plagAssignments, plagOnly) { plagSel = it } }
         else if (mode == 3) groupReport?.let { gr -> groupSections(c, rules, gr) { kit.nav.push(Route.Group(it)) } }
         else if (mode == 2) {
             item(key = "att-view") {

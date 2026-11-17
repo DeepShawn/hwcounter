@@ -372,3 +372,4 @@ button.ib:active { background: var(--chip); }
 .an-graph { width: 100%; max-width: 420px; display: block; margin: 0 auto; overflow: visible; }
 .an-graph .tap { cursor: pointer; }
 .an-busy { margin-left: auto; color: var(--accent) !important; animation: fade-in .6s ease-in-out infinite alternate; }
+.chips + .tiles { margin-top: 8px; }

@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -78,6 +81,9 @@ private val BothColor = Color(0xFF8E44AD)
 
 fun roleColor(n: PlagiarismGraph.Node) = when { n.copied > 0 && n.provided > 0 -> BothColor; n.copied > 0 -> CopierColor; else -> ProviderColor }
 
+/** 作业切换条上的短日期（11/17） */
+private fun shortDay(t: Long): String = java.text.SimpleDateFormat("M/d", java.util.Locale.CHINA).format(java.util.Date(t))
+
 /** 抄袭规则说明（作业页、设置页） */
 fun ScoreRules.plagiarismText(): String =
     if (!plagiarism.enabled) "抄袭：按普通未交扣分"
@@ -130,9 +136,32 @@ fun plagiarismLine(c: SchoolClass, a: Assignment, sid: String): String {
 // ---------------- 统计页“抄袭”栏目 ----------------
 
 @OptIn(ExperimentalLayoutApi::class)
-fun LazyListScope.plagiarismSections(c: SchoolClass, rules: ScoreRules, r: PlagiarismGraph.Report, onOpen: (String) -> Unit, onAssignment: (String) -> Unit) {
-    if (r.cases.isEmpty()) {
+fun LazyListScope.plagiarismSections(
+    c: SchoolClass, rules: ScoreRules, r: PlagiarismGraph.Report, onOpen: (String) -> Unit, onAssignment: (String) -> Unit,
+    /** 有抄袭的作业（最新在前）；选中的作业 id，null = 全部作业汇总 */
+    assignments: List<Assignment> = emptyList(), sel: String? = null, onSel: (String?) -> Unit = {},
+) {
+    if (assignments.isEmpty() && r.cases.isEmpty()) {
         item(key = "pl-empty") { EmptyState("🕵️", "还没有抄袭记录", "在作业页长按同学（或多选后）点「抄袭」，选出抄了谁的，这里就会出现关系图。\n" + rules.plagiarismText()) }
+        return
+    }
+    val one = assignments.firstOrNull { it.id == sel }
+    if (assignments.isNotEmpty()) item(key = "pl-pick") {
+        Column {
+            SmallTitle("按作业看关系图 · 每次作业一张图")
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                com.deepshawn.hwcounter.ui.components.Chip2("全部作业 ${assignments.size}", sel == null, { onSel(null) }, color = PlagiarismColor)
+                assignments.forEach { a ->
+                    com.deepshawn.hwcounter.ui.components.Chip2(
+                        "${shortDay(a.createdAt)} ${a.title.ifBlank { a.subject }} · ${PlagiarismGraph.involvedCount(c, a)}人",
+                        a.id == sel, { onSel(a.id) }, color = PlagiarismColor,
+                    )
+                }
+            }
+        }
+    }
+    if (r.cases.isEmpty()) {
+        item(key = "pl-empty-one") { EmptyState("🕵️", "这次作业没有抄袭记录", "选别的作业，或看全部作业汇总") }
         return
     }
     item(key = "pl-kpi") {
@@ -140,20 +169,24 @@ fun LazyListScope.plagiarismSections(c: SchoolClass, rules: ScoreRules, r: Plagi
         HCard(Modifier.padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Row {
-                    listOf("${r.cases.size}" to "抄袭记录", "${r.copiers}" to "抄袭者", "${r.providers}" to "提供者", r.points.fmt() to "共扣分").forEach { (v, l) ->
+                    listOf("${r.cases.size}" to "抄袭记录", "${r.copiers}" to "抄袭者", "${r.providers}" to "提供者", r.points.fmt() to if (one != null) "本次扣分" else "共扣分").forEach { (v, l) ->
                         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(v, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = PlagiarismColor)
                             Text(l, fontSize = 11.sp, color = colors.onSurfaceVariantSummary)
                         }
                     }
                 }
-                Text(rules.plagiarismText() + "；改成其他状态即取消。", fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 10.dp))
+                if (one != null) Text(
+                    "${fmtDay(one.createdAt)} · ${one.subject} ${one.title}".trim(), fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 10.dp).clip(RoundedCornerShape(8.dp)).clickable { onAssignment(one.id) },
+                )
+                Text(rules.plagiarismText() + "；改成其他状态即取消。", fontSize = 11.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(top = 6.dp))
             }
         }
     }
     item(key = "pl-graph") {
         Column {
-            SmallTitle("关系图 · 箭头从提供者指向抄袭者，线越粗次数越多")
+            SmallTitle(if (one != null) "本次作业的关系图 · 箭头从提供者指向抄袭者" else "全部作业汇总的关系图 · 线越粗次数越多")
             HCard(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
                     PlagiarismGraphView(r, onOpen)
@@ -169,7 +202,7 @@ fun LazyListScope.plagiarismSections(c: SchoolClass, rules: ScoreRules, r: Plagi
             }
         }
     }
-    group("抄袭关系（提供者 → 抄袭者）", key = "pl-edges") {
+    group(if (one != null) "本次抄袭关系（提供者 → 抄袭者）" else "抄袭关系（提供者 → 抄袭者）", key = "pl-edges") {
         val colors = MiuixTheme.colorScheme
         Column(Modifier.padding(vertical = 6.dp)) {
             r.edges.forEach { e ->
@@ -177,7 +210,7 @@ fun LazyListScope.plagiarismSections(c: SchoolClass, rules: ScoreRules, r: Plagi
                     Text(e.provider.name, fontWeight = FontWeight.Medium, color = ProviderColor)
                     Text("  →  ", color = colors.onSurfaceVariantSummary)
                     Text(e.receiver.name, fontWeight = FontWeight.Medium, color = CopierColor, modifier = Modifier.weight(1f))
-                    Column(horizontalAlignment = Alignment.End) {
+                    if (one == null) Column(horizontalAlignment = Alignment.End) {
                         Text("${e.count} 次", fontWeight = FontWeight.Bold)
                         Text(e.assignments.takeLast(2).joinToString("、") { it.title }, fontSize = 11.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(140.dp))
                     }
@@ -185,7 +218,7 @@ fun LazyListScope.plagiarismSections(c: SchoolClass, rules: ScoreRules, r: Plagi
             }
         }
     }
-    group("涉及的同学（按次数）", key = "pl-nodes") {
+    group(if (one != null) "本次涉及的同学" else "涉及的同学（按次数）", key = "pl-nodes") {
         val colors = MiuixTheme.colorScheme
         Column(Modifier.padding(vertical = 6.dp)) {
             r.nodes.forEach { n ->
@@ -199,7 +232,11 @@ fun LazyListScope.plagiarismSections(c: SchoolClass, rules: ScoreRules, r: Plagi
                             Text(n.role, fontSize = 10.sp, color = roleColor(n), modifier = Modifier.clip(CircleShape).background(roleColor(n).copy(alpha = 0.12f)).padding(horizontal = 6.dp, vertical = 1.dp))
                         }
                         Text(
-                            listOfNotNull(if (n.copied > 0) "抄袭 ${n.copied} 次" else null, if (n.provided > 0) "提供 ${n.provided} 次" else null, "本轮第 ${n.roundTimes} 次" + if (rules.plagiarism.escalate && n.roundTimes > 0) "（下次 ×${rules.plagiarism.factor(n.roundTimes + 1).fmt()}）" else "").joinToString(" · "),
+                            if (one != null) listOfNotNull(
+                                plagiarismLine(c, one, n.student.id).ifBlank { null },
+                                if (n.roundTimes > 0) "本轮第 ${n.roundTimes} 次" + (if (n.factor > 0) "，扣分 ×${n.factor.fmt()}" else "") else null,
+                            ).joinToString(" · ")
+                            else listOfNotNull(if (n.copied > 0) "抄袭 ${n.copied} 次" else null, if (n.provided > 0) "提供 ${n.provided} 次" else null, "本轮第 ${n.roundTimes} 次" + if (rules.plagiarism.escalate && n.roundTimes > 0) "（下次 ×${rules.plagiarism.factor(n.roundTimes + 1).fmt()}）" else "").joinToString(" · "),
                             fontSize = 12.sp, color = colors.onSurfaceVariantSummary,
                         )
                     }
@@ -218,15 +255,16 @@ fun LazyListScope.plagiarismSections(c: SchoolClass, rules: ScoreRules, r: Plagi
             }
         }
     }
-    group("最近的抄袭记录", key = "pl-cases") {
+    if (one == null) group("最近的抄袭记录", key = "pl-cases") {
         val colors = MiuixTheme.colorScheme
         Column(Modifier.padding(vertical = 6.dp)) {
             r.cases.take(20).forEach { k ->
-                Row(Modifier.fillMaxWidth().clickable { onAssignment(k.assignment.id) }.padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().clickable { onSel(k.assignment.id) }.padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("${k.receiver.name} 抄袭 ${k.providers.joinToString("、") { it.name }}", fontWeight = FontWeight.Medium)
                         Text("${fmtDay(k.assignment.createdAt)} · ${k.assignment.subject} ${k.assignment.title}".trim(), fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
                     }
+                    Text("看图 ›", fontSize = 12.sp, color = PlagiarismColor)
                 }
             }
         }
@@ -297,5 +335,32 @@ fun PlagiarismGraphView(r: PlagiarismGraph.Report, onOpen: (String) -> Unit) {
             drawText(label, topLeft = Offset(o.x - label.size.width / 2f, if (below) o.y + nodeR + 2.dp.toPx() else o.y - nodeR - 2.dp.toPx() - label.size.height))
         }
         if (n == 0) drawCircle(lineColor, 2f, Offset(cx, cy))
+    }
+}
+
+/** 作业页：这次作业的抄袭关系图，可收起 */
+@Composable
+fun AssignmentPlagiarismCard(r: PlagiarismGraph.Report, onOpen: (String) -> Unit) {
+    var open by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
+    val colors = MiuixTheme.colorScheme
+    HCard(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("🕵️ 本次抄袭关系图", fontWeight = FontWeight.Bold, color = PlagiarismColor, modifier = Modifier.weight(1f))
+                Text("${r.copiers} 人抄袭 · ${r.providers} 人提供 · ${if (open) "收起" else "展开"}", fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+            }
+            if (open) {
+                Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.widthIn(max = 360.dp).fillMaxWidth()) { PlagiarismGraphView(r, onOpen) }
+                }
+                r.edges.forEach { e ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(e.provider.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = ProviderColor)
+                        Text("  →  ", fontSize = 13.sp, color = colors.onSurfaceVariantSummary)
+                        Text(e.receiver.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = CopierColor)
+                    }
+                }
+            }
+        }
     }
 }

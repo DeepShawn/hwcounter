@@ -58,6 +58,31 @@ struct ProviderPickerSheet: View {
     }
 }
 
+/// 作业切换条上的短日期（11/17）
+func shortDay(_ d: Date) -> String { let f = DateFormatter(); f.dateFormat = "M/d"; return f.string(from: d) }
+
+/// 作业页：这次作业的抄袭关系图（每次作业各自一张图）
+struct AssignmentPlagiarismSection: View {
+    let r: PlagiarismReport
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("🕵️ 本次抄袭关系图").bold().foregroundStyle(plagiarismColor)
+                Spacer()
+                Text("\(r.copiers) 人抄袭 · \(r.providers) 人提供").font(.caption).foregroundStyle(.secondary)
+            }
+            PlagiarismGraph(r: r).frame(height: 300)
+            ForEach(Array(r.edges.enumerated()), id: \.offset) { _, e in
+                HStack(spacing: 6) {
+                    Text(e.provider.name).foregroundStyle(providerColor).bold()
+                    Text("→").foregroundStyle(.secondary)
+                    Text(e.receiver.name).foregroundStyle(copierColor).bold()
+                }.font(.subheadline)
+            }
+        }
+    }
+}
+
 /// 这次作业里这位同学的抄袭关系（“抄袭 甲” / “提供给 乙 抄”）
 func plagiarismLine(_ c: SchoolClass, _ a: Assignment, _ sid: String) -> String {
     func names(_ ids: [String]) -> String { ids.compactMap { id in c.students.first { $0.id == id }?.name }.joined(separator: "、") }
@@ -65,54 +90,75 @@ func plagiarismLine(_ c: SchoolClass, _ a: Assignment, _ sid: String) -> String 
     return [from.isEmpty ? nil : "抄袭 \(names(from))", by.isEmpty ? nil : "提供给 \(names(by)) 抄"].compactMap { $0 }.joined(separator: "；")
 }
 
-/// 侧边栏“抄袭关系”：概况、关系图、关系列表、涉及的同学、抄袭圈、最近记录
+/// 侧边栏“抄袭关系”：按作业切换关系图（每次作业一张图，也可看全部作业汇总）；概况、关系图、关系列表、涉及的同学、抄袭圈、最近记录
 struct PlagiarismView: View {
     @EnvironmentObject var store: Store
+    /// 选中的作业 id；nil = 全部作业汇总
+    @State private var sel: String? = nil
 
     var body: some View {
         Group {
             if let c = store.data.currentClass {
                 let rules = store.data.rules
-                let r = c.plagiarismReport(rules)
-                if r.cases.isEmpty {
+                let list = c.plagiarismAssignments()
+                let only = list.contains { $0.id == sel } ? sel : nil
+                let one = list.first { $0.id == only }
+                let r = c.plagiarismReport(rules, only: only)
+                if list.isEmpty && r.cases.isEmpty {
                     EmptyHint(emoji: "🕵️", title: "还没有抄袭记录", detail: "在作业里长按同学（或多选后）选「抄袭」，再选出抄了谁的。\n" + rules.plagiarism.text)
                 } else {
                     List {
+                        Section("按作业看关系图 · 每次作业一张图") {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    chip("全部作业 \(list.count)", only == nil) { sel = nil }
+                                    ForEach(list) { a in
+                                        chip("\(shortDay(a.date)) \(a.title.isEmpty ? a.subject : a.title) · \(c.students.filter { a.plagiarized($0.id) }.count)人", a.id == only) { sel = a.id }
+                                    }
+                                }
+                            }
+                        }
+                        if r.cases.isEmpty {
+                            Section { Text("这次作业没有抄袭记录").foregroundStyle(.secondary) }
+                        } else {
                         Section {
                             HStack {
-                                stat("\(r.cases.count)", "抄袭记录"); stat("\(r.copiers)", "抄袭者"); stat("\(r.providers)", "提供者"); stat(fmtNum(r.points), "共扣分")
+                                stat("\(r.cases.count)", "抄袭记录"); stat("\(r.copiers)", "抄袭者"); stat("\(r.providers)", "提供者"); stat(fmtNum(r.points), one == nil ? "共扣分" : "本次扣分")
+                            }
+                            if let one {
+                                NavigationLink(value: one.id) { Text("\(fmtDate(one.date)) · \(one.subject) \(one.title)").bold() }
                             }
                             Text(rules.plagiarism.text + "；改成其他状态即取消。").font(.caption).foregroundStyle(.secondary)
                         }
-                        Section("关系图 · 箭头从提供者指向抄袭者，线越粗次数越多") {
+                        Section(one == nil ? "全部作业汇总的关系图 · 线越粗次数越多" : "本次作业的关系图 · 箭头从提供者指向抄袭者") {
                             PlagiarismGraph(r: r).frame(height: 420)
                             HStack(spacing: 14) {
                                 legend(providerColor, "提供者"); legend(copierColor, "抄袭者"); legend(bothColor, "既抄又提供")
                             }.font(.caption)
                         }
-                        Section("抄袭关系（提供者 → 抄袭者）") {
+                        Section(one == nil ? "抄袭关系（提供者 → 抄袭者）" : "本次抄袭关系（提供者 → 抄袭者）") {
                             ForEach(Array(r.edges.enumerated()), id: \.offset) { _, e in
                                 HStack {
                                     Text(e.provider.name).foregroundStyle(providerColor).bold()
                                     Text("→").foregroundStyle(.secondary)
                                     Text(e.receiver.name).foregroundStyle(copierColor).bold()
                                     Spacer()
-                                    VStack(alignment: .trailing) {
-                                        Text("\(e.count) 次").bold()
-                                        Text(e.assignments.suffix(2).map(\.title).joined(separator: "、")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    if one == nil {
+                                        VStack(alignment: .trailing) {
+                                            Text("\(e.count) 次").bold()
+                                            Text(e.assignments.suffix(2).map(\.title).joined(separator: "、")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        }
                                     }
                                 }
                             }
                         }
-                        Section("涉及的同学（按次数）") {
+                        Section(one == nil ? "涉及的同学（按次数）" : "本次涉及的同学") {
                             ForEach(Array(r.nodes.enumerated()), id: \.offset) { _, n in
                                 HStack {
                                     Circle().fill(roleColor(n)).frame(width: 10, height: 10)
                                     VStack(alignment: .leading, spacing: 2) {
                                         HStack { Text(n.student.name).bold(); Text(n.role).font(.caption2).foregroundStyle(roleColor(n)) }
-                                        Text([n.copied > 0 ? "抄袭 \(n.copied) 次" : nil, n.provided > 0 ? "提供 \(n.provided) 次" : nil,
-                                              "本轮第 \(n.roundTimes) 次" + (rules.plagiarism.escalate && n.roundTimes > 0 ? "（下次 ×\(fmtNum(rules.plagiarism.factor(n.roundTimes + 1)))）" : "")]
-                                            .compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                                        Text(nodeLine(c, rules, n, one)).font(.caption).foregroundStyle(.secondary)
                                     }
                                     Spacer()
                                     Text(fmtNum(n.points)).bold().foregroundStyle(copierColor)
@@ -126,15 +172,22 @@ struct PlagiarismView: View {
                                 }
                             }
                         }
-                        Section("最近的抄袭记录") {
-                            ForEach(Array(r.cases.prefix(20).enumerated()), id: \.offset) { _, k in
-                                NavigationLink(value: k.assignment.id) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("\(k.receiver.name) 抄袭 \(k.providers.map(\.name).joined(separator: "、"))").bold()
-                                        Text("\(fmtDate(k.assignment.date)) · \(k.assignment.subject) \(k.assignment.title)").font(.caption).foregroundStyle(.secondary)
+                        if one == nil {
+                            Section("最近的抄袭记录（点按看这次的关系图）") {
+                                ForEach(Array(r.cases.prefix(20).enumerated()), id: \.offset) { _, k in
+                                    Button { sel = k.assignment.id } label: {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("\(k.receiver.name) 抄袭 \(k.providers.map(\.name).joined(separator: "、"))").bold().foregroundStyle(.primary)
+                                                Text("\(fmtDate(k.assignment.date)) · \(k.assignment.subject) \(k.assignment.title)").font(.caption).foregroundStyle(.secondary)
+                                            }
+                                            Spacer()
+                                            Text("看图 ›").font(.caption).foregroundStyle(plagiarismColor)
+                                        }
                                     }
                                 }
                             }
+                        }
                         }
                     }
                     .navigationDestination(for: String.self) { id in AssignmentDetailView(assignmentId: id) }
@@ -146,6 +199,22 @@ struct PlagiarismView: View {
         .navigationTitle("抄袭关系")
     }
 
+    private func nodeLine(_ c: SchoolClass, _ rules: Rules, _ n: PlagiarismNode, _ one: Assignment?) -> String {
+        if let one {
+            return [plagiarismLine(c, one, n.student.id), n.roundTimes > 0 ? "本轮第 \(n.roundTimes) 次" + (n.factor > 0 ? "，扣分 ×\(fmtNum(n.factor))" : "") : ""]
+                .filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+        return [n.copied > 0 ? "抄袭 \(n.copied) 次" : nil, n.provided > 0 ? "提供 \(n.provided) 次" : nil,
+                "本轮第 \(n.roundTimes) 次" + (rules.plagiarism.escalate && n.roundTimes > 0 ? "（下次 ×\(fmtNum(rules.plagiarism.factor(n.roundTimes + 1)))）" : "")]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+    private func chip(_ t: String, _ on: Bool, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            Text(t).font(.subheadline.weight(.semibold)).padding(.horizontal, 12).padding(.vertical, 6)
+                .foregroundStyle(on ? Color.white : Color.secondary)
+                .background(on ? plagiarismColor : Color(.tertiarySystemFill), in: Capsule())
+        }.buttonStyle(.plain)
+    }
     private func stat(_ v: String, _ l: String) -> some View {
         VStack { Text(v).font(.title2.bold()).foregroundStyle(plagiarismColor); Text(l).font(.caption).foregroundStyle(.secondary) }.frame(maxWidth: .infinity)
     }

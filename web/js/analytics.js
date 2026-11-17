@@ -3,6 +3,7 @@
 import {
   summary, studentStats, autoPoints, ruleOf, examDelta, leaderOf, leaderPeriods, groupRankPeriods, latestRecharges,
   rechargeStart, rechargeCounts, startOfDay, fmtNum, signed, defaultGroupRank, copiedFrom, copiedBy, plagiarized, compareStudentNumbers,
+  defaultPlagiarism, plagiarismFactor,
 } from './model.js';
 
 const DAY = 86_400_000;
@@ -856,10 +857,36 @@ export function groupDuel(c, a, b) {
 
 // ---------------- 抄袭关系（与安卓 Plagiarism.kt 同算法） ----------------
 
-/** 抄袭记录、提供者 → 抄袭者的关系边、每人的次数与扣分、抄袭圈（连在一起的同学） */
-export function plagiarismReport(c, rules) {
+/** 有抄袭记录的作业，最新的在前（关系图按作业切换用） */
+export function plagiarismAssignments(c) {
+  const ids = new Set(c.students.map((s) => s.id));
+  return c.assignments.filter((a) => Object.keys(a.plagiarism || {}).some((r) => ids.has(r) && copiedFrom(a, r).some((p) => ids.has(p) && a.statuses[p] === 'MISSING')))
+    .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
+}
+
+/** 某位同学每次涉及抄袭是本轮第几次（作业 id → 次数），与计分同一口径 */
+export function plagiarismTimes(c, rules, sid) {
+  const pg = { ...defaultPlagiarism(), ...(rules.plagiarism || {}) };
+  const out = {}; if (!pg.enabled) return out;
+  const resets = (c.recharges || []).filter((r) => (r.studentIds || []).includes(sid))
+    .sort((a, b) => rechargeStart(a) - rechargeStart(b) || a.time - b.time || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  let round; let plag = 0;
+  for (const a of [...c.assignments].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+    let r = null; for (const x of resets) if (rechargeCounts(x, a.createdAt)) r = x.id;
+    if (r !== round) { round = r; plag = 0; }
+    if (a.statuses[sid] === 'MISSING' && plagiarized(a, sid)) out[a.id] = ++plag;
+  }
+  return out;
+}
+
+/**
+ * 抄袭记录、提供者 → 抄袭者的关系边、每人的次数与扣分、抄袭圈（连在一起的同学）。
+ * 关系图按作业来：传入 only（作业 id）时只看这一次作业，每次作业各有一张图；不传则汇总全部作业。
+ */
+export function plagiarismReport(c, rules, only = null) {
   const byId = Object.fromEntries(c.students.map((s) => [s.id, s]));
-  const sorted = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const pg = { ...defaultPlagiarism(), ...(rules.plagiarism || {}) };
+  const sorted = [...c.assignments].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).filter((a) => only == null || a.id === only);
   const cases = []; const edges = new Map();
   for (const a of sorted) for (const rid of Object.keys(a.plagiarism || {})) {
     const r = byId[rid]; if (!r) continue;
@@ -875,7 +902,9 @@ export function plagiarismReport(c, rules) {
     const provided = sorted.filter((a) => copiedBy(a, id).length > 0).length;
     const pts = autoPoints(c, rules, id); const list = sorted.filter((a) => plagiarized(a, id));
     const role = copied > 0 && provided > 0 ? '既抄又提供' : copied > 0 ? '抄袭者' : '提供者';
-    return { student: byId[id], copied, provided, total: copied + provided, role, points: sum(list, (a) => pts[a.id] ?? 0), roundTimes: list.filter((a) => !last[id] || rechargeCounts(last[id], a.createdAt)).length };
+    const points = sum(list, (a) => pts[a.id] ?? 0);
+    if (only != null) { const t = plagiarismTimes(c, rules, id)[only] || 0; return { student: byId[id], copied, provided, total: copied + provided, role, points, roundTimes: t, factor: t > 0 ? plagiarismFactor(pg, t) : 0 }; }
+    return { student: byId[id], copied, provided, total: copied + provided, role, points, roundTimes: list.filter((a) => !last[id] || rechargeCounts(last[id], a.createdAt)).length, factor: 0 };
   }).sort(chain(byDesc((n) => n.total), byAsc((n) => n.points), (a, b) => compareStudentNumbers(a.student.no, b.student.no)));
   const adj = {};
   for (const e of edges.values()) { (adj[e.provider.id] = adj[e.provider.id] || new Set()).add(e.receiver.id); (adj[e.receiver.id] = adj[e.receiver.id] || new Set()).add(e.provider.id); }

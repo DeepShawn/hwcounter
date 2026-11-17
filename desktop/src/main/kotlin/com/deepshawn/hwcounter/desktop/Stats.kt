@@ -59,7 +59,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** 统计页的选择在切换页面后保持 */
-internal object Keep { var mode = 0; var top = 0; var cal = 2; var offset = 0; var from: Long? = null; var to: Long? = null; var examSub = 0; var att = 0; var kind = 0; var span = AttentionStock.Span.M1; var kline = false; var sort = 0; var pill = 0 }
+internal object Keep { var mode = 0; var top = 0; var cal = 2; var offset = 0; var from: Long? = null; var to: Long? = null; var examSub = 0; var att = 0; var kind = 0; var span = AttentionStock.Span.M1; var kline = false; var sort = 0; var pill = 0; var plagSel: String? = null }
 
 private val STATUS_ORDER = listOf(HwStatus.SUBMITTED, HwStatus.EXCELLENT, HwStatus.LEAVE, HwStatus.LATE, HwStatus.MISSING, HwStatus.NONE)
 private fun statusColor(s: HwStatus) = when (s) { HwStatus.SUBMITTED -> View.SUBMITTED.c(); HwStatus.EXCELLENT -> View.EXCELLENT.c(); HwStatus.LATE -> View.LATE.c(); HwStatus.MISSING -> View.MISSING.c(); HwStatus.LEAVE -> View.LEAVE.c(); HwStatus.NONE -> View.NONE.c() }
@@ -721,26 +721,42 @@ private fun Duel(x: Ctx, rep: GroupAnalysis.Report, names: List<String>, colorOf
 @Composable
 private fun Plagiarism(x: Ctx) {
     val rules = x.rules; val pg = rules.plagiarism
-    val r = remember(x.c, rules) { PlagiarismGraph.report(x.c, rules) }
+    // 关系图按作业来：每次作业一张图；null = 全部作业汇总
+    var sel by remember { mutableStateOf(Keep.plagSel) }
+    val list = remember(x.c) { PlagiarismGraph.assignments(x.c) }
+    val only = sel?.takeIf { id -> list.any { it.id == id } }
+    val one = list.firstOrNull { it.id == only }
+    val r = remember(x.c, rules, only) { PlagiarismGraph.report(x.c, rules, only) }
     val text = if (!pg.enabled) "抄袭：按普通未交扣分" else "抄袭：抄袭者和提供者都记一次未交，扣分 ×${pg.multiplier.fmt()}" + if (pg.escalate) "，累犯逐次加重（第 n 次再 ×n，最多 ×${pg.maxTimes}）" else ""
-    if (r.cases.isEmpty()) { Empty("🕵️", "还没有抄袭记录。老师在作业里把同学记为抄袭并选出抄了谁的之后，这里会出现关系图。\n$text"); return }
-    Tiles { Tile("抄袭记录", "${r.cases.size}", PlagColor); Tile("抄袭者", "${r.copiers}", PlagColor); Tile("提供者", "${r.providers}", PlagColor); Tile("共扣分", r.points.fmt(), PlagColor) }
+    if (list.isEmpty() && r.cases.isEmpty()) { Empty("🕵️", "还没有抄袭记录。老师在作业里把同学记为抄袭并选出抄了谁的之后，这里会出现关系图。\n$text"); return }
+    val pick = { id: String? -> sel = id; Keep.plagSel = id }
+    if (list.isNotEmpty()) {
+        Text("按作业看关系图 · 每次作业一张图", Modifier.padding(start = 28.dp, bottom = 6.dp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = sub())
+        FlowRow(Modifier.padding(horizontal = 12.dp).padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("全部作业 ${list.size}", only == null) { pick(null) }
+            val df = java.text.SimpleDateFormat("M/d", java.util.Locale.CHINA)
+            list.forEach { a -> Chip("${df.format(java.util.Date(a.createdAt))} ${a.title.ifBlank { a.subject }} · ${PlagiarismGraph.involvedCount(x.c, a)}人", a.id == only) { pick(a.id) } }
+        }
+    }
+    if (r.cases.isEmpty()) { Empty("🕵️", "这次作业没有抄袭记录，选别的作业或看全部作业汇总。"); return }
+    Tiles { Tile("抄袭记录", "${r.cases.size}", PlagColor); Tile("抄袭者", "${r.copiers}", PlagColor); Tile("提供者", "${r.providers}", PlagColor); Tile(if (one != null) "本次扣分" else "共扣分", r.points.fmt(), PlagColor) }
+    if (one != null) Group(null) { Cell("${fmtDay(one.createdAt)} · ${one.subject} ${one.title}".trim(), "打开这次作业", onClick = { x.open(Route.Assign(one.id)) }) }
     Meta("$text；改成其他状态即取消。")
-    Group("关系图 · 箭头从提供者指向抄袭者，线越粗次数越多") {
+    Group(if (one != null) "本次作业的关系图 · 箭头从提供者指向抄袭者" else "全部作业汇总的关系图 · 线越粗次数越多") {
         Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) { PlagGraph(r) { x.open(Route.Student(it)) } }
         Legend(listOf(ProviderColor to "提供者", CopierColor to "抄袭者", BothColor to "既抄又提供"))
     }
-    Group("抄袭关系（提供者 → 抄袭者）") {
+    Group(if (one != null) "本次抄袭关系（提供者 → 抄袭者）" else "抄袭关系（提供者 → 抄袭者）") {
         r.edges.forEach { e ->
             Row(Modifier.fillMaxWidth().clickable { x.open(Route.Student(e.receiver.id)) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(e.provider.name, color = ProviderColor, fontWeight = FontWeight.Medium); Text("  →  ", color = sub()); Text(e.receiver.name, Modifier.weight(1f), color = CopierColor, fontWeight = FontWeight.Medium)
-                Column(horizontalAlignment = Alignment.End) { Text("${e.count} 次", fontWeight = FontWeight.Bold); Text(e.assignments.takeLast(2).joinToString("、") { it.title }, fontSize = 11.sp, color = sub(), maxLines = 1) }
+                if (one == null) Column(horizontalAlignment = Alignment.End) { Text("${e.count} 次", fontWeight = FontWeight.Bold); Text(e.assignments.takeLast(2).joinToString("、") { it.title }, fontSize = 11.sp, color = sub(), maxLines = 1) }
             }
         }
     }
-    Group("涉及的同学（按次数）") {
+    Group(if (one != null) "本次涉及的同学" else "涉及的同学（按次数）") {
         r.nodes.forEach { n ->
-            Cell(n.student.name, listOfNotNull(if (n.copied > 0) "抄袭 ${n.copied} 次" else null, if (n.provided > 0) "提供 ${n.provided} 次" else null, "本轮第 ${n.roundTimes} 次" + if (pg.escalate && n.roundTimes > 0) "（下次 ×${pg.factor(n.roundTimes + 1).fmt()}）" else "").joinToString(" · "),
+            Cell(n.student.name, if (one != null) listOfNotNull(plagLine(x.c, one, n.student.id).ifBlank { null }, if (n.roundTimes > 0) "本轮第 ${n.roundTimes} 次" + (if (n.factor > 0) "，扣分 ×${n.factor.fmt()}" else "") else null).joinToString(" · ") else listOfNotNull(if (n.copied > 0) "抄袭 ${n.copied} 次" else null, if (n.provided > 0) "提供 ${n.provided} 次" else null, "本轮第 ${n.roundTimes} 次" + if (pg.escalate && n.roundTimes > 0) "（下次 ×${pg.factor(n.roundTimes + 1).fmt()}）" else "").joinToString(" · "),
                 left = { Avatar(n.student.name, 36.dp, roleColor(n)) }, right = { Row(verticalAlignment = Alignment.CenterVertically) { Pill(n.role, roleColor(n)); Text("  " + n.points.fmt(), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = CopierColor) } },
                 onClick = { x.open(Route.Student(n.student.id)) })
         }
@@ -750,5 +766,5 @@ private fun Plagiarism(x: Ctx) {
             r.clusters.filter { it.size >= 2 }.forEachIndexed { i, cl -> Text("第 ${i + 1} 圈 · ${cl.size} 人", fontSize = 13.sp, color = sub()); Chips(cl.map { it.name to "" }, PlagColor) { x.open(Route.Student(cl[it].id)) } }
         }
     }
-    Group("最近的抄袭记录") { r.cases.take(20).forEach { k -> Cell("${k.receiver.name} 抄袭 ${k.providers.joinToString("、") { it.name }}", "${fmtDay(k.assignment.createdAt)} · ${k.assignment.subject} ${k.assignment.title}".trim(), onClick = { x.open(Route.Assign(k.assignment.id)) }) } }
+    if (one == null) Group("最近的抄袭记录（点按看这次的关系图）") { r.cases.take(20).forEach { k -> Cell("${k.receiver.name} 抄袭 ${k.providers.joinToString("、") { it.name }}", "${fmtDay(k.assignment.createdAt)} · ${k.assignment.subject} ${k.assignment.title}".trim(), onClick = { pick(k.assignment.id) }) } }
 }

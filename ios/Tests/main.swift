@@ -503,6 +503,13 @@ do {
     var a2 = c.assignments[2]; a2.removePlagiarism(["a"])
     let back = try! JSONDecoder().decode(Assignment.self, from: JSONEncoder().encode(c.assignments[2]))
     check(a2.plagiarism.isEmpty && back.plagiarism == ["b": ["a"], "c": ["a"]], "取消标记；可编码/解码")
+    // 关系图按作业：每次作业一张图
+    check(c.plagiarismAssignments().map(\.id) == ["a2", "a0"], "有抄袭的作业，最新在前")
+    let g0 = c.plagiarismReport(R, only: "a0"), g2 = c.plagiarismReport(R, only: "a2")
+    check(g0.edges.map { "\($0.provider.id)→\($0.receiver.id)\($0.count)" } == ["a→b1"] && g2.edges.map { "\($0.provider.id)→\($0.receiver.id)\($0.count)" } == ["a→b1", "a→c1"], "单次作业的关系边")
+    let a0n = g0.nodes.first { $0.student.id == "a" }!, a2n = g2.nodes.first { $0.student.id == "a" }!
+    check(a0n.points == -4 && a0n.roundTimes == 1 && a0n.factor == 2 && a2n.points == -8 && a2n.roundTimes == 2 && a2n.factor == 4, "单次作业的扣分、第几次、倍数")
+    check(c.plagiarismReport(R, only: "a3").cases.isEmpty, "没有抄袭的作业是空图")
 }
 print("\n通过 \(pass)/\(total)")
 exit(pass == total ? 0 : 1)
