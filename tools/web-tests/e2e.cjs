@@ -209,6 +209,20 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.reload(); await page.waitForSelector('text=练习12');
   check((await page.locator('.guide').count()) === 0, '跳过后刷新不再出现新手提示');
   check((await page.getAttribute('html', 'data-theme')) === 'dark' && (await page.evaluate(() => document.documentElement.classList.contains('motion'))), '个性化设置记在本机');
+  // Apple 风格主题
+  await page.click('.tabbar button:has-text("设置")'); await page.click('.seg button:has-text("浅色")');
+  await page.click('.pal:has-text("Apple 风格")');
+  check(await page.waitForFunction(() => document.documentElement.dataset.style === 'apple' && getComputedStyle(document.body).backgroundColor === 'rgb(242, 242, 247)', null, { timeout: 3000 }).then(() => true, () => false), 'Apple 风格主题：iOS 分组灰底');
+  const tb = await page.locator('.tabbar').boundingBox();
+  check(Math.abs(tb.y + tb.height - 844) < 2 && tb.width >= 389, 'Apple 风格主题：标签栏贴底全宽');
+  await shot('13-apple-settings');
+  await page.click('.tabbar button:has-text("首页")'); await page.waitForSelector('text=练习12'); await shot('13a-apple-home');
+  await page.click('.tabbar button:has-text("统计")'); await page.waitForSelector('text=主要发现'); await shot('13b-apple-stats');
+  await page.click('.tabbar button:has-text("设置")'); await page.click('.seg button:has-text("深色")');
+  check(await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark' && getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() === '#0a84ff', null, { timeout: 3000 }).then(() => true, () => false), 'Apple 风格深色：系统蓝 #0A84FF');
+  await page.click('.tabbar button:has-text("名单")'); await page.waitForSelector('.search'); await shot('13c-apple-roster-dark');
+  await page.click('.tabbar button:has-text("设置")'); await page.click('.pal:has-text("澎湃蓝")');
+  check(await page.waitForFunction(() => document.documentElement.dataset.style === undefined, null, { timeout: 3000 }).then(() => true, () => false), '换回其他主题后恢复原样式');
 
   check(writes === 0, `网页端没有发出任何写请求（共 ${requests} 次请求）`);
   check(errors.length === 0, `没有脚本错误${errors.length ? '：' + errors.join(' | ') : ''}`);

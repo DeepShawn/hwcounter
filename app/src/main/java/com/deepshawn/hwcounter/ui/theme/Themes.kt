@@ -37,6 +37,7 @@ data class AppPalette(
 
 val Palettes = listOf(
     AppPalette("hyper", "澎湃蓝", "💧", Color(0xFF3482FF), Color(0xFF00B4FF), Color(0xFFFF9F0A), Color(0xFFF7F7F7), Color(0xFF000000), listOf(Color(0xFF3482FF), Color(0xFF6E5BFF))),
+    AppPalette("apple", "Apple 风格", "🍎", Color(0xFF007AFF), Color(0xFF5AC8FA), Color(0xFFFF9500), Color(0xFFF2F2F7), Color(0xFF000000), listOf(Color(0xFF007AFF), Color(0xFF5856D6))),
     AppPalette("mint", "薄荷清新", "🌿", Color(0xFF0FA38A), Color(0xFF3D8BFD), Color(0xFFFFB74D), Color(0xFFF4FBF8), Color(0xFF0F1715), listOf(Color(0xFF12C2A0), Color(0xFF2F8FEA))),
     AppPalette("academy", "学院蓝", "🎓", Color(0xFF2F5BEA), Color(0xFF00A6D6), Color(0xFFFF8A65), Color(0xFFF5F7FF), Color(0xFF0E1220), listOf(Color(0xFF3A6BFF), Color(0xFF6A3DF0))),
     AppPalette("sakura", "樱花粉", "🌸", Color(0xFFE2557B), Color(0xFFB370E0), Color(0xFFFFB300), Color(0xFFFFF6F8), Color(0xFF1C1215), listOf(Color(0xFFFF7EA5), Color(0xFFB57BFF))),
@@ -47,6 +48,35 @@ val Palettes = listOf(
     AppPalette("grape", "葡萄汽水", "🍇", Color(0xFF8E44AD), Color(0xFF16A085), Color(0xFFF39C12), Color(0xFFFAF5FF), Color(0xFF15101A), listOf(Color(0xFF9B59B6), Color(0xFF3498DB))),
     AppPalette("ink", "水墨极简", "🖌️", Color(0xFF263238), Color(0xFF607D8B), Color(0xFFD84315), Color(0xFFFAFAFA), Color(0xFF101213), listOf(Color(0xFF37474F), Color(0xFF90A4AE))),
     AppPalette("dynamic", "动态取色", "🎨", Color(0xFF6750A4), Color(0xFF625B71), Color(0xFF7D5260), Color(0xFFFFFBFE), Color(0xFF1C1B1F), listOf(Color(0xFF6750A4), Color(0xFF7D5260))),
+)
+
+// ---------------- Apple 风格：iOS 系统配色（系统蓝、分组灰底、白卡片、iOS 分隔线） ----------------
+fun appleLightColors() = top.yukonga.miuix.kmp.theme.lightColorScheme(
+    primary = Color(0xFF007AFF), primaryVariant = Color(0xFF007AFF), onPrimaryVariant = Color(0xFFA6CCFF),
+    error = Color(0xFFFF3B30), errorContainer = Color(0xFFFFEDEC),
+    disabledPrimary = Color(0xFFB3D7FF), disabledPrimaryButton = Color(0xFFB3D7FF), disabledPrimarySlider = Color(0xFFB3D7FF),
+    primaryContainer = Color(0xFF3395FF),
+    secondary = Color(0xFFE5E5EA), secondaryVariant = Color(0xFFEFEFF4), onSecondaryVariant = Color(0xFF1C1C1E),
+    secondaryContainer = Color(0xFFEEEEF0), onSecondaryContainer = Color(0xFF8E8E93), secondaryContainerVariant = Color(0xFFE5E5EA),
+    tertiaryContainer = Color(0xFFE5F1FF), onTertiaryContainer = Color(0xFF007AFF), tertiaryContainerVariant = Color(0xFFE5F1FF),
+    surface = Color(0xFFF2F2F7), surfaceVariant = Color.White, onSurfaceVariantSummary = Color(0x993C3C43), onSurfaceVariantActions = Color(0x4D3C3C43),
+    surfaceContainer = Color.White, surfaceContainerHigh = Color(0xFFE5E5EA), surfaceContainerHighest = Color(0xFFE5E5EA),
+    outline = Color(0xFFC6C6C8), dividerLine = Color(0xFFC6C6C8),
+    sliderKeyPointForeground = Color(0xFF007AFF), sliderBackground = Color(0x14787880),
+)
+fun appleDarkColors() = top.yukonga.miuix.kmp.theme.darkColorScheme(
+    primary = Color(0xFF0A84FF), primaryVariant = Color(0xFF0A84FF), onPrimaryVariant = Color(0xFF7FBDFF),
+    error = Color(0xFFFF453A), errorContainer = Color(0xFF3A1110),
+    disabledPrimary = Color(0xFF1B3F66), disabledPrimaryButton = Color(0xFF1B3F66), disabledPrimarySlider = Color(0xFF1B3F66),
+    primaryContainer = Color(0xFF3A9BFF),
+    secondary = Color(0xFF3A3A3C), secondaryVariant = Color(0xFF2C2C2E), onSecondaryVariant = Color(0xFFE5E5EA),
+    secondaryContainer = Color(0xFF2C2C2E), onSecondaryContainer = Color(0xFF8E8E93), secondaryContainerVariant = Color(0xFF3A3A3C),
+    tertiaryContainer = Color(0xFF0B2A4A), onTertiaryContainer = Color(0xFF0A84FF), tertiaryContainerVariant = Color(0xFF2C2C2E),
+    background = Color(0xFF1C1C1E), surface = Color.Black, onSurface = Color.White, surfaceVariant = Color(0xFF1C1C1E),
+    onSurfaceVariantSummary = Color(0x99EBEBF5), onSurfaceVariantActions = Color(0x4DEBEBF5),
+    surfaceContainer = Color(0xFF1C1C1E), onSurfaceContainer = Color.White, surfaceContainerHigh = Color(0xFF2C2C2E), surfaceContainerHighest = Color(0xFF3A3A3C),
+    outline = Color(0xFF38383A), dividerLine = Color(0xFF38383A),
+    sliderKeyPointForeground = Color(0xFF0A84FF), sliderBackground = Color(0x29787880),
 )
 
 fun paletteOf(key: String) = Palettes.firstOrNull { it.key == key } ?: Palettes[0]
@@ -122,6 +152,10 @@ fun HwTheme(
     // 澎湃蓝 = miuix 原生配色；动态取色 = 系统壁纸取色（Android 12+）；其余主题用主色生成 Monet 色板
     val controller = remember(p.key, dark) {
         when {
+            p.key == "apple" -> top.yukonga.miuix.kmp.theme.ThemeController(
+                if (dark) top.yukonga.miuix.kmp.theme.ColorSchemeMode.Dark else top.yukonga.miuix.kmp.theme.ColorSchemeMode.Light,
+                lightColors = appleLightColors(), darkColors = appleDarkColors(),
+            )
             p.key == "hyper" -> top.yukonga.miuix.kmp.theme.ThemeController(
                 if (dark) top.yukonga.miuix.kmp.theme.ColorSchemeMode.Dark else top.yukonga.miuix.kmp.theme.ColorSchemeMode.Light,
             )
@@ -154,7 +188,7 @@ fun HwTheme(
     top.yukonga.miuix.kmp.theme.MiuixTheme(controller = controller, smoothRounding = !ui.lowPerf) {
         val m = top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
         val scheme = bridge(m, dark)
-        val gradient = if (p.key == "dynamic" || p.key == "hyper") listOf(m.primary, m.primary.mix(Color(0xFF7A5CFF), 0.45f)) else p.gradient
+        val gradient = if (p.key == "dynamic" || p.key == "hyper" || p.key == "apple") listOf(m.primary, m.primary.mix(Color(0xFF7A5CFF), 0.45f)) else p.gradient
         CompositionLocalProvider(
             LocalExtra provides Extra(p, gradient, dark, compact, corner),
             LocalUiPrefs provides ui,

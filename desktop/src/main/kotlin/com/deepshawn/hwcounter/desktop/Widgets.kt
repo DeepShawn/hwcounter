@@ -54,7 +54,8 @@ import top.yukonga.miuix.kmp.theme.ThemeController
 data class Palette(val key: String, val name: String, val a: Color, val b: Color, val forceDark: Boolean = false)
 
 val Palettes = listOf(
-    Palette("hyper", "澎湃蓝", Color(0xFF3482FF), Color(0xFF6E5BFF)), Palette("mint", "薄荷清新", Color(0xFF12C2A0), Color(0xFF2F8FEA)),
+    Palette("hyper", "澎湃蓝", Color(0xFF3482FF), Color(0xFF6E5BFF)), Palette("apple", "Apple 风格", Color(0xFF007AFF), Color(0xFF5856D6)),
+    Palette("mint", "薄荷清新", Color(0xFF12C2A0), Color(0xFF2F8FEA)),
     Palette("academy", "学院蓝", Color(0xFF3A6BFF), Color(0xFF6A3DF0)), Palette("sakura", "樱花粉", Color(0xFFFF7EA5), Color(0xFFB57BFF)),
     Palette("sunset", "暖阳橙", Color(0xFFFFA62B), Color(0xFFFF5E62)), Palette("neon", "赛博霓虹", Color(0xFF7F5CFF), Color(0xFF00D4FF), forceDark = true),
     Palette("forest", "森林物语", Color(0xFF4C8C3F), Color(0xFF1F5E54)), Palette("paper", "纸本手账", Color(0xFFC79A63), Color(0xFF8B5E34)),
@@ -70,7 +71,8 @@ fun HwTheme(prefs: Prefs, content: @Composable () -> Unit) {
     val sys = isSystemInDarkTheme()
     val dark = p.forceDark || when (prefs.dark) { 1 -> false; 2 -> true; else -> sys }
     val controller = remember(p.key, dark) {
-        if (p.key == "hyper") ThemeController(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light)
+        if (p.key == "apple") ThemeController(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light, lightColors = appleLightColors(), darkColors = appleDarkColors())
+        else if (p.key == "hyper") ThemeController(if (dark) ColorSchemeMode.Dark else ColorSchemeMode.Light)
         else ThemeController(if (dark) ColorSchemeMode.MonetDark else ColorSchemeMode.MonetLight, keyColor = p.a)
     }
     MiuixTheme(controller = controller) {
@@ -213,3 +215,32 @@ fun Swatch(p: Palette, on: Boolean, onClick: () -> Unit) {
         Text(p.name, fontSize = 11.5.sp, color = if (on) MiuixTheme.colorScheme.onSurface else sub(), fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1)
     }
 }
+
+// ---------------- Apple 风格：iOS 系统配色（系统蓝、分组灰底、白卡片、iOS 分隔线） ----------------
+fun appleLightColors() = top.yukonga.miuix.kmp.theme.lightColorScheme(
+    primary = Color(0xFF007AFF), primaryVariant = Color(0xFF007AFF), onPrimaryVariant = Color(0xFFA6CCFF),
+    error = Color(0xFFFF3B30), errorContainer = Color(0xFFFFEDEC),
+    disabledPrimary = Color(0xFFB3D7FF), disabledPrimaryButton = Color(0xFFB3D7FF), disabledPrimarySlider = Color(0xFFB3D7FF),
+    primaryContainer = Color(0xFF3395FF),
+    secondary = Color(0xFFE5E5EA), secondaryVariant = Color(0xFFEFEFF4), onSecondaryVariant = Color(0xFF1C1C1E),
+    secondaryContainer = Color(0xFFEEEEF0), onSecondaryContainer = Color(0xFF8E8E93), secondaryContainerVariant = Color(0xFFE5E5EA),
+    tertiaryContainer = Color(0xFFE5F1FF), onTertiaryContainer = Color(0xFF007AFF), tertiaryContainerVariant = Color(0xFFE5F1FF),
+    surface = Color(0xFFF2F2F7), surfaceVariant = Color.White, onSurfaceVariantSummary = Color(0x993C3C43), onSurfaceVariantActions = Color(0x4D3C3C43),
+    surfaceContainer = Color.White, surfaceContainerHigh = Color(0xFFE5E5EA), surfaceContainerHighest = Color(0xFFE5E5EA),
+    outline = Color(0xFFC6C6C8), dividerLine = Color(0xFFC6C6C8),
+    sliderKeyPointForeground = Color(0xFF007AFF), sliderBackground = Color(0x14787880),
+)
+fun appleDarkColors() = top.yukonga.miuix.kmp.theme.darkColorScheme(
+    primary = Color(0xFF0A84FF), primaryVariant = Color(0xFF0A84FF), onPrimaryVariant = Color(0xFF7FBDFF),
+    error = Color(0xFFFF453A), errorContainer = Color(0xFF3A1110),
+    disabledPrimary = Color(0xFF1B3F66), disabledPrimaryButton = Color(0xFF1B3F66), disabledPrimarySlider = Color(0xFF1B3F66),
+    primaryContainer = Color(0xFF3A9BFF),
+    secondary = Color(0xFF3A3A3C), secondaryVariant = Color(0xFF2C2C2E), onSecondaryVariant = Color(0xFFE5E5EA),
+    secondaryContainer = Color(0xFF2C2C2E), onSecondaryContainer = Color(0xFF8E8E93), secondaryContainerVariant = Color(0xFF3A3A3C),
+    tertiaryContainer = Color(0xFF0B2A4A), onTertiaryContainer = Color(0xFF0A84FF), tertiaryContainerVariant = Color(0xFF2C2C2E),
+    background = Color(0xFF1C1C1E), surface = Color.Black, onSurface = Color.White, surfaceVariant = Color(0xFF1C1C1E),
+    onSurfaceVariantSummary = Color(0x99EBEBF5), onSurfaceVariantActions = Color(0x4DEBEBF5),
+    surfaceContainer = Color(0xFF1C1C1E), onSurfaceContainer = Color.White, surfaceContainerHigh = Color(0xFF2C2C2E), surfaceContainerHighest = Color(0xFF3A3A3C),
+    outline = Color(0xFF38383A), dividerLine = Color(0xFF38383A),
+    sliderKeyPointForeground = Color(0xFF0A84FF), sliderBackground = Color(0x29787880),
+)

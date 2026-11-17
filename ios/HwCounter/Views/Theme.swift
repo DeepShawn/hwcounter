@@ -18,6 +18,7 @@ struct Palette: Identifiable {
 
     static let all: [Palette] = [
         Palette(id: "hyper", name: "💧 澎湃蓝", a: 0x3482FF, b: 0x6E5BFF),
+        Palette(id: "apple", name: "🍎 Apple 风格", a: 0x007AFF, b: 0x5856D6),
         Palette(id: "mint", name: "🌿 薄荷清新", a: 0x12C2A0, b: 0x2F8FEA),
         Palette(id: "academy", name: "🎓 学院蓝", a: 0x3A6BFF, b: 0x6A3DF0),
         Palette(id: "sakura", name: "🌸 樱花粉", a: 0xFF7EA5, b: 0xB57BFF),
