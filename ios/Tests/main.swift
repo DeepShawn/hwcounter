@@ -380,6 +380,43 @@ do {
     var data = AppData(); var rr = data.rules; rr.escalation.mode = 3; rr.escalation.tierBy = "total"; rr.escalation.tiers = [EscalationTier(from: 4, factor: 2.5)]; data.rules = rr
     check(data.rules.escalation == rr.escalation, "三种方式与分段可存取（与安卓、网页字段一致）")
 }
+// 信誉分：与安卓 CreditTest、网页 credit.test.mjs 同一组用例
+do {
+    print("== 信誉分")
+    func check(_ ok: Bool, _ msg: String) { total += 1; if ok { pass += 1 }; print("\(ok ? "✓" : "✗") \(msg)") }
+    func mk(_ rows: [(String, [String])], groups: [String: String] = [:], review: [Int: [String]] = [:]) -> SchoolClass {
+        var c = SchoolClass(name: "一班", students: rows.enumerated().map { i, r in var s = Student(id: r.0, no: "0\(i + 1)", name: "同学\(r.0)"); s.group = groups[r.0] ?? ""; return s })
+        let n = rows.map { $0.1.count }.max() ?? 0
+        for k in 0..<n {
+            var a = Assignment(title: "作业\(k)", subject: "数学"); a.id = "a\(k)"; a.createdAt = Int64((k + 1) * 1000)
+            a.statuses = Dictionary(uniqueKeysWithValues: rows.map { ($0.0, k < $0.1.count ? $0.1[k] : "NONE") }); a.reviewFailed = review[k] ?? []
+            c.assignments.append(a)
+        }
+        return c
+    }
+    let base = mk([("s1", ["SUBMITTED", "SUBMITTED", "EXCELLENT", "LATE", "MISSING"])])
+    check(base.creditAll(at: Int64(1e12))["s1"]?.index == 68.43 && base.creditAll(at: Int64(1e12))["s1"]?.level == "一般", "个人信誉分 68.43（一般）")
+    var withExam = base; withExam.exams = [Exam(title: "月考", subject: "数学", date: 6000, fullScore: 100, scores: ["s1": 90])]
+    check(withExam.creditAll(at: Int64(1e12))["s1"]?.index == 71.67, "加一场考试后 71.67")
+    check(mk([("s1", ["LEAVE"])]).creditAll(at: Int64(1e12))["s1"]?.hasData == false, "没有记录时没有信誉分")
+    let failed = mk([("s1", ["SUBMITTED", "SUBMITTED", "MISSING"])], review: [2: ["s1"]]).creditAll(at: Int64(1e12))["s1"]!.index
+    check(failed < mk([("s1", ["SUBMITTED", "SUBMITTED", "MISSING"])]).creditAll(at: Int64(1e12))["s1"]!.index, "复审不合格拉低信誉分")
+    var rp = Rules(); rp.credit.personal = "both"; rp.credit.period = "assignment"
+    let e5 = mk([("s1", ["EXCELLENT", "EXCELLENT", "EXCELLENT", "EXCELLENT", "EXCELLENT"])])
+    let ps = e5.creditPeriods(rp)
+    check(ps.map { $0.personal["s1"]!.0 } == [87.65, 90, 92.35, 94.71, 97.06] && ps.map { $0.personal["s1"]!.1 } == [1, 2, 2, 2, 2], "每次作业结算：87.65、90、92.35… 加 1、2、2、2、2")
+    check(e5.stats(rp)[0].score == 114 && e5.stats(Rules())[0].score == 105, "加减分计入积分；默认不计入")
+    let m3 = mk([("s1", ["MISSING", "MISSING", "MISSING"])])
+    func score(_ m: String) -> Double { var r = Rules(); r.credit.personal = m; r.credit.period = "assignment"; return m3.stats(r)[0].score }
+    check(score("both") == 86 && score("minus") == 86 && score("plus") == 92 && score("none") == 92, "只加不扣 / 只扣不加 / 不计入")
+    var rg = Rules(); rg.credit.group = "both"; rg.credit.period = "assignment"; rg.groupRank.enabled = false; rg.leader.enabled = false
+    let g = mk([("s1", ["EXCELLENT"]), ("s2", ["MISSING"])], groups: ["s1": "A", "s2": "A"])
+    let gp = g.creditPeriods(rg)
+    let sc = Dictionary(uniqueKeysWithValues: g.stats(rg).map { ($0.student.id, $0.score) })
+    check(gp.count == 1 && gp[0].groups["A"]!.0 == 57.06 && gp[0].groups["A"]!.1 == -1 && gp[0].personal.isEmpty && sc["s1"] == 100 && sc["s2"] == 97, "小组信誉分 57.06，全组每人 -1")
+    var d = AppData(); var rr = d.rules; rr.credit.personal = "plus"; rr.credit.period = "month"; rr.credit.goodPts = 1.5; d.rules = rr
+    check(d.rules.credit == rr.credit, "信誉分设置可存取（与安卓、网页字段一致）")
+}
 // 连续交奖励与取整：与安卓 StreakBonusAndRoundingTest、网页同一组用例
 do {
     print("== 连续交奖励与取整")
