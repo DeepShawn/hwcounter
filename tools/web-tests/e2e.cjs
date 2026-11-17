@@ -126,6 +126,10 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.click('.seg button:has-text("关注")'); await page.waitForSelector('text=关注度指数（0–100，越高越需要关注）');
   check((await page.locator('.an-att').count()) === 12, '关注榜：每位同学一行');
   await shot('7d-attention');
+  await page.click('.seg button:has-text("信誉")'); await page.waitForSelector('text=信誉分（0–100，越优秀越高）');
+  check((await page.locator('.an-att').count()) === 12, '信誉榜：每位同学一行');
+  check(await page.isVisible('text=信誉榜 · 点同学查看详情'), '信誉榜标题');
+  await shot('7d2-credit');
   await page.click('.seg button:has-text("股票")'); await page.waitForSelector('text=ATTN', { timeout: 15000 });
   check(await page.isVisible('.an-tabs button:has-text("行情")') && await page.isVisible('.an-tabs button:has-text("炒股")'), '股票是一级栏目，第二级：行情 / 炒股');
   check(await page.isVisible('text=关注指数 · 全班平均') && (await page.locator('.an-pill').count()) === 12, '股票模式：大盘与个股');

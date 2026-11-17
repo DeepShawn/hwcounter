@@ -96,6 +96,18 @@ object Credit {
         }.toMap()
     }
 
+    /** 每周一个点的走势（最近 [weeks] 周，含现在），学生 id → 信誉分（旧 → 新；还没有数据的周沿用之后第一个有数据的值，都没有为 0） */
+    fun weekly(c: SchoolClass, weeks: Int = 8, now: Long = System.currentTimeMillis()): Map<String, List<Double>> {
+        val pts = (weeks - 1 downTo 0).map { k -> now - k * 7L * 86_400_000L }
+        val per = pts.map { t -> all(c, t).filter { it.hasData }.associate { it.student.id to it.index } }
+        return c.students.associate { s ->
+            val raw = per.map { it[s.id] }
+            val first = raw.firstOrNull { it != null } ?: 0.0
+            var last = first
+            s.id to raw.map { v -> (v ?: last).also { last = it } }
+        }
+    }
+
     /** 一句话：等级、最强项、最弱项 */
     fun summary(r: Result): String = if (!r.hasData) "暂无记录" else buildString {
         append("信誉分 ${r.index.fmt()}（${r.level.label}）")

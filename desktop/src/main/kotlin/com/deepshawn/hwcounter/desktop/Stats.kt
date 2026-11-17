@@ -74,11 +74,12 @@ fun StatsPage(x: Ctx) {
     val c = x.c
     Page("数据分析", null, actions = { Text("分析报告", Modifier.clip(CircleShape).clickable { share = true }.padding(horizontal = 12.dp, vertical = 6.dp), color = MiuixTheme.colorScheme.primary) }) {
         Meta("${c.name} · ${c.students.size} 人 · ${c.assignments.size} 次作业 · ${c.exams.size} 场考试")
-        Seg(listOf(0 to "作业", 1 to "考试", 2 to "关注", 5 to "股票", 3 to "小组", 4 to "抄袭"), mode, Modifier.padding(horizontal = 12.dp).padding(bottom = 10.dp)) { mode = it; Keep.mode = it }
+        Seg(listOf(0 to "作业", 1 to "考试", 2 to "关注", 6 to "信誉", 5 to "股票", 3 to "小组", 4 to "抄袭"), mode, Modifier.padding(horizontal = 12.dp).padding(bottom = 10.dp)) { mode = it; Keep.mode = it }
         when (mode) {
             0 -> Homework(x)
             1 -> Exams(x)
             2 -> AttentionTab(x)
+            6 -> CreditTab(x)
             5 -> StockTop(x)
             3 -> Groups(x)
             else -> Plagiarism(x)
@@ -495,6 +496,56 @@ private fun AttentionTab(x: Ctx) {
     val list by produceState<List<Attention.Result>?>(null, x.c, x.rules) { value = withContext(Dispatchers.Default) { Attention.all(x.c, x.rules) } }
     val l = list ?: run { Empty("⏳", "正在计算…"); return }
     AttentionBoard(x, l)
+}
+
+/** 信誉（一级栏目）：信誉榜，版式与关注榜相同；越优秀越高 */
+@Composable
+private fun CreditTab(x: Ctx) {
+    val data by produceState<Triple<List<Credit.Result>, Map<String, List<Double>>, Map<String, Double>>?>(null, x.c) {
+        value = withContext(Dispatchers.Default) { val l = Credit.all(x.c); Triple(l, Credit.weekly(x.c), Credit.groups(x.c, personal = l)) }
+    }
+    val (list, weekly, groups) = data ?: run { Empty("⏳", "正在计算…"); return }
+    if (list.isEmpty()) { Empty("🏅", "还没有学生"); return }
+    val levels = listOf(Credit.Level.A, Credit.Level.B, Credit.Level.C, Credit.Level.D)
+    Group {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("信誉分（0–100，越优秀越高）", fontWeight = FontWeight.SemiBold)
+            Text("由交齐 25%、按时 15%、优秀 10%、连续交 10%、诚信（复审不合格、抄袭）20%、进步 5%、考试 15% 算出；数据一变立即重算，走势为最近 8 周每周一个点。", fontSize = 12.sp, color = sub())
+            Split(levels.map { lv -> list.count { it.level == lv } to creditColor(lv) })
+            Row { levels.forEach { lv -> Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) { Text("${list.count { it.level == lv }}", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = creditColor(lv)); Text(lv.label, fontSize = 11.sp, color = sub()) } } }
+            val has = list.filter { it.hasData }
+            if (has.isNotEmpty()) Text("全班平均 ${Credit.r2(has.map { it.index }.average()).fmt()}" + (list.size - has.size).let { if (it > 0) " · 暂无记录 $it 人" else "" }, fontSize = 12.sp, color = sub())
+        }
+    }
+    if (groups.isNotEmpty()) Group("小组信誉分（组员平均）") {
+        groups.entries.sortedByDescending { it.value }.forEachIndexed { i, (g, v) ->
+            val col = creditColor(Credit.levelOf(v))
+            Row(Modifier.fillMaxWidth().clickable { x.open(Route.Group(g)) }.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${i + 1}", Modifier.width(28.dp), fontWeight = FontWeight.Bold, color = sub())
+                Text(g, Modifier.width(90.dp), maxLines = 1)
+                Box(Modifier.weight(1f).height(8.dp).clip(CircleShape).background(sub().copy(alpha = 0.15f))) { Box(Modifier.fillMaxWidth((v / 100).toFloat().coerceIn(0.02f, 1f)).height(8.dp).clip(CircleShape).background(col)) }
+                Text(v.fmt(), Modifier.width(52.dp), fontWeight = FontWeight.SemiBold, color = col, textAlign = TextAlign.End)
+            }
+        }
+    }
+    Group("信誉榜 · 点同学查看详情") {
+        list.forEachIndexed { i, r ->
+            val w = weekly[r.student.id].orEmpty(); val delta = if (w.size >= 2 && r.hasData) (r.index - w[w.size - 2]).roundToInt() else 0; val col = creditColor(r.level)
+            Row(Modifier.fillMaxWidth().clickable { x.open(Route.Student(r.student.id)) }.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${i + 1}", Modifier.width(28.dp), fontWeight = FontWeight.Bold, color = if (i < 3 && r.hasData) col else sub())
+                Avatar(r.student.name, 36.dp); Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) { Text(r.student.name, fontWeight = FontWeight.Medium); Spacer(Modifier.width(6.dp)); Pill(r.level.label, col) }
+                    Text(if (!r.hasData) "还没有作业记录和考试成绩" else r.weak.take(2).joinToString(" · ") { "${it.label}：${it.detail}" }.ifBlank { "各项都好" }, fontSize = 11.5.sp, color = sub(), maxLines = 2)
+                }
+                if (r.hasData) Spark(w, col); Spacer(Modifier.width(8.dp))
+                Column(Modifier.width(52.dp), horizontalAlignment = Alignment.End) {
+                    Text(if (r.hasData) "${r.index.roundToInt()}" else "—", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = col)
+                    Text(if (delta > 0) "▲$delta" else if (delta < 0) "▼${-delta}" else "持平", fontSize = 10.sp, color = if (delta > 0) GOOD else if (delta < 0) BAD else sub())
+                }
+            }
+        }
+    }
 }
 
 /** 股票（一级栏目）：行情；模拟炒股在安卓和网页版 */

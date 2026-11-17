@@ -27,6 +27,21 @@ class CreditTest {
         assertFalse(Credit.all(cls("s1" to listOf(HwStatus.LEAVE))).single().hasData)
     }
 
+    @Test fun weeklyTrendCarriesForward() {
+        val week = 7L * 86_400_000L
+        val now = 10 * week
+        // 作业分别在第 6、8 周；之前的周沿用第一个有数据的值，最后一点 = 当前信誉分
+        val base = cls("s1" to listOf(S, M), "s2" to listOf(HwStatus.LEAVE, HwStatus.LEAVE))
+        val c = base.copy(assignments = base.assignments.mapIndexed { i, a -> a.copy(createdAt = if (i == 0) 6 * week else 8 * week) })
+        val w = Credit.weekly(c, weeks = 8, now = now)
+        val s1 = w.getValue("s1")
+        assertEquals(8, s1.size)
+        assertEquals(Credit.all(c, now).first { it.student.id == "s1" }.index, s1.last(), 1e-9)
+        assertEquals(s1[3], s1[0], 1e-9) // 第 3–6 周：在第一条记录之前，沿用第一个值
+        assertTrue(s1.last() < s1[4]) // 第二次没交，信誉分下降
+        assertEquals(List(8) { 0.0 }, w.getValue("s2"))
+    }
+
     @Test fun integrityLowersCredit() {
         val ok = Credit.all(cls("s1" to listOf(S, S, M))).single().index
         val failed = Credit.all(cls("s1" to listOf(S, S, M), review = mapOf(2 to listOf("s1")))).single()
