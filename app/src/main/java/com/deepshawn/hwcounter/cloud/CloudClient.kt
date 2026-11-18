@@ -242,7 +242,7 @@ class CloudClient(
     }
 
     suspend fun history(): List<HistoryItem> = withContext(Dispatchers.IO) {
-        val r = http("GET", "/rest/v1/hw_snapshot_history?select=id,version,device,saved_at&order=saved_at.desc&limit=30", bearer = token())
+        val r = http("GET", "/rest/v1/hw_snapshot_history?select=id,version,device,saved_at&order=saved_at.desc&limit=150", bearer = token())
         if (r.code !in 200..299) throw CloudException(friendly(r), r.code)
         (json.parseToJsonElement(r.body) as? JsonArray ?: JsonArray(emptyList())).mapNotNull { el ->
             val o = el as? JsonObject ?: return@mapNotNull null

@@ -110,6 +110,37 @@ class AuthTradeShotsTest {
         check(vm.data.value.settings.theme == "ocean" && vm.data.value.settings.dark == 2) { "只读时应能改主题" }
     }
 
+    /** 本机备份：立即备份、清空前自动备份、从备份恢复 */
+    @Test fun localBackups() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        java.io.File(app.filesDir, "backups").deleteRecursively()
+        app.getSharedPreferences("local_backup", 0).edit().clear().commit()
+        val vm = AppViewModel(app)
+        @Suppress("UNCHECKED_CAST")
+        (AppViewModel::class.java.getDeclaredField("_readOnly").apply { isAccessible = true }.get(vm) as kotlinx.coroutines.flow.MutableStateFlow<Boolean>).value = false
+        // 在后台线程跑协程，主线程这边不停地处理消息（恢复时会切回主线程）
+        fun <T> await(block: suspend () -> T): T {
+            var out: Result<T>? = null
+            kotlin.concurrent.thread { out = runCatching { kotlinx.coroutines.runBlocking { block() } } }
+            repeat(400) { if (out == null) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); Thread.sleep(10) } }
+            return out!!.getOrThrow()
+        }
+        fun pump() = repeat(30) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); Thread.sleep(10) }
+        vm.update { data(1) }
+        val first = await { vm.backupNow() }
+        check(first != null && first.reason == com.deepshawn.hwcounter.data.LocalBackups.Reason.MANUAL && first.students == 6) { "立即备份失败：$first" }
+        vm.update { it.copy(classes = it.classes.map { c -> c.copy(name = "改过的班") }) }
+        pump()
+        vm.resetAll()
+        pump()
+        check(vm.data.value.classes.isEmpty()) { "没有清空" }
+        val l = vm.backups.list()
+        check(l.size == 2 && l.first().reason == com.deepshawn.hwcounter.data.LocalBackups.Reason.BEFORE_RESET) { "清空前没有自动备份：${l.map { it.reason }}" }
+        check(await { vm.restoreLocalBackup(l.first()) }) { "恢复失败" }
+        pump()
+        check(vm.data.value.classes.singleOrNull()?.name == "改过的班") { "恢复后数据不对" }
+    }
+
     /** 性能模式下各页面能正常画出来 */
     @Test fun perfMode() {
         start(1, listOf(Route.Stats), UiPrefs(onboarded = true, perf = true))
