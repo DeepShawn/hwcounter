@@ -95,6 +95,52 @@ class AuthTradeShotsTest {
     @Test fun backKeepsLevelPlain() = backKeepsLevel("plain", UiPrefs(onboarded = true))
     @Test fun backKeepsLevelPerf() = backKeepsLevel("perf", UiPrefs(onboarded = true, perf = true))
 
+    /** 只读（未登录预览 / 普通用户）时不能改积分规则、科目、理由，但能改主题等显示设置 */
+    @Test fun readOnlyCannotChangeRules() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val vm = AppViewModel(app)
+        check(vm.readOnly.value) { "未登录时应为只读" }
+        val before = vm.data.value.settings
+        vm.updateSettings { it.copy(rules = it.rules.copy(initial = before.rules.initial + 7, escalation = it.rules.escalation.copy(enabled = !it.rules.escalation.enabled))) }
+        vm.updateSettings { it.copy(subjects = listOf("不该改")) }
+        vm.updateSettings { it.copy(quickReasons = emptyList()) }
+        val after = vm.data.value.settings
+        check(after.rules == before.rules && after.subjects == before.subjects && after.quickReasons == before.quickReasons) { "只读时规则被改了" }
+        vm.updateSettings { it.copy(theme = "ocean", dark = 2) }
+        check(vm.data.value.settings.theme == "ocean" && vm.data.value.settings.dark == 2) { "只读时应能改主题" }
+    }
+
+    /** 本机备份：立即备份、清空前自动备份、从备份恢复 */
+    @Test fun localBackups() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        java.io.File(app.filesDir, "backups").deleteRecursively()
+        app.getSharedPreferences("local_backup", 0).edit().clear().commit()
+        val vm = AppViewModel(app)
+        @Suppress("UNCHECKED_CAST")
+        (AppViewModel::class.java.getDeclaredField("_readOnly").apply { isAccessible = true }.get(vm) as kotlinx.coroutines.flow.MutableStateFlow<Boolean>).value = false
+        // 在后台线程跑协程，主线程这边不停地处理消息（恢复时会切回主线程）
+        fun <T> await(block: suspend () -> T): T {
+            var out: Result<T>? = null
+            kotlin.concurrent.thread { out = runCatching { kotlinx.coroutines.runBlocking { block() } } }
+            repeat(400) { if (out == null) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); Thread.sleep(10) } }
+            return out!!.getOrThrow()
+        }
+        fun pump() = repeat(30) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); Thread.sleep(10) }
+        vm.update { data(1) }
+        val first = await { vm.backupNow() }
+        check(first != null && first.reason == com.deepshawn.hwcounter.data.LocalBackups.Reason.MANUAL && first.students == 6) { "立即备份失败：$first" }
+        vm.update { it.copy(classes = it.classes.map { c -> c.copy(name = "改过的班") }) }
+        pump()
+        vm.resetAll()
+        pump()
+        check(vm.data.value.classes.isEmpty()) { "没有清空" }
+        val l = vm.backups.list()
+        check(l.size == 2 && l.first().reason == com.deepshawn.hwcounter.data.LocalBackups.Reason.BEFORE_RESET) { "清空前没有自动备份：${l.map { it.reason }}" }
+        check(await { vm.restoreLocalBackup(l.first()) }) { "恢复失败" }
+        pump()
+        check(vm.data.value.classes.singleOrNull()?.name == "改过的班") { "恢复后数据不对" }
+    }
+
     /** 性能模式下各页面能正常画出来 */
     @Test fun perfMode() {
         start(1, listOf(Route.Stats), UiPrefs(onboarded = true, perf = true))

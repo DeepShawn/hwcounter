@@ -31,9 +31,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 未登录预览时缓存的云端公开数据（与本机自己的数据分开存放，互不覆盖） */
     private val previewFile = File(app.filesDir, "preview_cache.json")
 
+    /** 本机自动备份（最多 50 份），见 [LocalBackups] */
+    val backups = LocalBackups(File(app.filesDir, "backups"))
+    private val backupPrefs = app.getSharedPreferences("local_backup", android.content.Context.MODE_PRIVATE)
+    /** 自动备份开关（只存本机，默认开启） */
+    val autoBackup = MutableStateFlow(backupPrefs.getBoolean("enabled", true))
+    /** 备份列表变化时 +1，界面据此刷新 */
+    val backupTick = MutableStateFlow(0)
+    private val backupLock = Any()
+
     /** 云端同步（Supabase）：本地每次改动后防抖上传；回到前台时检查云端 */
     // 登录/退出时同步切换数据（必须在首次同步开始前完成，避免把预览数据当成本机数据上传）
-    val sync: com.deepshawn.hwcounter.cloud.SyncManager = com.deepshawn.hwcounter.cloud.SyncManager(app, viewModelScope, json, { _data.value }, { d: AppData -> update { d } }) { loggedIn: Boolean ->
+    val sync: com.deepshawn.hwcounter.cloud.SyncManager = com.deepshawn.hwcounter.cloud.SyncManager(app, viewModelScope, json, { _data.value }, { d: AppData -> safetyBackup(LocalBackups.Reason.BEFORE_CLOUD); update { d } }) { loggedIn: Boolean ->
         if (loggedIn && !sync.isMember) enterEditMode() else enterPreviewMode()
     }
 
@@ -52,6 +61,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         if (!sync.loggedIn || sync.isMember) viewModelScope.launch { refreshPreview() }
+        // 打开 App 时：数据和上次备份不同就先备份一份
+        else viewModelScope.launch(Dispatchers.IO) { delay(800); backup(LocalBackups.Reason.LAUNCH, force = false, ignoreInterval = true) }
         // 定时上传草稿：每 15 秒检查一次（App 在后台但进程还在时也会执行；进程被杀则下次打开立即补传）
         viewModelScope.launch {
             delay(1500)
@@ -118,7 +129,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadPreview(): AppData {
         val local = load()
         val cached = runCatching { json.decodeFromString<AppData>(previewFile.readText()) }.getOrNull()
-        return (cached ?: AppData()).copy(settings = local.settings)
+        // 积分规则、科目、理由用老师的（缓存里有就用缓存）；主题等显示设置用本机的
+        return (cached ?: AppData()).let { it.copy(settings = (if (cached != null) it.settings else local.settings).withLocalDisplay(local.settings)) }
     }
 
     private fun previewing() = !sync.loggedIn || sync.isMember
@@ -131,7 +143,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!previewing()) return
         val cur = _data.value
         _data.value = remote.copy(
-            settings = cur.settings,
+            // 计分按老师的规则算（普通用户看到的积分和老师一致）；只保留本机的显示设置
+            settings = remote.settings.withLocalDisplay(cur.settings),
             currentClassId = cur.currentClassId?.takeIf { id -> remote.classes.any { it.id == id } } ?: remote.currentClassId,
         )
     }
@@ -178,23 +191,75 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 file.writeText(text)
                 tmp.delete()
             }
+            // 自动备份：有改动且距上次备份超过 10 分钟
+            if (autoBackup.value && !_readOnly.value) backup(LocalBackups.Reason.AUTO, force = false)
         }
     }
+
+    /** 备份文本：完整数据，不含 AI API Key */
+    private fun backupText(d: AppData): String = json.encodeToString(d.copy(settings = d.settings.copy(ai = d.settings.ai.copy(apiKey = ""))))
+
+    /**
+     * 写一份本机备份（在 IO 线程调用）。[force] 为 false 时，数据和上次备份一样就不写；
+     * 自动备份还要求距上次超过 10 分钟（[ignoreInterval] 为 true 时不看间隔）。只备份老师自己的数据，预览 / 普通用户不备份。
+     */
+    private fun backup(reason: LocalBackups.Reason, force: Boolean, ignoreInterval: Boolean = false, d: AppData = _data.value): LocalBackups.Entry? = synchronized(backupLock) {
+        if (_readOnly.value || d.classes.isEmpty()) return null
+        val text = backupText(d)
+        val h = text.hashCode()
+        val last = if (backupPrefs.contains("hash")) backupPrefs.getInt("hash", 0) else null
+        if (!force) {
+            if (h == last) return null
+            if (!ignoreInterval && !backups.due(h, last)) return null
+        }
+        val e = backups.save(text, d, reason) ?: return null
+        backupPrefs.edit().putInt("hash", h).apply()
+        backupTick.value++
+        e
+    }
+
+    /** 危险操作（从云端覆盖、恢复、清空）前先把当前数据存一份 */
+    private fun safetyBackup(reason: LocalBackups.Reason) {
+        val d = _data.value
+        if (_readOnly.value || d.classes.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) { backup(reason, force = false, ignoreInterval = true, d = d) }
+    }
+
+    /** 立即备份（设置里的按钮）；返回 null 表示没有可备份的数据 */
+    suspend fun backupNow(): LocalBackups.Entry? = withContext(Dispatchers.IO) { backup(LocalBackups.Reason.MANUAL, force = true) }
+
+    fun setAutoBackup(on: Boolean) {
+        autoBackup.value = on
+        backupPrefs.edit().putBoolean("enabled", on).apply()
+    }
+
+    /** 从本机备份恢复（恢复前会先备份当前数据，恢复本身也可以撤销） */
+    suspend fun restoreLocalBackup(e: LocalBackups.Entry): Boolean {
+        val text = withContext(Dispatchers.IO) { runCatching { backups.read(e) }.getOrNull() } ?: return false
+        return restoreBackup(text)
+    }
+
+    fun deleteLocalBackup(e: LocalBackups.Entry) { backups.delete(e); backupTick.value++ }
 
     fun update(undoable: Boolean = true, f: (AppData) -> AppData) {
         val old = _data.value
         val new = f(old)
         if (new == old) return
         if (_readOnly.value) {
-            // 预览模式：班级数据只读；只允许切换班级、改主题等本机显示设置
+            // 预览模式 / 普通用户：班级数据和老师的规则只读；只允许切换班级、改主题等本机显示设置
             if (new.classes != old.classes) {
-                notices.tryEmit("预览模式：登录后才能修改")
+                notices.tryEmit(if (sync.isMember) "普通用户只能查看，不能修改" else "预览模式：登录后才能修改")
+                return
+            }
+            if (teacherOwned(new.settings) != teacherOwned(old.settings)) {
+                notices.tryEmit(if (sync.isMember) "积分规则由老师设置，普通用户不能修改" else "预览模式：登录后才能修改积分规则")
                 return
             }
             _data.value = new
             viewModelScope.launch(Dispatchers.IO) {
                 val main = load()
-                runCatching { file.writeText(json.encodeToString(main.copy(settings = new.settings))) }
+                // 只把显示设置写回本机数据，不动本机老师账号的规则
+                runCatching { file.writeText(json.encodeToString(main.copy(settings = main.settings.withLocalDisplay(new.settings)))) }
             }
             return
         }
@@ -457,7 +522,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         try {
             val d = json.decodeFromString<AppData>(text)
-            withContext(Dispatchers.Main) { update { d } }
+            // 本机的 AI Key 不随备份恢复丢失
+            val keep = d.copy(settings = d.settings.copy(ai = d.settings.ai.copy(apiKey = d.settings.ai.apiKey.ifBlank { _data.value.settings.ai.apiKey })))
+            withContext(Dispatchers.Main) { safetyBackup(LocalBackups.Reason.BEFORE_RESTORE); update { keep } }
             true
         } catch (e: Exception) {
             false
@@ -465,5 +532,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 清空所有班级数据（保留设置） */
-    fun resetAll() = update { AppData(settings = it.settings) }
+    fun resetAll() { safetyBackup(LocalBackups.Reason.BEFORE_RESET); update { AppData(settings = it.settings) } }
 }
+
+/** 老师才能改的设置：积分规则（作业、考试、结算等）、科目、常用加减分理由 */
+internal fun teacherOwned(s: Settings) = Triple(s.rules, s.subjects, s.quickReasons)
+
+/** 保留这份设置里老师的规则，其余（主题、排版、识别、语音、反馈等本机设置）取 [local] 的 */
+internal fun Settings.withLocalDisplay(local: Settings): Settings =
+    local.copy(rules = rules, subjects = subjects, quickReasons = quickReasons)

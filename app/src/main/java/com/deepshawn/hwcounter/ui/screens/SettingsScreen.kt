@@ -118,10 +118,13 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val s = data.settings
+    val readOnly by vm.readOnly.collectAsStateWithLifecycle()
     var showKey by remember { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
     var newSubject by remember { mutableStateOf("") }
     var confirmReset by remember { mutableStateOf(false) }
+    var restoreLocal by remember { mutableStateOf<com.deepshawn.hwcounter.data.LocalBackups.Entry?>(null) }
+    val backupScope = androidx.compose.runtime.rememberCoroutineScope()
     var editBands by remember { mutableStateOf(false) }
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var modelMenu by remember { mutableStateOf(false) }
@@ -152,6 +155,10 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
     )
     MiuixPage(title = section?.let { titles[it] } ?: "设置", onBack = if (section != null) ({ kit.nav.pop() }) else null) {
         if (section == null) settingsIndex(vm, s, ui) { kit.nav.push(com.deepshawn.hwcounter.ui.Route.SettingsPage(it)) }
+        // 普通用户 / 未登录预览：积分规则、科目、理由是老师的，只能查看
+        if (readOnly && section in setOf("scoring", "exam", "settle", "subjects")) item(key = "ro-note") {
+            HCardNote(if (vm.sync.isMember) "只读：这里显示的是老师设置的规则，普通用户不能修改" else "预览模式：这里显示的是老师设置的规则，登录老师账号后才能修改")
+        }
         when (section) {
             "account" -> {
                 item(key = "cloud") { CloudSection(vm) }
@@ -701,6 +708,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
                         titleColor = top.yukonga.miuix.kmp.basic.BasicComponentDefaults.titleColor(color = MiuixTheme.colorScheme.error),
                     )
                 }
+                localBackupSection(vm, readOnly) { restoreLocal = it }
             }
             "update" -> {
                 group("软件更新", key = "update") { UpdateSettings() }
@@ -732,6 +740,16 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
             onConfirm = { rules { it.copy(exam = it.exam.copy(bands = parsed.filterNotNull())) }; editBands = false },
         ) {
             top.yukonga.miuix.kmp.basic.TextField(text, { text = it }, minLines = 4, maxLines = 8, modifier = Modifier.fillMaxWidth())
+        }
+    }
+    restoreLocal?.let { e ->
+        ConfirmDialog(
+            "恢复这份备份？",
+            "将用 ${backupTime(e.time)} 的备份（${e.classes} 个班 · ${e.students} 名学生 · ${e.assignments} 次作业）替换本机当前数据。恢复前会先把当前数据备份一份，恢复后也可以撤销；已登录时会同步到云端。",
+            "恢复", { restoreLocal = null },
+        ) {
+            restoreLocal = null
+            backupScope.launch { if (vm.restoreLocalBackup(e)) kit.undoable("已从本机备份恢复") else kit.toast("恢复失败：备份文件已损坏") }
         }
     }
     if (confirmReset) ConfirmDialog("清空所有数据", "将删除所有班级、名单和记录（设置保留）。建议先备份。", "清空", { confirmReset = false }) {
@@ -850,4 +868,41 @@ private fun gapExample(e: com.deepshawn.hwcounter.data.MissingEscalation): Strin
     )
     val p = c.autoPointDetails(com.deepshawn.hwcounter.data.ScoreRules(escalation = e, streakBonus = com.deepshawn.hwcounter.data.StreakBonus(enabled = false)), "s")
     return (0 until 10 step 2).joinToString("、") { (-(p["a$it"]?.points ?: 0.0)).fmt() } + "…"
+}
+
+@Composable
+private fun HCardNote(text: String) {
+    com.deepshawn.hwcounter.ui.components.HCard(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth()) {
+        Text(text, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MiuixTheme.colorScheme.primary, modifier = Modifier.padding(14.dp))
+    }
+}
+
+private fun backupTime(t: Long) = java.text.SimpleDateFormat("M月d日 HH:mm", java.util.Locale.CHINA).format(java.util.Date(t))
+private fun backupSize(b: Long) = if (b < 1024 * 1024) "${(b + 1023) / 1024} KB" else "%.1f MB".format(b / 1048576.0)
+
+/** 设置 → 数据与备份：本机自动备份（最多 50 份） */
+private fun androidx.compose.foundation.lazy.LazyListScope.localBackupSection(vm: AppViewModel, readOnly: Boolean, onRestore: (com.deepshawn.hwcounter.data.LocalBackups.Entry) -> Unit) {
+    group("本机自动备份（最多保留 ${vm.backups.keep} 份）", key = "local-backup") {
+        val kit = LocalKit.current
+        val scope = androidx.compose.runtime.rememberCoroutineScope()
+        val on by vm.autoBackup.collectAsStateWithLifecycle()
+        val tick by vm.backupTick.collectAsStateWithLifecycle()
+        val list = remember(tick) { vm.backups.list() }
+        SuperSwitch(
+            checked = on, onCheckedChange = { vm.setAutoBackup(it) }, title = "自动备份",
+            summary = if (readOnly) "预览模式 / 普通用户不备份（数据在老师那里）"
+            else "数据有改动时每 10 分钟备份一次；打开 App、从云端更新、恢复、清空之前也会先备份。只存在本机，超过 ${vm.backups.keep} 份自动删除最旧的",
+        )
+        SuperArrow(
+            title = "立即备份", summary = list.firstOrNull()?.let { "上次备份：${backupTime(it.time)}（${it.reason.label}）· 共 ${list.size} 份" } ?: "还没有本机备份",
+            onClick = { scope.launch { kit.toast(if (vm.backupNow() != null) "已备份" else if (readOnly) "预览模式不能备份" else "没有可备份的数据") } },
+        )
+        list.forEach { e ->
+            SuperArrow(
+                title = "${backupTime(e.time)} · ${e.reason.label}",
+                summary = "${e.classes} 个班 · ${e.students} 名学生 · ${e.assignments} 次作业 · ${backupSize(e.size)}",
+                onClick = { if (readOnly) kit.toast("预览模式：登录老师账号后才能恢复") else onRestore(e) },
+            )
+        }
+    }
 }

@@ -151,7 +151,7 @@ export const api = {
     return row ? { data: row.data, version: row.version, updatedAt: row.updated_at } : null;
   },
   async history() {
-    const r = await http('GET', '/rest/v1/hw_snapshot_history?select=id,version,device,saved_at&order=saved_at.desc&limit=30', null, await token());
+    const r = await http('GET', '/rest/v1/hw_snapshot_history?select=id,version,device,saved_at&order=saved_at.desc&limit=150', null, await token());
     if (!r.ok) throw new Error(friendly(r.status, r.json));
     return r.json || [];
   },

@@ -171,7 +171,7 @@ fun CloudSection(vm: AppViewModel) {
             onDismissRequest = { history = null },
             title = { Text("云端历史版本") },
             text = {
-                if (list.isEmpty()) Text("还没有历史版本（每次云端被覆盖前会自动保存一份，最多 30 份）")
+                if (list.isEmpty()) Text("还没有历史版本（云端数据被覆盖前自动保存，保留最近 50 份 + 90 天内每天一份）")
                 else LazyColumn(Modifier.heightIn(max = 360.dp)) {
                     items(list, key = { it.id }) { h ->
                         Column(Modifier.fillMaxWidth().clickable { confirmRestore = h }.padding(vertical = 8.dp)) {

@@ -27,6 +27,13 @@ Deno.serve(async (req: Request) => {
 
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
+  // 防暴力猜邀请码：同一 IP 1 小时失败 10 次、全站 10 分钟失败 100 次就暂停（见 supabase/004_security.sql）
+  const ip = (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? req.headers.get("x-real-ip") ?? "").trim();
+  const guard = await db.rpc("hw_register_guard", { p_ip: ip });
+  if (guard.error) console.error("hw_register_guard", guard.error.message); // 守卫出错时不挡正常注册
+  else if (guard.data === false) return json(429, { error: "尝试次数太多，请 1 小时后再试" });
+  const record = (ok: boolean) => db.rpc("hw_register_guard", { p_ip: ip, p_ok: ok });
+
   const { data: taken } = await db.from("hw_members").select("user_id").eq("username", username).maybeSingle();
   if (taken) return json(409, { error: "这个用户名已被使用" });
 
@@ -35,7 +42,7 @@ Deno.serve(async (req: Request) => {
     .eq("code", code).is("used_at", null).eq("revoked", false).select("admin_id, initial_cash");
   if (claimed.error) return json(500, { error: "服务器出错，请稍后再试" });
   const inv = claimed.data?.[0];
-  if (!inv) return json(400, { error: "邀请码无效、已作废或已被使用" });
+  if (!inv) { await record(false); return json(400, { error: "邀请码无效、已作废或已被使用" }); }
   const release = () => db.from("hw_invites").update({ used_at: null }).eq("code", code).is("used_by", null);
 
   const created = await db.auth.admin.createUser({
@@ -59,5 +66,6 @@ Deno.serve(async (req: Request) => {
   }
   await db.from("hw_invites").update({ used_by: uid }).eq("code", code);
   if (cash > 0) await db.from("hw_cash_log").insert({ user_id: uid, admin_id: inv.admin_id, amount: cash, note: "注册赠送", cash_after: cash });
+  await record(true);
   return json(200, { ok: true, username, email: `${username}@${DOMAIN}` });
 });

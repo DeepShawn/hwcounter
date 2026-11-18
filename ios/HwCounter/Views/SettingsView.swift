@@ -229,7 +229,7 @@ struct SettingsView: View {
     private var historySheet: some View {
         NavigationStack {
             List {
-                if history?.isEmpty ?? true { Text("还没有历史版本（每次云端被覆盖前会自动保存一份，最多 30 份）").foregroundStyle(.secondary) }
+                if history?.isEmpty ?? true { Text("还没有历史版本（云端数据被覆盖前自动保存，保留最近 50 份 + 90 天内每天一份）").foregroundStyle(.secondary) }
                 ForEach(history ?? []) { h in
                     Button { restoring = h } label: {
                         VStack(alignment: .leading) {

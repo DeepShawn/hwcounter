@@ -230,7 +230,7 @@ final class CloudClient {
     }
 
     func history() async throws -> [HistoryItem] {
-        let (st, j) = try await http("GET", "/rest/v1/hw_snapshot_history?select=id,version,device,saved_at&order=saved_at.desc&limit=30", bearer: try await token())
+        let (st, j) = try await http("GET", "/rest/v1/hw_snapshot_history?select=id,version,device,saved_at&order=saved_at.desc&limit=150", bearer: try await token())
         guard (200..<300).contains(st), let j else { throw CloudError(message: friendly(st, j)) }
         return try JSONDecoder().decode([HistoryItem].self, from: JSONSerialization.data(withJSONObject: j))
     }
