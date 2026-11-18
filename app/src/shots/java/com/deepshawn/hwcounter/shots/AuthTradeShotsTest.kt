@@ -95,6 +95,21 @@ class AuthTradeShotsTest {
     @Test fun backKeepsLevelPlain() = backKeepsLevel("plain", UiPrefs(onboarded = true))
     @Test fun backKeepsLevelPerf() = backKeepsLevel("perf", UiPrefs(onboarded = true, perf = true))
 
+    /** 只读（未登录预览 / 普通用户）时不能改积分规则、科目、理由，但能改主题等显示设置 */
+    @Test fun readOnlyCannotChangeRules() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val vm = AppViewModel(app)
+        check(vm.readOnly.value) { "未登录时应为只读" }
+        val before = vm.data.value.settings
+        vm.updateSettings { it.copy(rules = it.rules.copy(initial = before.rules.initial + 7, escalation = it.rules.escalation.copy(enabled = !it.rules.escalation.enabled))) }
+        vm.updateSettings { it.copy(subjects = listOf("不该改")) }
+        vm.updateSettings { it.copy(quickReasons = emptyList()) }
+        val after = vm.data.value.settings
+        check(after.rules == before.rules && after.subjects == before.subjects && after.quickReasons == before.quickReasons) { "只读时规则被改了" }
+        vm.updateSettings { it.copy(theme = "ocean", dark = 2) }
+        check(vm.data.value.settings.theme == "ocean" && vm.data.value.settings.dark == 2) { "只读时应能改主题" }
+    }
+
     /** 性能模式下各页面能正常画出来 */
     @Test fun perfMode() {
         start(1, listOf(Route.Stats), UiPrefs(onboarded = true, perf = true))

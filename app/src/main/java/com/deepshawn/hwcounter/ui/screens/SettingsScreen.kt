@@ -118,6 +118,7 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val s = data.settings
+    val readOnly by vm.readOnly.collectAsStateWithLifecycle()
     var showKey by remember { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
     var newSubject by remember { mutableStateOf("") }
@@ -152,6 +153,10 @@ fun SettingsScreen(vm: AppViewModel, data: AppData, section: String? = null) {
     )
     MiuixPage(title = section?.let { titles[it] } ?: "设置", onBack = if (section != null) ({ kit.nav.pop() }) else null) {
         if (section == null) settingsIndex(vm, s, ui) { kit.nav.push(com.deepshawn.hwcounter.ui.Route.SettingsPage(it)) }
+        // 普通用户 / 未登录预览：积分规则、科目、理由是老师的，只能查看
+        if (readOnly && section in setOf("scoring", "exam", "settle", "subjects")) item(key = "ro-note") {
+            HCardNote(if (vm.sync.isMember) "只读：这里显示的是老师设置的规则，普通用户不能修改" else "预览模式：这里显示的是老师设置的规则，登录老师账号后才能修改")
+        }
         when (section) {
             "account" -> {
                 item(key = "cloud") { CloudSection(vm) }
@@ -850,4 +855,11 @@ private fun gapExample(e: com.deepshawn.hwcounter.data.MissingEscalation): Strin
     )
     val p = c.autoPointDetails(com.deepshawn.hwcounter.data.ScoreRules(escalation = e, streakBonus = com.deepshawn.hwcounter.data.StreakBonus(enabled = false)), "s")
     return (0 until 10 step 2).joinToString("、") { (-(p["a$it"]?.points ?: 0.0)).fmt() } + "…"
+}
+
+@Composable
+private fun HCardNote(text: String) {
+    com.deepshawn.hwcounter.ui.components.HCard(Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth()) {
+        Text(text, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MiuixTheme.colorScheme.primary, modifier = Modifier.padding(14.dp))
+    }
 }

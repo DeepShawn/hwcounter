@@ -118,7 +118,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun loadPreview(): AppData {
         val local = load()
         val cached = runCatching { json.decodeFromString<AppData>(previewFile.readText()) }.getOrNull()
-        return (cached ?: AppData()).copy(settings = local.settings)
+        // 积分规则、科目、理由用老师的（缓存里有就用缓存）；主题等显示设置用本机的
+        return (cached ?: AppData()).let { it.copy(settings = (if (cached != null) it.settings else local.settings).withLocalDisplay(local.settings)) }
     }
 
     private fun previewing() = !sync.loggedIn || sync.isMember
@@ -131,7 +132,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!previewing()) return
         val cur = _data.value
         _data.value = remote.copy(
-            settings = cur.settings,
+            // 计分按老师的规则算（普通用户看到的积分和老师一致）；只保留本机的显示设置
+            settings = remote.settings.withLocalDisplay(cur.settings),
             currentClassId = cur.currentClassId?.takeIf { id -> remote.classes.any { it.id == id } } ?: remote.currentClassId,
         )
     }
@@ -186,15 +188,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val new = f(old)
         if (new == old) return
         if (_readOnly.value) {
-            // 预览模式：班级数据只读；只允许切换班级、改主题等本机显示设置
+            // 预览模式 / 普通用户：班级数据和老师的规则只读；只允许切换班级、改主题等本机显示设置
             if (new.classes != old.classes) {
-                notices.tryEmit("预览模式：登录后才能修改")
+                notices.tryEmit(if (sync.isMember) "普通用户只能查看，不能修改" else "预览模式：登录后才能修改")
+                return
+            }
+            if (teacherOwned(new.settings) != teacherOwned(old.settings)) {
+                notices.tryEmit(if (sync.isMember) "积分规则由老师设置，普通用户不能修改" else "预览模式：登录后才能修改积分规则")
                 return
             }
             _data.value = new
             viewModelScope.launch(Dispatchers.IO) {
                 val main = load()
-                runCatching { file.writeText(json.encodeToString(main.copy(settings = new.settings))) }
+                // 只把显示设置写回本机数据，不动本机老师账号的规则
+                runCatching { file.writeText(json.encodeToString(main.copy(settings = main.settings.withLocalDisplay(new.settings)))) }
             }
             return
         }
@@ -467,3 +474,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** 清空所有班级数据（保留设置） */
     fun resetAll() = update { AppData(settings = it.settings) }
 }
+
+/** 老师才能改的设置：积分规则（作业、考试、结算等）、科目、常用加减分理由 */
+internal fun teacherOwned(s: Settings) = Triple(s.rules, s.subjects, s.quickReasons)
+
+/** 保留这份设置里老师的规则，其余（主题、排版、识别、语音、反馈等本机设置）取 [local] 的 */
+internal fun Settings.withLocalDisplay(local: Settings): Settings =
+    local.copy(rules = rules, subjects = subjects, quickReasons = quickReasons)
