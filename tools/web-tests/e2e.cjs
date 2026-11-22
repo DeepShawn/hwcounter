@@ -68,6 +68,20 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check(await page.isVisible('text=-4'), '复审不合格扣分翻倍（-4）');
   check((await page.locator('button:has-text("多选"), button:has-text("剩余标未交"), button:has-text("语音登记"), form').count()) === 0, '作业页没有任何登记 / 修改按钮');
   await shot('2-assignment');
+  // 浏览器手势已禁用：不下拉刷新、不左右滑动前进 / 后退、不缩放；左边缘右滑由页面自己返回
+  check(await page.evaluate(() => getComputedStyle(document.documentElement).overscrollBehaviorY === 'none' && getComputedStyle(document.body).overscrollBehaviorX === 'none'), '浏览器手势：禁用下拉刷新和左右滑动前进 / 后退');
+  check(await page.evaluate(() => { const e = new WheelEvent('wheel', { deltaY: -5, ctrlKey: true, bubbles: true, cancelable: true }); document.body.dispatchEvent(e); const z = e.defaultPrevented;
+    const x = new WheelEvent('wheel', { deltaX: -80, bubbles: true, cancelable: true }); document.body.dispatchEvent(x); return z && x.defaultPrevented; }), '浏览器手势：触控板缩放、横向滑动返回被拦下');
+  const pinch = await page.evaluate(() => { const t = (id, x) => new Touch({ identifier: id, target: document.body, clientX: x, clientY: 300 }); const e = new TouchEvent('touchstart', { touches: [t(1, 100), t(2, 200)], bubbles: true, cancelable: true }); document.body.dispatchEvent(e); document.body.dispatchEvent(new TouchEvent('touchend', { touches: [], bubbles: true, cancelable: true })); return e.defaultPrevented; });
+  check(pinch, '浏览器手势：双指缩放被拦下');
+  const edgeSwipe = () => page.evaluate(async () => { const el = document.querySelector('main'); const t = (x) => new Touch({ identifier: 9, target: el, clientX: x, clientY: 400 });
+    const s = new TouchEvent('touchstart', { touches: [t(4)], bubbles: true, cancelable: true }); el.dispatchEvent(s);
+    for (const x of [40, 90, 150]) el.dispatchEvent(new TouchEvent('touchmove', { touches: [t(x)], bubbles: true, cancelable: true }));
+    el.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [t(150)], bubbles: true, cancelable: true })); return s.defaultPrevented; });
+  check(await edgeSwipe(), '浏览器手势：边缘滑动不交给浏览器');
+  await page.waitForSelector('.tabbar'); check(await page.isVisible('text=练习12') && (await page.locator('.stu').count()) === 0, '左边缘右滑：页面内返回上一页');
+  await edgeSwipe(); await page.waitForTimeout(300); check(await page.isVisible('.tabbar') && page.url().startsWith(base), '首页左边缘右滑：不离开网页');
+  await page.click('text=练习12'); await page.waitForSelector('.stu');
   await page.click('.chip:has-text("复审不合格")');
   check((await page.locator('.stu').count()) === 1, '按“复审不合格”筛选');
   await page.click('.seg button:has-text("列表")');
@@ -181,9 +195,9 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await shot('7e3-group-stock');
   await page.goBack(); await page.waitForSelector('text=GRP');
   await page.click('.an-tabs button:has-text("关注度")'); await page.click('.stk-toggles button:has-text("走势")');
-  // 炒股：未登录时提示去登录 / 注册
+  // 炒股：登录入口隐藏时不提示去登录
   await page.click('.an-tabs button:has-text("炒股")'); await page.waitForSelector('text=模拟炒股');
-  check(await page.isVisible('text=去登录 / 注册') && await page.isVisible('text=与真实货币无关'), '炒股：未登录提示');
+  check(!(await page.isVisible('text=去登录 / 注册')) && await page.isVisible('text=与真实货币无关'), '炒股：登录入口隐藏时不出现“去登录”');
   await page.click('.an-tabs button:has-text("行情")');
   // 小组
   await page.click('.seg button:has-text("小组")'); await page.waitForSelector('text=小组对抗排名');
@@ -216,6 +230,13 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await page.goBack(); await page.goBack(); await page.waitForSelector('.an-graph');
   await page.click('.seg button:has-text("作业")');
   await page.click('.tabbar button:has-text("设置")'); await page.waitForSelector('text=主题配色');
+  check((await page.locator('.acct input').count()) === 0 && !(await page.content()).includes('登录'), '设置：登录入口默认隐藏');
+  const logo = '.about .logo';
+  await page.click(logo); await page.click(logo); await page.waitForTimeout(700); await page.click(logo);
+  check((await page.locator('.acct input').count()) === 0, '设置：不连续的三下不会打开登录');
+  for (let i = 0; i < 3; i++) await page.click(logo);
+  await page.waitForSelector('.acct input', { timeout: 3000 });
+  check(await page.isVisible('text=已显示登录入口'), '设置：连续点三下作业通图标打开登录入口');
   check((await page.locator('.acct input').count()) === 2 && await page.isVisible('.chip:has-text("用邀请码注册")'), '设置：账号登录（邮箱或用户名）');
   await page.click('.chip:has-text("用邀请码注册")');
   check((await page.locator('.acct input').count()) === 4 && await page.isDisabled('.acct .btn1'), '邀请码注册：邀请码、用户名、显示名、密码，填好前不能提交');
@@ -237,6 +258,13 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check((await page.locator('.guide').count()) === 0, '跳过后刷新不再出现新手提示');
   check((await page.getAttribute('html', 'data-theme')) === 'dark' && (await page.evaluate(() => document.documentElement.classList.contains('motion'))), '个性化设置记在本机');
 
+  await page.click('.tabbar button:has-text("统计")'); await page.waitForSelector('text=数据分析');
+  await page.click('.seg button:has-text("股票")'); await page.click('.an-tabs button:has-text("炒股")');
+  check(await page.isVisible('text=去登录 / 注册'), '打开登录入口后：炒股提示去登录');
+  await page.click('.tabbar button:has-text("设置")'); await page.waitForSelector('text=主题配色');
+  for (let i = 0; i < 3; i++) await page.click(logo);
+  await page.waitForSelector('.acct input', { state: 'detached', timeout: 3000 });
+  check(await page.isVisible('text=已隐藏登录入口'), '再连续点三下：重新隐藏登录入口');
   check(writes === 0, `网页端没有发出任何写请求（共 ${requests} 次请求）`);
 
   // ---------- 普通用户（凭邀请码注册）：登录后只读查看老师的数据，模拟炒股 ----------
@@ -260,8 +288,11 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
   });
   const p2 = await ctx2.newPage(); p2.on('pageerror', (e) => errors.push(e.message));
-  await p2.goto(`http://localhost:${server.address().port}/`); await p2.waitForSelector('.acct input');
-  check(await p2.isVisible('text=老师还没有开放查看'), '没有公开数据时可以直接登录');
+  await p2.goto(`http://localhost:${server.address().port}/`); await p2.waitForSelector('text=老师还没有开放查看');
+  check((await p2.locator('.acct input').count()) === 0, '没有公开数据时：登录入口同样隐藏');
+  for (let i = 0; i < 3; i++) await p2.click('.about .logo');
+  await p2.waitForSelector('.acct input', { timeout: 3000 });
+  check(true, '没有公开数据时：连续点三下作业通图标后可以登录');
   await p2.fill('.acct input >> nth=0', 'stu'); await p2.fill('.acct input >> nth=1', 'Abc123!x'); await p2.click('.acct .btn1');
   await p2.waitForSelector('.tabbar');
   check(await p2.isVisible('h1:has-text("高一(3)班")'), '普通用户登录后读到老师的数据');

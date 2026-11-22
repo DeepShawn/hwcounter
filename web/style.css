@@ -13,6 +13,10 @@
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; background: var(--bg); color: var(--fg); }
+/* 禁用浏览器手势：不下拉刷新、不左右滑动前进/后退、不双击/捏合缩放（js/gestures.js 补齐 Safari） */
+html, body { overscroll-behavior: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+* { touch-action: pan-x pan-y; }
+body * { overscroll-behavior: contain; }
 body { font: 15px/1.45 -apple-system, BlinkMacSystemFont, "MiSans", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", "Noto Sans SC", sans-serif; -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
 .boot { display: grid; place-items: center; height: 100vh; font-size: 18px; color: var(--sub); }
@@ -150,6 +154,7 @@ button.ib:active { background: var(--chip); }
 .pal.on span { color: var(--fg); font-weight: 600; }
 .about { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 26px 20px; color: var(--sub); font-size: 12.5px; text-align: center; }
 .about b { color: var(--fg); font-size: 15px; }
+.about .logo { cursor: default; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .logo { width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2)); margin-bottom: 6px; }
 
 .search { width: 100%; height: 42px; border: 0; border-radius: 12px; background: var(--card); color: var(--fg); padding: 0 14px; font: inherit; font-size: 15px; outline: none; }

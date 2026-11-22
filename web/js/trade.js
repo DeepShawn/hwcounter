@@ -18,9 +18,19 @@ const px = (p) => Math.max(Number(p.price) || 0, 1);
 
 // ---------------- 账号状态（本机） ----------------
 const listeners = new Set();
-let acct = { session: session(), me: null, loading: false };
+// 登录入口默认隐藏：在 设置 页连续点三下底部的作业通图标才显示（只存本机）；已登录时总是显示，方便退出
+const UNLOCK_KEY = 'hw.loginUnlocked';
+const readUnlock = () => { try { return localStorage.getItem(UNLOCK_KEY) === '1'; } catch { return false; } };
+let acct = { session: session(), me: null, loading: false, unlocked: readUnlock() };
 const emit = () => { for (const f of listeners) f(acct); };
 export function setAccount(patch) { acct = { ...acct, ...patch }; emit(); }
+export function setLoginUnlocked(v) {
+  try { if (v) localStorage.setItem(UNLOCK_KEY, '1'); else localStorage.removeItem(UNLOCK_KEY); } catch { /* 本机 */ }
+  setAccount({ unlocked: !!v });
+}
+export const loginUnlocked = () => acct.unlocked;
+/** 登录入口是否可见：已解锁，或已经登录 */
+export const loginVisible = (a) => !!(a.unlocked || a.session);
 export function useAccount() {
   const [a, setA] = useState(acct);
   useEffect(() => { listeners.add(setA); return () => listeners.delete(setA); }, []);
@@ -68,6 +78,7 @@ export function AccountSection({ kit, onChanged, openAccounts }) {
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const run = async (fn) => { setBusy(true); setErr(''); try { await fn(); await refreshMe(); onChanged?.(); } catch (e) { setErr(e.message || '失败'); } finally { setBusy(false); } };
+  if (!loginVisible(a)) return null;
   if (a.session) {
     const mem = isMember(a.me);
     return html`<${Group} title="账号">
@@ -126,6 +137,9 @@ export function TradePanel({ kit, c, data, openSettings, openAccounts }) {
     return () => { alive = false; };
   }, [a.session?.userId, tick]);
 
+  if (!a.session && !a.unlocked) {
+    return html`<${Group} title="模拟炒股"><div class="cell-pad muted">用老师发放的模拟币（与真实货币无关）买卖信誉分、关注度“股票”：个人和小组都有，股价随班级数据变化。</div></${Group}>`;
+  }
   if (!a.session) {
     return html`<${Group} title="模拟炒股">
       <div class="cell-pad muted">用老师发放的模拟币（与真实货币无关）买卖信誉分、关注度“股票”：个人和小组都有，股价随班级数据变化。<br />· 老师：登录后在 设置 → 账号 → 用户与邀请码 生成邀请码、发放模拟币<br />· 学生 / 家长：在 设置 → 账号 用邀请码注册</div>

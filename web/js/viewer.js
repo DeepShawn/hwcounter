@@ -8,7 +8,8 @@ import {
   latestRecharges, entryCounts, assignmentCounts, rechargeCounts, examDelta, failedReview, plagiarized, copiedFrom, copiedBy, defaultPlagiarism, plagiarismFactor, defaultReview, plagiarismDesc, leaderPeriods, leaderOf, groupRankPoints, creditPoints, creditLevel,
 } from './model.js';
 import { api, session } from './cloud.js';
-import { AccountSection, AccountsPage, TradePanel, refreshMe, useAccount, isMember } from './trade.js';
+import { AccountSection, AccountsPage, TradePanel, refreshMe, useAccount, isMember, setLoginUnlocked } from './trade.js';
+import { installGestureGuard } from './gestures.js';
 import { StatsPage, PlagGraph } from './statspage.js';
 import { Icon as LIcon } from './icons.js';
 import { StockDetail, GroupStockDetail } from './stockpage.js';
@@ -409,6 +410,28 @@ function ExamView({ c, rules, id, back, open }) {
   </${Page}>`;
 }
 
+// ---------------- 关于：作业通图标（连续点三下 显示 / 隐藏登录入口） ----------------
+function About() {
+  const a = useAccount();
+  const taps = useRef({ n: 0, at: 0 });
+  const [tip, setTip] = useState('');
+  const tap = () => {
+    const now = Date.now(); const t = taps.current;
+    t.n = now - t.at < 600 ? t.n + 1 : 1; t.at = now;
+    if (t.n < 3) return;
+    t.n = 0;
+    if (a.session) { setTip('已登录：可在页面顶部的「账号」退出登录'); }
+    else {
+      const on = !a.unlocked;
+      setLoginUnlocked(on);
+      setTip(on ? '已显示登录入口（在页面顶部）' : '已隐藏登录入口');
+      if (on) window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    clearTimeout(t.timer); t.timer = setTimeout(() => setTip(''), 2500);
+  };
+  return html`<div class="about"><div class="logo" onClick=${tap}><${LIcon} name="book_open" size=${28} /></div><b>作业通 · 网页版</b><span>${tip || '与手机、iPad 数据同步'}</span></div>`;
+}
+
 // ---------------- 设置（只有本机的个性化显示） ----------------
 function Settings({ prefs, setPrefs, status, reload, showGuide, open }) {
   const a = useAccount();
@@ -432,7 +455,7 @@ function Settings({ prefs, setPrefs, status, reload, showGuide, open }) {
     <${Group} title="数据">
       <${Cell} title="刷新数据" sub=${status === 'loading' ? '正在加载…' : status === 'error' ? '加载失败，请检查网络' : a.session ? (isMember(a.me) ? '重新获取老师的最新数据' : '重新获取你的云端数据') : '重新获取老师公开的最新数据'} onClick=${reload} />
     </${Group}>
-    <div class="about"><div class="logo"><${LIcon} name="book_open" size=${28} /></div><b>作业通 · 网页版</b><span>与手机、iPad 数据同步</span></div>
+    <${About} />
   </${Page}>`;
 }
 
@@ -532,6 +555,9 @@ function App() {
     window.addEventListener('popstate', f);
     return () => window.removeEventListener('popstate', f);
   }, []);
+  // 浏览器手势已禁用（js/gestures.js）：左边缘右滑由页面自己返回上一页
+  const depth = useRef(0); depth.current = stack.length;
+  useEffect(() => { installGestureGuard({ onEdgeBack: () => { if (depth.current > 0) history.back(); } }); }, []);
   const open = (r) => { pos.current.set(key, window.scrollY); history.pushState({ d: stack.length + 1 }, ''); setStack((s) => [...s, r]); };
   const back = () => history.back();
   useLayoutEffect(() => { window.scrollTo(0, pos.current.get(key) || 0); }, [key]);
@@ -541,6 +567,7 @@ function App() {
       ${status === 'loading' ? html`<${Empty} emoji="⏳" text="正在加载…" />` : status === 'none' ? html`<${Empty} emoji="🔒" text="老师还没有开放查看" />` : html`<${Empty} emoji="📶" text="加载失败，请检查网络后刷新" />`}
       ${status !== 'loading' && html`<button class="more" onClick=${reload}>重新加载</button>`}
       <${AccountSection} kit=${KIT} onChanged=${reload} openAccounts=${() => {}} />
+      <${About} />
     </${Page}></div>`;
   }
   const c = data.classes.find((x) => x.id === prefs.classId) || data.classes.find((x) => x.id === data.currentClassId) || data.classes[0];

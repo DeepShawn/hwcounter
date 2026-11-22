@@ -1,6 +1,6 @@
 // 离线缓存：静态资源缓存优先；云端接口不缓存
-const CACHE = 'hwcounter-v8';
-const ASSETS = ['./', './index.html', './style.css', './manifest.webmanifest', './js/viewer.js', './js/statspage.js', './js/analytics.js', './js/stockworker.js', './js/stockpage.js', './js/icons.js', './js/reportexport.js', './js/xlsx.js', './js/model.js', './js/cloud.js',
+const CACHE = 'hwcounter-v9';
+const ASSETS = ['./', './index.html', './style.css', './manifest.webmanifest', './js/viewer.js', './js/gestures.js', './js/trade.js', './js/statspage.js', './js/analytics.js', './js/stockworker.js', './js/stockpage.js', './js/icons.js', './js/reportexport.js', './js/xlsx.js', './js/model.js', './js/cloud.js',
   './vendor/preact.module.js', './vendor/hooks.module.js', './vendor/htm.module.js', './icons/icon.svg', './icons/icon-180.png', './icons/icon-192.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

@@ -37,7 +37,7 @@ struct RosterView: View {
                 }
                 .searchable(text: $query, prompt: "搜索姓名或学号")
             } else {
-                EmptyHint(emoji: "🎒", title: "还没有班级", detail: store.readOnly ? "登录后可以创建自己的班级" : "导入名单时会自动新建班级")
+                EmptyHint(emoji: "🎒", title: "还没有班级", detail: store.readOnly ? (Store.loginUnlocked ? "登录后可以创建自己的班级" : "老师公开数据后会显示在这里") : "导入名单时会自动新建班级")
             }
         }
         .navigationTitle("名单")

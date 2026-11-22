@@ -4,6 +4,10 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @EnvironmentObject var store: Store
     @AppStorage("onboarded") private var onboarded = false
+    /// 登录入口默认隐藏：底部的作业通图标连续点三下才显示（只存本机）；已登录时总是显示，方便退出
+    @AppStorage(Store.loginUnlockedKey) private var loginUnlocked = false
+    @State private var logoTip = ""
+    @State private var logoTipTask: Task<Void, Never>? = nil
     @State private var email = ""
     @State private var password = ""
     @State private var history: [HistoryItem]? = nil
@@ -13,7 +17,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            cloudSection
+            if store.sync.email != nil || loginUnlocked { cloudSection }
             Section("主题") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
                     ForEach(Palette.all) { p in
@@ -164,13 +168,39 @@ struct SettingsView: View {
                 }
             }
             Section {
-                Text("作业通 iPad 版 \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")").font(.footnote).foregroundStyle(.secondary)
+                aboutRow
             }
         }
         .navigationTitle("设置")
         .sheet(item: Binding(get: { backupURL.map { ShareFile(url: $0) } }, set: { backupURL = $0?.url })) { f in ShareSheet(items: [f.url]) }
         .sheet(isPresented: $changingPw) { ChangePasswordSheet() }
         .sheet(isPresented: Binding(get: { history != nil }, set: { if !$0 { history = nil } })) { historySheet }
+    }
+
+    // ---------- 关于：作业通图标（连续点三下 显示 / 隐藏登录入口） ----------
+    private var aboutRow: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "book.fill").font(.system(size: 26, weight: .medium)).foregroundStyle(.white)
+                .frame(width: 56, height: 56)
+                .background(Palette.of(store.data.theme).gradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .contentShape(Rectangle())
+                .onTapGesture(count: 3) {
+                    if store.sync.email != nil { showLogoTip("已登录：可在页面顶部的「云端同步」退出登录"); return }
+                    loginUnlocked.toggle()
+                    showLogoTip(loginUnlocked ? "已显示登录入口（在页面顶部）" : "已隐藏登录入口")
+                }
+                .accessibilityLabel("作业通")
+            Text("作业通 iPad 版 \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")").font(.footnote).foregroundStyle(.secondary)
+            if !logoTip.isEmpty { Text(logoTip).font(.caption).foregroundStyle(.secondary) }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+    }
+
+    private func showLogoTip(_ t: String) {
+        logoTip = t
+        logoTipTask?.cancel()
+        logoTipTask = Task { @MainActor in try? await Task.sleep(nanoseconds: 2_500_000_000); if !Task.isCancelled { logoTip = "" } }
     }
 
     // ---------- 云端 ----------

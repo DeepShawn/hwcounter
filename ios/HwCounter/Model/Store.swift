@@ -24,6 +24,9 @@ final class Store: ObservableObject {
     private var draftTimer: Timer? = nil
 
     var readOnly: Bool { sync.email == nil }
+    /// 登录入口默认隐藏：设置页底部的作业通图标连续点三下才显示（只存本机）；已登录时总是显示
+    static let loginUnlockedKey = "loginUnlocked"
+    static var loginUnlocked: Bool { UserDefaults.standard.bool(forKey: loginUnlockedKey) }
 
     private let cloud = CloudClient.shared
     private var undoStack: [AppData] = []
@@ -73,7 +76,7 @@ final class Store: ObservableObject {
     /// 上传草稿：写进作业 → 立即同步到云端。返回成功上传的份数
     @discardableResult
     func uploadDrafts(_ ids: [String], why: String = "") -> Int {
-        if readOnly { say("请先在“设置”里登录，才能上传到云端"); return 0 }
+        if readOnly { say(Store.loginUnlocked ? "请先在“设置”里登录，才能上传到云端" : "预览模式：不能上传到云端"); return 0 }
         var d = data, done: [String] = [], errs: [String] = []
         for dr in drafts where ids.contains(dr.id) {
             do { d = try StatTable.apply(d, dr); done.append(dr.id) } catch { errs.append("\(dr.title.isEmpty ? "草稿" : dr.title)：\(error.localizedDescription)") }
@@ -133,7 +136,7 @@ final class Store: ObservableObject {
         if new == old { return }
         if readOnly {
             // 预览模式：班级数据只读；只允许切换班级、改主题等本机显示设置
-            if new.classes != old.classes { say("预览模式：登录后才能修改"); return }
+            if new.classes != old.classes { say(Store.loginUnlocked ? "预览模式：登录后才能修改" : "预览模式：只能查看"); return }
             data = new
             var main = Store.loadMain()
             main.settings = new.settings
