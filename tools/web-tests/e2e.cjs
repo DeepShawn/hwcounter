@@ -270,12 +270,13 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   // ---------- 普通用户（凭邀请码注册）：登录后只读查看老师的数据，模拟炒股 ----------
   const ctx2 = await browser.newContext({ viewport: { width: 400, height: 860 }, deviceScaleFactor: 1 });
   await ctx2.addInitScript(() => localStorage.setItem('hw.onboarded', '1'));
-  const placed = [];
+  const placed = []; const pwChanges = [];
   const iso = new Date(now).toISOString();
   await ctx2.route(/supabase\.co/, (route) => {
     const req = route.request(); const url = new URL(req.url()); const json = (b) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
     const p = url.pathname;
     if (p === '/auth/v1/token') return json({ access_token: 't', refresh_token: 'r', expires_in: 3600, user: { id: 'u1', email: 'stu@member.hwcounter.invalid' } });
+    if (p === '/auth/v1/user' && req.method() === 'PUT') { pwChanges.push(JSON.parse(req.postData() || '{}')); return json({ id: 'u1' }); }
     if (p === '/rest/v1/rpc/hw_me') return json({ role: 'member', user_id: 'u1', admin_id: 'adm', username: 'stu', display_name: '小明家长', status: 'active', cash: 5000 });
     if (p.startsWith('/rest/v1/hw_snapshots')) return json(url.searchParams.get('user_id') === 'eq.adm' ? [{ data: seed, version: 3, updated_at: iso }] : []);
     if (p === '/rest/v1/hw_prices') return json([{ symbol: 'C:s0', name: '张锦宇', kind: 'C', price: 80, active: true, updated_at: iso }, { symbol: 'A:s1', name: '李子涵', kind: 'A', price: 20, active: true, updated_at: iso }, { symbol: 'GC:c1/第1组', name: '第1组', kind: 'GC', price: 70, active: true, updated_at: iso }]);
@@ -313,7 +314,154 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   check(await p2.isVisible('.trade-sheet b:has-text("卖出 10 股")'), '持仓点开：默认卖出');
   await p2.click('.trade-sheet .guide-btns .btn1'); await p2.waitForTimeout(300);
   check(placed.length === 2 && placed[1].p_side === 'sell' && placed[1].p_limit === 90, '炒股：限价卖出下单');
+  // 普通用户也能修改密码（与安卓一致）
+  await p2.click('.tabbar button:has-text("设置")'); await p2.click('.cell:has-text("修改密码")'); await p2.waitForSelector('text=确认修改');
+  await p2.fill('.ed-sheet input >> nth=0', 'Abc123!x'); await p2.fill('.ed-sheet input >> nth=1', 'weakpass'); await p2.fill('.ed-sheet input >> nth=2', 'weakpass'); await p2.click('.ed-sheet .btn1');
+  check(await p2.isVisible('text=新密码需要同时包含小写字母、大写字母、数字和符号'), '普通用户改密码：新密码要够复杂');
+  await p2.fill('.ed-sheet input >> nth=1', 'Xyz789!q'); await p2.fill('.ed-sheet input >> nth=2', 'Xyz789!q'); await p2.click('.ed-sheet .btn1');
+  await p2.waitForSelector('text=密码已修改'); check(pwChanges.some((x) => x.password === 'Xyz789!q'), '普通用户可以修改密码');
+  await p2.click('.ed-sheet .btn1');
+  check(!(await p2.isVisible('text=录入成绩')) && !(await p2.isVisible('.ib[aria-label="新建作业"]')), '普通用户没有修改入口');
   await ctx2.close();
+
+  // ---------- 老师登录：可以修改数据（与安卓一致），改动自动上传到云端 ----------
+  const ctx3 = await browser.newContext({ viewport: { width: 400, height: 860 }, deviceScaleFactor: 1 });
+  await ctx3.addInitScript(() => localStorage.setItem('hw.onboarded', '1'));
+  const pushes = []; let ver = 5; let conflictOnce = false;
+  await ctx3.route(/supabase\.co/, (route) => {
+    const req = route.request(); const url = new URL(req.url()); const json = (b, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+    const p = url.pathname;
+    if (p === '/auth/v1/token') return json({ access_token: 't3', refresh_token: 'r3', expires_in: 3600, user: { id: 'u9', email: 'teacher@example.com' } });
+    if (p === '/auth/v1/user' && req.method() === 'PUT') { pwChanges.push(JSON.parse(req.postData() || '{}')); return json({ id: 'u9' }); }
+    if (p === '/auth/v1/logout') return route.fulfill({ status: 204, body: '' });
+    if (p === '/rest/v1/rpc/hw_me') return json({ role: 'admin', user_id: 'u9' });
+    if (p === '/rest/v1/rpc/hw_push') {
+      if (conflictOnce) { conflictOnce = false; return json({ message: `CONFLICT:${ver}` }, 400); }
+      pushes.push(JSON.parse(req.postData() || '{}')); ver++; return json([{ version: ver }]);
+    }
+    if (p.startsWith('/rest/v1/hw_snapshots') && req.method() === 'PATCH') return route.fulfill({ status: 204, body: '' });
+    if (p.startsWith('/rest/v1/hw_snapshots')) {
+      if (url.searchParams.get('public_read') === 'eq.true') return json([{ data: seed, version: ver, updated_at: iso }]);
+      return json([{ data: pushes.length ? pushes[pushes.length - 1].p_data : seed, version: ver, updated_at: iso, device: '安卓', public_read: true }]);
+    }
+    if (p.startsWith('/rest/v1/hw_snapshot_history')) return url.searchParams.get('id') ? json([{ data: seed }]) : json([{ id: 7, version: 4, device: '安卓', saved_at: iso }]);
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+  });
+  const p3 = await ctx3.newPage(); p3.on('pageerror', (e) => errors.push(e.message)); p3.on('console', (m) => { if (m.type() === 'error' && !m.text().startsWith('Failed to load resource')) errors.push(m.text()); });
+  const lastPush = () => pushes[pushes.length - 1]?.p_data;
+  const cls = () => lastPush()?.classes.find((x) => x.id === 'c1');
+  const waitPush = async (n) => { for (let i = 0; i < 60 && pushes.length < n; i++) await p3.waitForTimeout(100); return pushes.length >= n; };
+  await p3.goto(`http://localhost:${server.address().port}/`); await p3.waitForSelector('text=练习12');
+  await p3.click('.tabbar button:has-text("设置")'); for (let i = 0; i < 3; i++) await p3.click('.about .logo');
+  await p3.fill('.acct input >> nth=0', 'teacher@example.com'); await p3.fill('.acct input >> nth=1', 'pw123456'); await p3.click('.acct .btn1');
+  await p3.waitForSelector('text=云端同步');
+  check(await p3.isVisible('text=teacher@example.com') && await p3.isVisible('text=自动同步') && await p3.isVisible('text=历史版本'), '老师登录：云端同步（自动同步、未登录预览、历史版本）');
+  check(await p3.isVisible('text=作业计分（改后历史积分自动重算）') && await p3.isVisible('.cell:has-text("新建班级")'), '老师登录：计分规则、班级管理');
+  await p3.screenshot({ path: path.join(OUT, '20-teacher-settings.png'), fullPage: true });
+  // 作业：点一下 已交 ↔ 未登记
+  await p3.click('.tabbar button:has-text("首页")'); await p3.click('text=练习12'); await p3.waitForSelector('.stu');
+  check(await p3.isVisible('text=剩余标为未交') || await p3.isVisible('.chip:has-text("多选")'), '作业页有登记工具（多选、剩余一键登记）');
+  await p3.click('.stu:has-text("王芳")'); await p3.waitForSelector('.ed-toast:has-text("王芳：已交")');
+  check(await p3.isVisible('.stu:has-text("王芳") >> text=已交'), '点一下：未交 → 已交（取消复审不合格）');
+  check(await waitPush(1) && cls().assignments.find((a) => a.id === 'a11').statuses.s3 === 'SUBMITTED' && !cls().assignments.find((a) => a.id === 'a11').reviewFailed.includes('s3'), '改动几秒后自动上传到云端');
+  check(pushes[0].p_base_version === 5, '上传带着云端版本号（防止覆盖别的设备的改动）');
+  // 撤销
+  await p3.click('.stu:has-text("周杰")'); await p3.waitForSelector('.ed-toast:has-text("周杰")');
+  const before = await p3.textContent('.stu:has-text("周杰") .stu-st');
+  await p3.click('.ed-toast button:has-text("撤销")'); await p3.waitForTimeout(200);
+  check((await p3.textContent('.stu:has-text("周杰") .stu-st')) !== before, '可以撤销刚才的修改');
+  // 长按 / 右键：登记面板
+  await p3.click('.stu:has-text("林静")', { button: 'right' }); await p3.waitForSelector('.ed-sheet');
+  check(await p3.isVisible('.ed-sheet button:has-text("复审不合格")') && await p3.isVisible('.ed-sheet button:has-text("抄袭…")') && await p3.isVisible('text=保存评语'), '长按 / 右键：状态、复审、抄袭、评语');
+  await p3.click('.ed-sheet .ed-st button:has-text("优秀")');
+  check(await p3.isVisible('.stu:has-text("林静") >> text=优秀'), '登记面板：改为优秀');
+  await p3.click('.stu:has-text("吴磊")', { button: 'right' }); await p3.click('.ed-sheet button:has-text("抄袭…")'); await p3.click('.ed-sheet .chip:has-text("赵敏")'); await p3.click('.ed-sheet .btn1');
+  check(await p3.isVisible('.stu:has-text("吴磊") >> text=抄袭 赵敏') && await p3.isVisible('.stu:has-text("赵敏") >> text=提供给 吴磊 抄'), '登记面板：抄袭（抄袭者和提供者都记未交）');
+  await p3.click('.stu:has-text("李子涵")', { button: 'right' }); await p3.fill('.ed-sheet textarea', '书写工整'); await p3.click('.ed-sheet button:has-text("保存评语")');
+  check(await p3.isVisible('.stu:has-text("李子涵") >> text=书写工整'), '登记面板：评语');
+  // 多选
+  await p3.click('.chip:has-text("多选")'); await p3.click('.stu:has-text("张锦宇")'); await p3.click('.stu:has-text("郑怡")');
+  check(await p3.isVisible('.ed-selbar >> text=已选 2 人'), '多选：选中 2 人');
+  await p3.click('.ed-selbar button:has-text("请假")');
+  check(await p3.isVisible('.stu:has-text("张锦宇") >> text=请假') && await p3.isVisible('.stu:has-text("郑怡") >> text=请假'), '多选：统一登记为请假');
+  await p3.screenshot({ path: path.join(OUT, '21-teacher-assignment.png'), fullPage: true });
+  await p3.click('.ed-selbar button:has-text("完成")');
+  // 编辑作业信息
+  await p3.click('.ib[aria-label="编辑作业"]'); await p3.fill('.ed-sheet input >> nth=0', '练习12（订正）'); await p3.click('.ed-sheet .btn1:has-text("保存")');
+  check(await p3.isVisible('h1:has-text("练习12（订正）")'), '修改作业名称');
+  await p3.goBack(); await p3.waitForSelector('.tabbar');
+  // 新建作业：长期请假的同学自动记请假
+  await p3.click('.ib[aria-label="新建作业"]'); await p3.fill('.ed-sheet input >> nth=0', '周末作业'); await p3.click('.ed-sheet .chip:has-text("英语")'); await p3.click('.ed-sheet .btn1');
+  await p3.waitForSelector('h1:has-text("周末作业")');
+  check((await p3.locator('.stu').count()) === 12 && await p3.isVisible('text=未登记 12'), '新建作业并打开');
+  await p3.click('.chip:has-text("剩余标为已交")');
+  check(await p3.isVisible('text=已交 12'), '剩余一键标为已交');
+  await p3.goBack(); await p3.waitForSelector('.tabbar');
+  // 名单：添加同学、修改、加减分、删除加减分
+  await p3.click('.tabbar button:has-text("名单")'); await p3.click('.ib[aria-label="添加同学"]');
+  await p3.fill('.ed-sheet input >> nth=0', '新同学'); await p3.fill('.ed-sheet input >> nth=1', '13'); await p3.fill('.ed-sheet input >> nth=2', '第2组'); await p3.click('.ed-sheet .btn1');
+  check(await p3.isVisible('.cell:has-text("新同学")'), '添加同学');
+  await p3.click('.ib[aria-label="添加同学"]'); await p3.fill('.ed-sheet input >> nth=1', '13');
+  check(await p3.isVisible('text=这个学号已经有人用了') && await p3.isDisabled('.ed-sheet .btn1'), '学号重复时不能保存');
+  await p3.click('.ed-sheet .guide-skip');
+  await p3.click('.cell:has-text("新同学")'); await p3.waitForSelector('text=积分流水');
+  await p3.click('.ed-btns button:has-text("加减分")'); await p3.click('.ed-sheet .chip:has-text("5")'); await p3.click('.ed-sheet .chip:has-text("主动回答")'); await p3.click('.ed-sheet .btn1');
+  check(await p3.isVisible('.cell:has-text("主动回答") >> text=+5'), '学生档案：加分（快捷理由）');
+  await p3.click('.cell:has-text("主动回答")'); await p3.click('.ed-sheet .btn1.danger');
+  check(!(await p3.isVisible('.cell:has-text("主动回答")')), '删除一条加减分');
+  await p3.click('.ib[aria-label="修改同学"]'); await p3.click('.ed-sheet .sw[aria-label="组长"]'); await p3.click('.ed-sheet .btn1');
+  check(await p3.isVisible('text=第2组组长'), '设为组长');
+  await p3.click('.ib[aria-label="修改同学"]'); await p3.click('.ed-sheet .btn2.danger-t'); await p3.click('.ed-sheet .btn1.danger');
+  await p3.waitForSelector('.tabbar'); check(!(await p3.isVisible('.cell:has-text("新同学")')), '删除同学');
+  // 积分：多选加分、全班积分重置、撤销重置
+  await p3.click('.tabbar button:has-text("积分")'); await p3.click('.ed-tools .chip:has-text("多选")');
+  await p3.click('.cell:has-text("胡晨")'); await p3.click('.cell:has-text("赵敏")'); await p3.click('.ed-selbar button:has-text("加减分")');
+  await p3.click('.ed-sheet .seg button:has-text("扣分")'); await p3.click('.ed-sheet .chip:has-text("2")'); await p3.fill('.ed-sheet input >> nth=1', '值日'); await p3.click('.ed-sheet .btn1');
+  await p3.click('.ed-selbar button:has-text("完成")');
+  await p3.click('.ed-tools .chip:has-text("全班积分重置")'); await p3.fill('.ed-sheet input >> nth=0', '80'); await p3.fill('.ed-sheet input >> nth=1', '期中重新计分'); await p3.click('.ed-sheet .btn1');
+  check(await p3.isVisible('.tile:has-text("平均分") >> text=80') || await p3.isVisible('.score:has-text("80")'), '全班积分重置为 80');
+  await p3.click('.seg button:has-text("加减分记录")');
+  check(await p3.isVisible('text=胡晨 · 值日') && await p3.isVisible('text=赵敏 · 值日'), '多选扣分写进流水');
+  await p3.click('.cell:has-text("积分重置为 80")'); await p3.click('.ed-sheet .btn1.danger');
+  check(!(await p3.isVisible('.cell:has-text("积分重置为 80")')), '撤销积分重置');
+  // 考试：新建、录入成绩、缺考
+  await p3.click('.tabbar button:has-text("首页")'); await p3.click('.tile:has-text("考试")'); await p3.click('.ib[aria-label="新建考试"]');
+  await p3.fill('.ed-sheet input >> nth=0', '单元测验'); await p3.fill('.ed-sheet input >> nth=2', '50'); await p3.click('.ed-sheet .btn1');
+  await p3.waitForSelector('h1:has-text("单元测验")'); await p3.click('.seg button:has-text("录入成绩")');
+  await p3.fill('input[aria-label="张锦宇 的成绩"]', '48'); await p3.press('input[aria-label="张锦宇 的成绩"]', 'Enter');
+  await p3.fill('input[aria-label="李子涵 的成绩"]', '30'); await p3.press('input[aria-label="李子涵 的成绩"]', 'Enter');
+  await p3.click('.ed-exam:has-text("林静") .chip');
+  await p3.click('.seg button:has-text("成绩排名")');
+  check(await p3.isVisible('text=成绩排名 · 2 人') && await p3.isVisible('text=缺考 · 1 人'), '考试：录入成绩、缺考');
+  await p3.goBack(); await p3.goBack(); await p3.waitForSelector('.tabbar');
+  // 计分规则：初始分改为 0，积分立即重算
+  await p3.click('.tabbar button:has-text("设置")');
+  await p3.fill('input[aria-label="初始分"]', '0'); await p3.press('input[aria-label="初始分"]', 'Enter');
+  await p3.click('.tabbar button:has-text("积分")'); const avg0 = Number(await p3.textContent('.tile:has-text("平均分") b'));
+  check(avg0 < 20, `改初始分后积分重算（平均 ${avg0}）`);
+  // 新建班级
+  await p3.click('.tabbar button:has-text("设置")'); await p3.click('.cell:has-text("新建班级")'); await p3.fill('.ed-sheet input', '高一(4)班'); await p3.click('.ed-sheet .btn1');
+  await p3.click('.tabbar button:has-text("首页")'); check(await p3.isVisible('h1:has-text("高一(4)班")'), '新建班级并切换过去');
+  const n0 = pushes.length; await waitPush(n0 + 1);
+  const d = lastPush();
+  check(d.classes.length === 2 && d.settings.rules.initial === 0 && cls().exams.some((e) => e.title === '单元测验' && e.scores.s0 === 48 && e.absent.includes('s2')), '所有改动都上传到云端（班级、规则、考试）');
+  check(!JSON.stringify(d).includes('apiKey":"sk'), '上传的数据不含 AI Key');
+  // 冲突：别的设备先改过 → 自动重试后上传
+  conflictOnce = true; await p3.click('.ib[aria-label="新建作业"]'); await p3.fill('.ed-sheet input >> nth=0', '冲突测试'); await p3.click('.ed-sheet .btn1');
+  const n1 = pushes.length; check(await waitPush(n1 + 1), '云端版本变了：重新拉取后再上传');
+  // 历史版本、修改密码
+  await p3.goBack(); await p3.waitForSelector('.tabbar'); await p3.click('.tabbar button:has-text("设置")');
+  await p3.click('.cell:has-text("历史版本")'); await p3.waitForSelector('text=v4');
+  check(await p3.isVisible('.ed-row:has-text("安卓")'), '历史版本列表'); await p3.click('.ed-sheet .guide-skip');
+  await p3.click('.cell:has-text("修改密码")'); await p3.fill('.ed-sheet input >> nth=0', 'pw123456'); await p3.fill('.ed-sheet input >> nth=1', 'newpw123'); await p3.fill('.ed-sheet input >> nth=2', 'newpw123'); await p3.click('.ed-sheet .btn1');
+  await p3.waitForSelector('text=密码已修改'); check(pwChanges.some((x) => x.password === 'newpw123'), '老师可以修改密码'); await p3.click('.ed-sheet .btn1');
+  await p3.screenshot({ path: path.join(OUT, '22-teacher-settings-after.png'), fullPage: true });
+  // 退出登录：先上传，再回到预览，本机数据清掉
+  await p3.click('.cell:has-text("修改密码")'); await p3.click('.ed-sheet .guide-skip');
+  await p3.click('.cell:has-text("退出登录")'); await p3.waitForSelector('.cell:has-text("修改密码")', { state: 'detached' });
+  await p3.click('.tabbar button:has-text("首页")'); await p3.waitForSelector('text=练习12');
+  check(await p3.evaluate(() => !localStorage.getItem('hw.data')) && !(await p3.isVisible('.ib[aria-label="新建作业"]')), '退出登录后回到只读预览，本机数据清掉');
+  await ctx3.close();
   check(errors.length === 0, `没有脚本错误${errors.length ? '：' + errors.join(' | ') : ''}`);
   await browser.close(); server.close();
   console.log(failures ? `\n${failures} 项失败` : '\n全部通过');
