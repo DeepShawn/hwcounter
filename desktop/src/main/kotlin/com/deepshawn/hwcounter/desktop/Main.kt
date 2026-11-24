@@ -53,16 +53,48 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** 加载状态 */
 enum class Load { LOADING, OK, NONE, ERROR }
 
-/** 整个客户端的状态：数据、本机偏好、当前页面 */
+data class ToastMsg(val text: String, val undoable: Boolean, val at: Long = System.nanoTime())
+
+/** 整个客户端的状态：数据、本机偏好、当前页面、登录身份、同步、撤销 */
 class AppState(val prefs: Prefs, initial: AppData?) {
     var data by mutableStateOf(initial)
     var load by mutableStateOf(Load.LOADING)
     var tab by mutableStateOf(Tab.HOME)
     val stack = mutableStateListOf<Route>()
     var guide by mutableStateOf(!prefs.onboarded)
+    var mode by mutableStateOf(Mode.GUEST)
+    var me by mutableStateOf<com.deepshawn.hwcounter.cloud.Trade.Me?>(null)
+    var sync by mutableStateOf(SyncUi())
+    var toast by mutableStateOf<ToastMsg?>(null)
+    /** 弹出的对话框（盖在页面上） */
+    var dialog by mutableStateOf<(@Composable () -> Unit)?>(null)
+    val undo = ArrayDeque<AppData>()
+    var onChange: (() -> Unit)? = null
+    var live: Live? = null
+    val editable: Boolean get() = mode == Mode.TEACHER
     fun open(r: Route) { stack.add(r) }
     fun back() { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
     fun switchTab(t: Tab) { tab = t; stack.clear() }
+    fun say(text: String, undoable: Boolean = false) { toast = ToastMsg(text, undoable) }
+    fun pushUndo(d: AppData) { undo.addLast(d); while (undo.size > 30) undo.removeFirst() }
+
+    /** 修改数据（只有老师能改）：保存到本机，几秒后自动上传 */
+    fun update(msg: String? = null, undoable: Boolean = true, f: (AppData) -> AppData): Boolean {
+        if (!editable) { say(if (mode == Mode.MEMBER) "普通用户只能查看，不能修改" else "预览模式：登录后才能修改"); return false }
+        val old = data ?: AppData(); val n = f(old)
+        if (n == old) return false
+        if (undoable) pushUndo(old)
+        data = n; Account.saveLocal(n); onChange?.invoke()
+        if (msg != null) say(msg, undoable)
+        return true
+    }
+    fun updateClass(classId: String, msg: String? = null, f: (com.deepshawn.hwcounter.data.SchoolClass) -> com.deepshawn.hwcounter.data.SchoolClass) =
+        update(msg) { d -> d.copy(classes = d.classes.map { if (it.id == classId) f(it) else it }) }
+    fun doUndo() {
+        val prev = undo.removeLastOrNull() ?: return
+        if (!editable) return
+        data = prev; Account.saveLocal(prev); onChange?.invoke(); toast = null
+    }
 }
 
 fun main() = application {
@@ -83,27 +115,25 @@ fun main() = application {
 @Composable
 fun AppRoot(state: AppState, autoLoad: Boolean = true) {
     val scope = rememberCoroutineScope()
-    fun reload() {
-        scope.launch {
-            state.load = Load.LOADING
-            try {
-                val d = Cloud.pullPublic()
-                if (d == null) state.load = Load.NONE else { state.data = d; Cloud.saveCache(d); state.load = Load.OK }
-            } catch (_: Throwable) { state.load = Load.ERROR }
-        }
-    }
+    val live = remember { Live(state, scope).also { state.live = it } }
+    fun reload() { live.load() }
     LaunchedEffect(Unit) {
         if (!autoLoad) return@LaunchedEffect
         reload()
-        // 每 5 分钟自动刷新一次
-        while (true) { kotlinx.coroutines.delay(5 * 60_000L); reload() }
+        // 老师每分钟检查一次同步；查看时每 5 分钟刷新一次
+        var n = 0
+        while (true) { kotlinx.coroutines.delay(60_000L); n++; if (state.mode == Mode.TEACHER) live.tick() else if (n % 5 == 0) live.tick() }
     }
+    LaunchedEffect(state.toast) { val t = state.toast ?: return@LaunchedEffect; kotlinx.coroutines.delay(if (t.undoable) 5000 else 3000); if (state.toast == t) state.toast = null }
     val colors = MiuixTheme.colorScheme
     Box(Modifier.fillMaxSize().background(colors.surface)) {
         Row(Modifier.fillMaxSize()) {
             Sidebar(state)
             Box(Modifier.weight(1f).fillMaxHeight()) { Content(state, ::reload) }
         }
+        ToastBar(state)
+        state.sync.conflict?.let { if (state.editable) ConflictDialog(live) }
+        state.dialog?.invoke()
         if (state.guide) Guide { state.guide = false; state.prefs.onboarded = true }
     }
 }
@@ -116,11 +146,11 @@ private fun Sidebar(state: AppState) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(look.palette.a, look.palette.b))), contentAlignment = Alignment.Center) { LineIcon("📚", Color.White, size = 20.dp) }
             Spacer(Modifier.width(10.dp))
-            Column { Text("作业通", fontWeight = FontWeight.Bold, fontSize = 17.sp); Text("Windows 查看版", fontSize = 11.sp, color = sub()) }
+            Column { Text("作业通", fontWeight = FontWeight.Bold, fontSize = 17.sp); Text(when (state.mode) { Mode.TEACHER -> "老师 · 可修改"; Mode.MEMBER -> "普通用户 · 只读"; else -> "Windows 版" }, fontSize = 11.sp, color = sub()) }
         }
         Spacer(Modifier.height(10.dp))
         val d = state.data
-        if (d != null && d.classes.size > 1) {
+        if (d != null && (d.classes.size > 1 || (state.editable && d.classes.isNotEmpty()))) {
             val c = currentClass(state)
             Text("班级", Modifier.padding(start = 10.dp, bottom = 4.dp), fontSize = 12.sp, color = sub())
             d.classes.forEach { x ->
@@ -148,7 +178,8 @@ private fun Sidebar(state: AppState) {
             }
         }
         Spacer(Modifier.weight(1f))
-        Text("只能查看，修改请在手机或 iPad 上操作 · v$APP_VERSION", Modifier.padding(8.dp), fontSize = 11.sp, color = sub())
+        if (state.editable) Text(if (state.sync.busy) "同步中…" else state.sync.msg.ifBlank { "云同步已开启" }, Modifier.padding(horizontal = 8.dp), fontSize = 11.sp, color = if (state.sync.error) BAD else sub(), maxLines = 2)
+        Text("v$APP_VERSION", Modifier.padding(8.dp), fontSize = 11.sp, color = sub())
     }
 }
 
@@ -159,14 +190,16 @@ private fun Content(state: AppState, reload: () -> Unit) {
     val d = state.data
     val c = currentClass(state)
     if (d == null || c == null) {
+        if (state.tab == Tab.SETTINGS) { SettingsPage(null, state, reload); return }
         Page("作业通", null) {
             when {
+                d != null && state.editable -> { Empty("🏫", "还没有班级，先新建一个"); More("新建班级") { state.dialog = { ClassDialog(state, null) } } }
                 d != null -> Empty("🏫", "还没有班级")
                 state.load == Load.LOADING -> Empty("⏳", "正在加载…")
                 state.load == Load.NONE -> Empty("🔒", "老师还没有开放查看")
                 else -> Empty("📶", "加载失败，请检查网络后刷新")
             }
-            if (state.load != Load.LOADING) Text("重新加载", Modifier.align(Alignment.CenterHorizontally).clip(CircleShape).background(cardColor()).clickable { reload() }.padding(horizontal = 20.dp, vertical = 10.dp), color = MiuixTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            if (state.load != Load.LOADING && !(d != null && state.editable)) Text("重新加载", Modifier.align(Alignment.CenterHorizontally).clip(CircleShape).background(cardColor()).clickable { reload() }.padding(horizontal = 20.dp, vertical = 10.dp), color = MiuixTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         }
         return
     }
@@ -183,7 +216,7 @@ private fun Content(state: AppState, reload: () -> Unit) {
             Tab.ROSTER -> RosterPage(ctx)
             Tab.SCORES -> ScoresPage(ctx)
             Tab.STATS -> StatsPage(ctx)
-            Tab.SETTINGS -> SettingsPage(ctx, reload)
+            Tab.SETTINGS -> SettingsPage(ctx, state, reload)
         }
     }
 }
@@ -216,7 +249,7 @@ fun Page(title: String, onBack: (() -> Unit)?, actions: (@Composable () -> Unit)
 
 /** 新手提示（只存本机，可跳过） */
 private val GUIDE = listOf(
-    Triple("📚", "欢迎使用作业通 · Windows 查看版", "这里可以查看老师登记的作业、积分、考试和统计。Windows 版只能查看，不能修改。") to listOf("左侧五个页面：首页、名单、积分、统计、设置", "数据每 5 分钟自动刷新，也可以在 设置 → 刷新数据"),
+    Triple("📚", "欢迎使用作业通 · Windows 版", "这里可以查看老师登记的作业、积分、考试和统计；老师登录后也能在电脑上登记和修改，自动同步到手机和 iPad。") to listOf("左侧五个页面：首页、名单、积分、统计、设置", "数据每 5 分钟自动刷新，也可以在 设置 → 刷新数据"),
     Triple("✅", "作业", "首页列出每次作业的交齐率，点进去可以看每位同学的情况。") to listOf("颜色代表状态：已交、优秀、迟交、未交、请假、复审不合格、抄袭", "可以按状态筛选，切换网格 / 列表"),
     Triple("🏆", "名单与积分", "名单里点同学进入档案：积分、名次、作业足迹、考试和每一笔积分流水。") to listOf("积分页有排行榜和加减分记录", "小组里可以看组长、组员和各自积分"),
     Triple("📈", "统计", "统计页与手机端相同：作业、考试、关注、信誉、股票、小组、抄袭七个栏目。") to listOf("信誉：信誉榜（越优秀越高）；股票：关注度、信誉分、小组综合行情", "抄袭：提供者与抄袭者的关系图"),

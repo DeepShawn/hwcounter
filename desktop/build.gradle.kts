@@ -1,6 +1,6 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
-// 作业通 Windows 客户端：只读查看老师公开的数据（与网页版功能相同），
+// 作业通 Windows 客户端：未登录只读查看老师公开的数据；老师登录后可以修改并同步（与安卓、网页一致），
 // 数据模型和全部计分 / 统计算法直接复用安卓 app 模块的 data 包源码，三端算法零差异。
 plugins {
     id("org.jetbrains.kotlin.jvm")
@@ -23,6 +23,8 @@ val sharedSrc by tasks.registering(Sync::class) {
         include("com/deepshawn/hwcounter/data/**")
         exclude("**/AppViewModel.kt")
         include("com/deepshawn/hwcounter/recog/SeatingLogic.kt", "com/deepshawn/hwcounter/recog/StatTable.kt")
+        // 云端账号与同步接口（纯 JVM 代码，与安卓同一份）
+        include("com/deepshawn/hwcounter/cloud/CloudClient.kt", "com/deepshawn/hwcounter/cloud/Trade.kt")
     }
     into(layout.buildDirectory.dir("generated/shared"))
 }
@@ -61,7 +63,7 @@ compose.desktop {
             packageName = "HwCounter"
             packageVersion = appVersion.split(".").let { p -> (p + listOf("0", "0", "0")).take(3).joinToString(".") }
             // 安装包元数据必须是 ASCII（WiX 默认 1252 代码页，中文会导致打包失败）
-            description = "HwCounter homework viewer"
+            description = "HwCounter homework app"
             vendor = "DeepShawn"
             copyright = "DeepShawn"
             modules("java.net.http", "java.prefs", "jdk.crypto.ec", "jdk.localedata", "jdk.charsets")

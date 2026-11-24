@@ -22,7 +22,7 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.prefs.Preferences
 
-/** 云端公开数据（只读）：与网页版读取同一份老师公开的快照，不登录、不写入 */
+/** 云端公开数据（只读）：与网页版读取同一份老师公开的快照；登录、修改与同步见 Account.kt */
 object Cloud {
     private const val URL = "https://beasxxexggnjcocdbtdl.supabase.co"
     private const val KEY = "sb_publishable_85hufMmFQvmLQt2Rz1Hcrw_S4t7BjAO"
@@ -41,7 +41,7 @@ object Cloud {
         json.decodeFromJsonElement(AppData.serializer(), data)
     }
 
-    private val dir: File get() = File(System.getenv("APPDATA")?.takeIf { it.isNotBlank() } ?: (System.getProperty("user.home") + File.separator + ".hwcounter"), "HwCounter")
+    val dir: File get() = File(System.getenv("APPDATA")?.takeIf { it.isNotBlank() } ?: (System.getProperty("user.home") + File.separator + ".hwcounter"), "HwCounter")
     private val cacheFile get() = File(dir, "preview.json")
 
     /** 本机缓存（离线也能看上次的数据） */
@@ -59,6 +59,9 @@ class Prefs {
     private val _layout = mutableStateOf(p.get("layout", "grid"))
     private val _classId = mutableStateOf<String?>(p.get("classId", null))
     private val _onboarded = mutableStateOf(p.getBoolean("onboarded", false))
+    private val _loginUnlocked = mutableStateOf(p.getBoolean("loginUnlocked", false))
+    /** 登录入口默认隐藏：设置页底部的作业通图标连续点三下才显示 */
+    var loginUnlocked: Boolean get() = _loginUnlocked.value; set(v) { _loginUnlocked.value = v; p.putBoolean("loginUnlocked", v) }
     var theme: String get() = _theme.value; set(v) { _theme.value = v; p.put("theme", v) }
     var dark: Int get() = _dark.value; set(v) { _dark.value = v; p.putInt("dark", v) }
     var animations: Boolean get() = _animations.value; set(v) { _animations.value = v; p.putBoolean("animations", v) }
