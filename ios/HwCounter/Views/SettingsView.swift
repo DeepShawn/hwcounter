@@ -206,7 +206,24 @@ struct SettingsView: View {
     // ---------- 云端 ----------
     @ViewBuilder private var cloudSection: some View {
         Section {
-            if let mail = store.sync.email {
+            if let m = store.member {
+                // 普通用户（凭邀请码注册）：只读查看老师的数据，可以修改密码
+                HStack {
+                    Image(systemName: "person.crop.circle").foregroundStyle(Color.accentColor).font(.title2)
+                    VStack(alignment: .leading) {
+                        Text("\(m.name)（\(m.username.isEmpty ? (CloudConfig.displayEmail(store.sync.email) ?? "") : m.username)）").font(.headline)
+                        Text(m.status == "active" ? "普通用户 · 只读查看老师的班级数据" : "账号已被老师停用").font(.caption).foregroundStyle(m.status == "active" ? Color.secondary : Color.red)
+                    }
+                    Spacer()
+                    if store.sync.previewState == "loading" { ProgressView() }
+                }
+                HStack {
+                    Button("刷新数据") { Task { await store.refreshPreview() } }.buttonStyle(.borderedProminent)
+                    Button("修改密码") { changingPw = true }.buttonStyle(.bordered)
+                    Spacer()
+                    Button("退出登录", role: .destructive) { Task { await store.signOut() } }.buttonStyle(.bordered)
+                }
+            } else if let mail = store.sync.email {
                 HStack {
                     Image(systemName: "checkmark.icloud.fill").foregroundStyle(.green).font(.title2)
                     VStack(alignment: .leading) {
@@ -238,14 +255,14 @@ struct SettingsView: View {
                     Button("退出登录", role: .destructive) { Task { await store.signOut() } }.buttonStyle(.bordered)
                 }
             } else {
-                Text("现在是**预览模式**（只读）。登录后才能修改，数据自动在安卓、iPad、网页之间同步。").font(.callout)
-                TextField("邮箱", text: $email).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
-                SecureField("密码（至少 6 位）", text: $password)
+                Text("现在是**预览模式**（只读）。老师用邮箱登录后才能修改，数据自动在安卓、iPad、网页、Windows 之间同步；凭邀请码注册的同学、家长用用户名登录，只读查看。").font(.callout)
+                TextField("邮箱（老师）或用户名", text: $email).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
+                SecureField("密码", text: $password)
                 HStack {
                     Button("登录") { Task { await store.signIn(email, password); if store.sync.email != nil { password = "" } } }
-                        .buttonStyle(.borderedProminent).disabled(store.sync.busy || email.isEmpty || password.count < 6)
-                    Button("注册") { Task { await store.signUp(email, password) } }.buttonStyle(.bordered)
-                        .disabled(store.sync.busy || email.isEmpty || password.count < 6)
+                        .buttonStyle(.borderedProminent).disabled(store.sync.busy || email.isEmpty || password.isEmpty)
+                    Button("注册老师账号") { Task { await store.signUp(email, password) } }.buttonStyle(.bordered)
+                        .disabled(store.sync.busy || !email.contains("@") || password.count < 6)
                     Spacer()
                     Button("忘记密码？") { Task { await store.recover(email) } }.buttonStyle(.borderless).disabled(!email.contains("@"))
                 }
@@ -323,7 +340,7 @@ struct ChangePasswordSheet: View {
                     SecureField("新密码（至少 6 位）", text: $new1)
                     SecureField("再输一次新密码", text: $new2)
                 } footer: {
-                    Text("这个账号和你的游戏共用，改完后游戏里也用新密码登录。")
+                    Text(store.isMember ? "新密码需要同时包含小写字母、大写字母、数字和符号（如 Abc123!）" : "这个账号和你的游戏共用，改完后游戏里也用新密码登录。")
                 }
                 if let err { Text(err).foregroundStyle(.red) }
             }
