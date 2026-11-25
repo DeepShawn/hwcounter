@@ -238,10 +238,10 @@ export function ConflictSheet({ onPick }) {
 
 // ---------- 计分规则（老师；改后历史积分自动重算） ----------
 function NumRow({ title, sub, value, onSave, min, step = 1 }) {
-  const [v, setV] = useState(String(value)); useEffect(() => setV(String(value)), [value]);
-  const commit = () => { const x = num(v); if (x == null || (min != null && x < min)) { setV(String(value)); return; } if (x !== value) onSave(x); };
+  // 不受控输入框：显示的值以输入框为准（key 随规则值变化时重建）；提交时读输入框当前的值，刚打开页面就输入也不会被改回
+  const commit = (e) => { const x = num(e.target.value); if (x == null || (min != null && x < min)) { e.target.value = String(value); return; } if (x !== value) onSave(x); };
   return html`<div class="cell ed-num"><div class="cell-main"><div class="cell-title">${title}</div>${sub && html`<div class="cell-sub">${sub}</div>`}</div>
-    <input type="number" inputmode="decimal" step=${step} aria-label=${title} value=${v} onInput=${(e) => setV(e.target.value)} onBlur=${commit} onKeyDown=${(e) => { if (e.key === 'Enter') e.target.blur(); }} /></div>`;
+    <input key=${String(value)} type="number" inputmode="decimal" step=${step} aria-label=${title} defaultValue=${String(value)} onBlur=${commit} onKeyDown=${(e) => { if (e.key === 'Enter') e.target.blur(); }} /></div>`;
 }
 const SwRow = ({ title, sub, on, onChange }) => html`<${K.Cell} title=${title} sub=${sub} right=${html`<${K.Switch} label=${title} on=${on} onChange=${onChange} />`} />`;
 export function RulesEditor({ rules, onRules }) {
