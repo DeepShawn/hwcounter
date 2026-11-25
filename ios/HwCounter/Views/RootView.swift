@@ -19,10 +19,10 @@ struct HwCounterApp: App {
 }
 
 enum Pane: String, CaseIterable, Identifiable {
-    case homework, heatmap, plagiarism, scores, roster, settings
+    case homework, heatmap, plagiarism, scores, exams, roster, settings
     var id: String { rawValue }
-    var title: String { ["作业", "热力图", "抄袭关系", "积分", "名单", "设置"][Pane.allCases.firstIndex(of: self)!] }
-    var icon: String { ["checklist", "square.grid.3x3.fill", "arrow.triangle.branch", "star.circle", "person.3", "gearshape"][Pane.allCases.firstIndex(of: self)!] }
+    var title: String { ["作业", "热力图", "抄袭关系", "积分", "考试", "名单", "设置"][Pane.allCases.firstIndex(of: self)!] }
+    var icon: String { ["checklist", "square.grid.3x3.fill", "arrow.triangle.branch", "star.circle", "doc.text", "person.3", "gearshape"][Pane.allCases.firstIndex(of: self)!] }
 }
 
 struct RootView: View {
@@ -57,6 +57,7 @@ struct RootView: View {
                 case .heatmap: HeatmapView()
                 case .plagiarism: PlagiarismView()
                 case .scores: ScoresView()
+                case .exams: ExamsView()
                 case .roster: RosterView()
                 case .settings: SettingsView()
                 }
@@ -93,7 +94,7 @@ struct RootView: View {
     }
 
     @ViewBuilder private var syncFooter: some View {
-        if store.sync.email != nil {
+        if store.sync.email != nil && !store.isMember {
             HStack(spacing: 6) {
                 if store.sync.busy { ProgressView().controlSize(.small) }
                 else { Image(systemName: store.sync.error ? "exclamationmark.icloud" : "checkmark.icloud").foregroundStyle(store.sync.error ? .red : .green) }

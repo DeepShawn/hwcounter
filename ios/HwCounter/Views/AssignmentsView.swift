@@ -35,7 +35,7 @@ struct AssignmentsView: View {
                     .searchable(text: $query, prompt: "搜索作业")
                 }
             } else {
-                EmptyHint(emoji: "🎒", title: store.readOnly ? "暂无可预览的数据" : "先建一个班级", detail: store.readOnly ? "登录后可以创建自己的班级" : "点左上角班级卡片新建班级，再到「名单」导入学生")
+                EmptyHint(emoji: "🎒", title: store.readOnly ? "暂无可预览的数据" : "先建一个班级", detail: store.readOnly ? (Store.loginUnlocked ? "登录后可以创建自己的班级" : "老师公开数据后会显示在这里") : "点左上角班级卡片新建班级，再到「名单」导入学生")
             }
         }
         .navigationTitle("作业")

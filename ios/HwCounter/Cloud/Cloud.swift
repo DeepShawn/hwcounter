@@ -7,6 +7,29 @@ import UIKit
 enum CloudConfig {
     static let url = "https://beasxxexggnjcocdbtdl.supabase.co"
     static let key = "sb_publishable_85hufMmFQvmLQt2Rz1Hcrw_S4t7BjAO"
+    /// 凭邀请码注册的普通用户：用户名映射成这个域名下的内部邮箱（与安卓、网页、Edge Function hw-register 一致）
+    static let memberDomain = "member.hwcounter.invalid"
+    /// 登录框可以填邮箱（老师）或用户名（普通用户）
+    static func loginEmail(_ input: String) -> String {
+        let t = input.trimmingCharacters(in: .whitespaces)
+        return t.contains("@") ? t : "\(t.lowercased())@\(memberDomain)"
+    }
+    static func displayEmail(_ e: String?) -> String? {
+        guard let e else { return nil }
+        return e.hasSuffix("@\(memberDomain)") ? String(e.dropLast(memberDomain.count + 1)) : e
+    }
+}
+
+/// 当前账号的身份（数据库函数 hw_me）：老师（管理员）或凭邀请码注册的普通用户
+struct MemberInfo: Equatable {
+    var role: String
+    var userId: String
+    var adminId: String?
+    var username: String
+    var displayName: String
+    var status: String
+    var isMember: Bool { role == "member" }
+    var name: String { displayName.isEmpty ? username : displayName }
 }
 
 struct CloudSession: Codable {
@@ -89,7 +112,8 @@ final class CloudClient {
         let o = body as? [String: Any]
         let raw = (o?["error_description"] ?? o?["msg"] ?? o?["message"] ?? o?["error"]) as? String ?? ""
         let l = raw.lowercased()
-        if l.contains("invalid login credentials") { return "邮箱或密码不对" }
+        if l.contains("invalid login credentials") { return "账号或密码不对" }
+        if l.contains("password should contain") { return "密码太简单：需要同时包含小写字母、大写字母、数字和符号（如 Abc123!）" }
         if l.contains("email not confirmed") { return "邮箱还没验证：请到邮箱里点确认链接后再登录" }
         if l.contains("already registered") { return "这个邮箱已经注册过了，直接登录即可" }
         if l.contains("password should be at least") || l.contains("weak_password") { return "密码太短或太简单（至少 6 位）" }
@@ -143,7 +167,7 @@ final class CloudClient {
 
     // ---------- 账号 ----------
     func signIn(_ email: String, _ password: String) async throws {
-        let e = email.trimmingCharacters(in: .whitespaces)
+        let e = CloudConfig.loginEmail(email)
         let (st, j) = try await http("POST", "/auth/v1/token?grant_type=password", body: ["email": e, "password": password])
         guard (200..<300).contains(st), let s = toSession(j, email: e) else { throw CloudError(message: friendly(st, j)) }
         setSession(s)
@@ -200,6 +224,23 @@ final class CloudClient {
         return RemoteRow(data: try decodeData(row["data"]), version: row["version"] as? Int ?? 0,
                          updatedAt: row["updated_at"] as? String ?? "", device: row["device"] as? String ?? "",
                          publicRead: row["public_read"] as? Bool)
+    }
+
+    /// 读取身份：老师（管理员）或普通用户
+    func me() async throws -> MemberInfo {
+        let (st, j) = try await http("POST", "/rest/v1/rpc/hw_me", body: [String: String](), bearer: try await token())
+        guard (200..<300).contains(st), let o = j as? [String: Any] else { throw CloudError(message: friendly(st, j)) }
+        return MemberInfo(role: o["role"] as? String ?? "admin", userId: o["user_id"] as? String ?? "", adminId: o["admin_id"] as? String,
+                          username: o["username"] as? String ?? "", displayName: o["display_name"] as? String ?? "", status: o["status"] as? String ?? "active")
+    }
+
+    /// 普通用户：读取所属老师的数据（只读）
+    func pullOf(_ uid: String) async throws -> RemoteRow? {
+        let (st, j) = try await http("GET", "/rest/v1/hw_snapshots?select=data,version,updated_at&user_id=eq.\(uid)&limit=1", bearer: try await token())
+        guard (200..<300).contains(st) else { throw CloudError(message: friendly(st, j)) }
+        guard let row = (j as? [[String: Any]])?.first else { return nil }
+        return RemoteRow(data: try decodeData(row["data"]), version: row["version"] as? Int ?? 0,
+                         updatedAt: row["updated_at"] as? String ?? "", device: "", publicRead: nil)
     }
 
     /// 未登录预览：读取老师公开的那份数据（只读）

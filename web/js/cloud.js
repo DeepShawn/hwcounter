@@ -10,6 +10,9 @@ const META_KEY = 'hw.cloud.meta';
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const save = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch { /* 隐私模式 */ } };
 
+/** 其它模块挂的钩子（退出登录前上传改动） */
+export const hooks = { beforeSignOut: null };
+
 export class ConflictError extends Error { constructor(v) { super(`云端已有更新的版本 v${v}`); this.remoteVersion = v; } }
 
 function friendly(status, body) {
@@ -87,9 +90,11 @@ export const api = {
     if (!r.ok) throw new Error(friendly(r.status, r.json));
   },
   async signOut() {
+    // 老师：退出前先把本机改动传到云端（见 store.js）；本机这份数据随后清掉，下次登录从云端取
+    try { await hooks.beforeSignOut?.(); } catch { /* 网络不通时照常退出 */ }
     const s = session();
     if (s) { try { await http('POST', '/auth/v1/logout', {}, s.accessToken); } catch { /* 忽略 */ } }
-    save(SESSION_KEY, null); save(META_KEY, null);
+    save(SESSION_KEY, null); save(META_KEY, null); save('hw.data', null); save('hw.data.owner', null);
   },
   async pull() {
     const uid = session()?.userId;

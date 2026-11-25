@@ -23,7 +23,13 @@ final class Store: ObservableObject {
     @Published private(set) var drafts: [Draft] = Store.loadDrafts()
     private var draftTimer: Timer? = nil
 
-    var readOnly: Bool { sync.email == nil }
+    /// 凭邀请码注册的普通用户：只读查看所属老师的数据（与安卓一致）
+    @Published private(set) var member: MemberInfo? = nil
+    var readOnly: Bool { sync.email == nil || member != nil }
+    var isMember: Bool { member != nil }
+    /// 登录入口默认隐藏：设置页底部的作业通图标连续点三下才显示（只存本机）；已登录时总是显示
+    static let loginUnlockedKey = "loginUnlocked"
+    static var loginUnlocked: Bool { UserDefaults.standard.bool(forKey: loginUnlockedKey) }
 
     private let cloud = CloudClient.shared
     private var undoStack: [AppData] = []
@@ -37,7 +43,9 @@ final class Store: ObservableObject {
 
     init() {
         let logged = CloudClient.shared.session != nil
-        data = logged ? Store.loadMain() : Store.loadPreview()
+        // 上次是普通用户：先显示缓存的老师数据，等确认身份
+        let wasMember = logged && Store.cachedRole(CloudClient.shared.session?.userId ?? "") == "member"
+        data = logged && !wasMember ? Store.loadMain() : Store.loadPreview()
         sync.email = CloudClient.shared.session?.email
         Task { await self.start() }
         // 定时上传草稿：每 15 秒检查一次（App 在前台时）；错过的回到前台时立即补传
@@ -73,7 +81,7 @@ final class Store: ObservableObject {
     /// 上传草稿：写进作业 → 立即同步到云端。返回成功上传的份数
     @discardableResult
     func uploadDrafts(_ ids: [String], why: String = "") -> Int {
-        if readOnly { say("请先在“设置”里登录，才能上传到云端"); return 0 }
+        if readOnly { say(Store.loginUnlocked ? "请先在“设置”里登录，才能上传到云端" : "预览模式：不能上传到云端"); return 0 }
         var d = data, done: [String] = [], errs: [String] = []
         for dr in drafts where ids.contains(dr.id) {
             do { d = try StatTable.apply(d, dr); done.append(dr.id) } catch { errs.append("\(dr.title.isEmpty ? "草稿" : dr.title)：\(error.localizedDescription)") }
@@ -97,8 +105,23 @@ final class Store: ObservableObject {
     }
 
     private func start() async {
-        applyAutoResets()
-        if cloud.session != nil { await runSync() } else { await refreshPreview() }
+        if cloud.session != nil {
+            await resolveRole()
+            if isMember { await refreshPreview() } else { applyAutoResets(); await runSync() }
+        } else { applyAutoResets(); await refreshPreview() }
+    }
+
+    // ---------- 身份 ----------
+    private static func cachedRole(_ uid: String) -> String? { UserDefaults.standard.string(forKey: "role.\(uid)") }
+    /// 读取身份；网络不通时用上次的结果
+    private func resolveRole() async {
+        guard let uid = cloud.session?.userId else { member = nil; return }
+        if let me = try? await cloud.me() {
+            UserDefaults.standard.set(me.isMember ? "member" : "teacher", forKey: "role.\(uid)")
+            member = me.isMember ? me : nil
+        } else if Store.cachedRole(uid) == "member" {
+            member = member ?? MemberInfo(role: "member", userId: uid, adminId: nil, username: CloudConfig.displayEmail(cloud.session?.email) ?? "", displayName: "", status: "active")
+        } else { member = nil }
     }
 
     // ---------- 本机文件 ----------
@@ -132,11 +155,13 @@ final class Store: ObservableObject {
         f(&new)
         if new == old { return }
         if readOnly {
-            // 预览模式：班级数据只读；只允许切换班级、改主题等本机显示设置
-            if new.classes != old.classes { say("预览模式：登录后才能修改"); return }
+            // 预览模式 / 普通用户：班级数据和老师的规则只读；只允许切换班级、改主题等本机显示设置
+            if new.classes != old.classes || (isMember && new.rules != old.rules) {
+                say(isMember ? "普通用户只能查看，不能修改" : Store.loginUnlocked ? "预览模式：登录后才能修改" : "预览模式：只能查看"); return
+            }
             data = new
             var main = Store.loadMain()
-            main.settings = new.settings
+            if isMember { main.theme = new.theme } else { main.settings = new.settings }
             Store.write(main, to: Store.file)
             return
         }
@@ -271,6 +296,33 @@ final class Store: ObservableObject {
         if next != data.classes { update(undoable: false) { $0.classes = $0.classes.map { $0.applyingAutoReset(rules) } } }
     }
 
+    // 考试（与安卓 AppViewModel 同样的规则）
+    func upsertExam(_ e: Exam) {
+        updateClass { c in if let i = c.exams.firstIndex(where: { $0.id == e.id }) { c.exams[i] = e } else { c.exams.append(e) } }
+    }
+    func deleteExam(_ id: String) { updateClass { $0.exams.removeAll { $0.id == id } } }
+    /// 录入一位同学的成绩（score 为 nil 时清除），absent 为 true 时记为缺考
+    func setExamScore(_ eid: String, _ sid: String, _ score: Double?, absent: Bool = false) {
+        updateClass { c in
+            guard let i = c.exams.firstIndex(where: { $0.id == eid }) else { return }
+            if absent || score == nil { c.exams[i].scores.removeValue(forKey: sid) } else { c.exams[i].scores[sid] = score }
+            if absent { if !c.exams[i].absent.contains(sid) { c.exams[i].absent.append(sid) } } else { c.exams[i].absent.removeAll { $0 == sid } }
+        }
+    }
+
+    // 组长、课代表
+    func setGroupLeader(_ group: String, _ sid: String?) { updateClass { c in if let sid { c.groupLeaders[group] = sid } else { c.groupLeaders.removeValue(forKey: group) } } }
+    func setRep(_ sid: String, _ on: Bool) { updateClass { c in c.reps.removeAll { $0 == sid }; if on { c.reps.append(sid) } } }
+    /// 保存同学，同时设置课代表、组长（一次撤销）
+    func saveStudent(_ s: Student, rep: Bool, leader: Bool) {
+        updateClass { c in
+            if let i = c.students.firstIndex(where: { $0.id == s.id }) { c.students[i] = s } else { c.students.append(s) }
+            c.reps.removeAll { $0 == s.id }; if rep { c.reps.append(s.id) }
+            if let old = c.groupLeaders.first(where: { $0.value == s.id })?.key, !leader || old != s.group { c.groupLeaders.removeValue(forKey: old) }
+            if leader && !s.group.isEmpty { c.groupLeaders[s.group] = s.id }
+        }
+    }
+
     // 学生
     func upsertStudent(_ s: Student) {
         updateClass { c in
@@ -326,6 +378,23 @@ final class Store: ObservableObject {
 
     // ---------- 预览 ----------
     func refreshPreview() async {
+        if let m = member {
+            // 普通用户：读取所属老师的数据，积分按老师的规则算；只保留本机的主题
+            sync.previewState = "loading"
+            do {
+                let me = (try? await cloud.me()) ?? m
+                if me.isMember { member = me }
+                guard me.status == "active", let adm = me.adminId, let row = try await cloud.pullOf(adm) else { sync.previewState = "none"; return }
+                Store.write(row.data, to: Store.previewFile)
+                guard isMember else { return }
+                var d = row.data
+                d.theme = Store.loadMain().theme
+                if let cur = data.currentClassId, d.classes.contains(where: { $0.id == cur }) { d.currentClassId = cur }
+                data = d
+                sync.previewState = "ok"
+            } catch { sync.previewState = "error" }
+            return
+        }
         guard cloud.session == nil else { return }
         sync.previewState = "loading"
         do {
@@ -375,14 +444,27 @@ final class Store: ObservableObject {
 
     private func onLogin() {
         undoStack.removeAll(); canUndo = false
-        data = Store.loadMain()
-        sync = SyncState(email: cloud.session?.email, busy: false, message: "登录成功")
-        Task { await runSync() }
+        sync = SyncState(email: cloud.session?.email, busy: true, message: "登录成功，正在读取身份…")
+        Task {
+            await resolveRole()
+            sync.busy = false
+            if isMember {
+                sync.message = "已登录：普通用户，只读查看老师的班级数据"
+                data = Store.loadPreview()
+                await refreshPreview()
+            } else {
+                sync.message = "登录成功"
+                data = Store.loadMain()
+                applyAutoResets()
+                await runSync()
+            }
+        }
     }
 
     func signOut() async {
         syncTask?.cancel()
         await cloud.signOut()
+        member = nil
         undoStack.removeAll(); canUndo = false
         data = Store.loadPreview()
         sync = SyncState(message: "已退出登录，回到预览模式")
@@ -399,7 +481,7 @@ final class Store: ObservableObject {
 
     func scheduleSync(_ ms: UInt64 = 4000) {
         syncTask?.cancel()
-        guard cloud.session != nil, cloud.meta.auto, sync.conflict == nil else { return }
+        guard cloud.session != nil, !isMember, cloud.meta.auto, sync.conflict == nil else { return }
         syncTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: ms * 1_000_000)
             if Task.isCancelled { return }
@@ -408,13 +490,13 @@ final class Store: ObservableObject {
     }
 
     func onActive() {
-        if cloud.session != nil { scheduleSync(300) } else { Task { await refreshPreview() } }
+        if cloud.session != nil && !isMember { scheduleSync(300) } else { Task { await refreshPreview() } }
         uploadDueDrafts()
         applyAutoResets()
     }
 
     func runSync(retry: Int = 0) async {
-        guard cloud.session != nil else { return }
+        guard cloud.session != nil, !isMember else { return }
         sync.busy = true; sync.error = false; sync.message = "同步中…"
         do {
             let (action, msg, pr) = try await syncOnce()

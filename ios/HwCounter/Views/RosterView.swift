@@ -37,7 +37,7 @@ struct RosterView: View {
                 }
                 .searchable(text: $query, prompt: "搜索姓名或学号")
             } else {
-                EmptyHint(emoji: "🎒", title: "还没有班级", detail: store.readOnly ? "登录后可以创建自己的班级" : "导入名单时会自动新建班级")
+                EmptyHint(emoji: "🎒", title: "还没有班级", detail: store.readOnly ? (Store.loginUnlocked ? "登录后可以创建自己的班级" : "老师公开数据后会显示在这里") : "导入名单时会自动新建班级")
             }
         }
         .navigationTitle("名单")
@@ -117,6 +117,8 @@ struct StudentEditSheet: View {
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) var dismiss
     @State var student: Student
+    @State private var rep: Bool? = nil
+    @State private var leader: Bool? = nil
 
     var body: some View {
         let c = store.data.currentClass
@@ -130,6 +132,10 @@ struct StudentEditSheet: View {
                     Picker("性别", selection: $student.gender) { Text("未填").tag(""); Text("男").tag("男"); Text("女").tag("女") }
                     Toggle("长期请假（新作业自动记请假）", isOn: $student.longLeave)
                     TextField("备注", text: $student.note)
+                    Toggle("课代表（每次结算加分，可以同时是组长）", isOn: Binding(get: { rep ?? (c?.reps.contains(student.id) ?? false) }, set: { rep = $0 }))
+                    Toggle(student.group.trimmingCharacters(in: .whitespaces).isEmpty ? "组长（先填小组）" : "\(student.group.trimmingCharacters(in: .whitespaces))组长",
+                           isOn: Binding(get: { leader ?? (!student.group.isEmpty && c?.groupLeaders[student.group] == student.id) }, set: { leader = $0 }))
+                        .disabled(student.group.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
                 .disabled(store.readOnly)
                 if let c, !isNew {
@@ -154,7 +160,10 @@ struct StudentEditSheet: View {
                         Button("保存") {
                             student.no = student.no.trimmingCharacters(in: .whitespaces)
                             student.name = student.name.trimmingCharacters(in: .whitespaces)
-                            store.upsertStudent(student); dismiss()
+                            student.group = student.group.trimmingCharacters(in: .whitespaces)
+                            let isRep = rep ?? (c?.reps.contains(student.id) ?? false)
+                            let isLeader = leader ?? (!student.group.isEmpty && c?.groupLeaders[student.group] == student.id)
+                            store.saveStudent(student, rep: isRep, leader: isLeader && !student.group.isEmpty); dismiss()
                         }
                         .disabled(student.name.trimmingCharacters(in: .whitespaces).isEmpty)
                     }

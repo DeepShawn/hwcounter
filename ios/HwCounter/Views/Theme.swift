@@ -65,17 +65,19 @@ struct Chip: View {
 /// 未登录时底部的预览提示条
 struct PreviewBanner: View {
     @EnvironmentObject var store: Store
+    @AppStorage(Store.loginUnlockedKey) private var loginUnlocked = false
     var onLogin: () -> Void
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "eye").font(.title3)
             VStack(alignment: .leading, spacing: 2) {
-                Text("预览模式").font(.subheadline.bold())
-                Text(store.sync.previewState == "none" ? "老师还没有公开数据" : store.sync.previewState == "error" ? "暂时连不上云端，显示的是上次的数据" : "只能查看，登录后才能修改")
+                Text(store.isMember ? "普通用户 · 只读" : "预览模式").font(.subheadline.bold())
+                Text(store.sync.previewState == "none" ? (store.isMember ? "老师还没有数据，或账号已被停用" : "老师还没有公开数据") : store.sync.previewState == "error" ? "暂时连不上云端，显示的是上次的数据" : store.isMember ? "查看老师的班级数据，不能修改" : loginUnlocked ? "只能查看，登录后才能修改" : "只能查看")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Button("登录", action: onLogin).buttonStyle(.borderedProminent)
+            // 登录入口默认隐藏：设置页底部的作业通图标连续点三下才显示
+            if loginUnlocked && !store.isMember { Button("登录", action: onLogin).buttonStyle(.borderedProminent) }
         }
         .padding(12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))

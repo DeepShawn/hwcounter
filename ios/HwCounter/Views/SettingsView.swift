@@ -4,6 +4,10 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @EnvironmentObject var store: Store
     @AppStorage("onboarded") private var onboarded = false
+    /// 登录入口默认隐藏：底部的作业通图标连续点三下才显示（只存本机）；已登录时总是显示，方便退出
+    @AppStorage(Store.loginUnlockedKey) private var loginUnlocked = false
+    @State private var logoTip = ""
+    @State private var logoTipTask: Task<Void, Never>? = nil
     @State private var email = ""
     @State private var password = ""
     @State private var history: [HistoryItem]? = nil
@@ -13,7 +17,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            cloudSection
+            if store.sync.email != nil || loginUnlocked { cloudSection }
             Section("主题") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], spacing: 10) {
                     ForEach(Palette.all) { p in
@@ -164,7 +168,7 @@ struct SettingsView: View {
                 }
             }
             Section {
-                Text("作业通 iPad 版 \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")").font(.footnote).foregroundStyle(.secondary)
+                aboutRow
             }
         }
         .navigationTitle("设置")
@@ -173,10 +177,53 @@ struct SettingsView: View {
         .sheet(isPresented: Binding(get: { history != nil }, set: { if !$0 { history = nil } })) { historySheet }
     }
 
+    // ---------- 关于：作业通图标（连续点三下 显示 / 隐藏登录入口） ----------
+    private var aboutRow: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "book.fill").font(.system(size: 26, weight: .medium)).foregroundStyle(.white)
+                .frame(width: 56, height: 56)
+                .background(Palette.of(store.data.theme).gradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .contentShape(Rectangle())
+                .onTapGesture(count: 3) {
+                    if store.sync.email != nil { showLogoTip("已登录：可在页面顶部的「云端同步」退出登录"); return }
+                    loginUnlocked.toggle()
+                    showLogoTip(loginUnlocked ? "已显示登录入口（在页面顶部）" : "已隐藏登录入口")
+                }
+                .accessibilityLabel("作业通")
+            Text("作业通 iPad 版 \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")").font(.footnote).foregroundStyle(.secondary)
+            if !logoTip.isEmpty { Text(logoTip).font(.caption).foregroundStyle(.secondary) }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+    }
+
+    private func showLogoTip(_ t: String) {
+        logoTip = t
+        logoTipTask?.cancel()
+        logoTipTask = Task { @MainActor in try? await Task.sleep(nanoseconds: 2_500_000_000); if !Task.isCancelled { logoTip = "" } }
+    }
+
     // ---------- 云端 ----------
     @ViewBuilder private var cloudSection: some View {
         Section {
-            if let mail = store.sync.email {
+            if let m = store.member {
+                // 普通用户（凭邀请码注册）：只读查看老师的数据，可以修改密码
+                HStack {
+                    Image(systemName: "person.crop.circle").foregroundStyle(Color.accentColor).font(.title2)
+                    VStack(alignment: .leading) {
+                        Text("\(m.name)（\(m.username.isEmpty ? (CloudConfig.displayEmail(store.sync.email) ?? "") : m.username)）").font(.headline)
+                        Text(m.status == "active" ? "普通用户 · 只读查看老师的班级数据" : "账号已被老师停用").font(.caption).foregroundStyle(m.status == "active" ? Color.secondary : Color.red)
+                    }
+                    Spacer()
+                    if store.sync.previewState == "loading" { ProgressView() }
+                }
+                HStack {
+                    Button("刷新数据") { Task { await store.refreshPreview() } }.buttonStyle(.borderedProminent)
+                    Button("修改密码") { changingPw = true }.buttonStyle(.bordered)
+                    Spacer()
+                    Button("退出登录", role: .destructive) { Task { await store.signOut() } }.buttonStyle(.bordered)
+                }
+            } else if let mail = store.sync.email {
                 HStack {
                     Image(systemName: "checkmark.icloud.fill").foregroundStyle(.green).font(.title2)
                     VStack(alignment: .leading) {
@@ -208,14 +255,14 @@ struct SettingsView: View {
                     Button("退出登录", role: .destructive) { Task { await store.signOut() } }.buttonStyle(.bordered)
                 }
             } else {
-                Text("现在是**预览模式**（只读）。登录后才能修改，数据自动在安卓、iPad、网页之间同步。").font(.callout)
-                TextField("邮箱", text: $email).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
-                SecureField("密码（至少 6 位）", text: $password)
+                Text("现在是**预览模式**（只读）。老师用邮箱登录后才能修改，数据自动在安卓、iPad、网页、Windows 之间同步；凭邀请码注册的同学、家长用用户名登录，只读查看。").font(.callout)
+                TextField("邮箱（老师）或用户名", text: $email).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
+                SecureField("密码", text: $password)
                 HStack {
                     Button("登录") { Task { await store.signIn(email, password); if store.sync.email != nil { password = "" } } }
-                        .buttonStyle(.borderedProminent).disabled(store.sync.busy || email.isEmpty || password.count < 6)
-                    Button("注册") { Task { await store.signUp(email, password) } }.buttonStyle(.bordered)
-                        .disabled(store.sync.busy || email.isEmpty || password.count < 6)
+                        .buttonStyle(.borderedProminent).disabled(store.sync.busy || email.isEmpty || password.isEmpty)
+                    Button("注册老师账号") { Task { await store.signUp(email, password) } }.buttonStyle(.bordered)
+                        .disabled(store.sync.busy || !email.contains("@") || password.count < 6)
                     Spacer()
                     Button("忘记密码？") { Task { await store.recover(email) } }.buttonStyle(.borderless).disabled(!email.contains("@"))
                 }
@@ -293,7 +340,7 @@ struct ChangePasswordSheet: View {
                     SecureField("新密码（至少 6 位）", text: $new1)
                     SecureField("再输一次新密码", text: $new2)
                 } footer: {
-                    Text("这个账号和你的游戏共用，改完后游戏里也用新密码登录。")
+                    Text(store.isMember ? "新密码需要同时包含小写字母、大写字母、数字和符号（如 Abc123!）" : "这个账号和你的游戏共用，改完后游戏里也用新密码登录。")
                 }
                 if let err { Text(err).foregroundStyle(.red) }
             }

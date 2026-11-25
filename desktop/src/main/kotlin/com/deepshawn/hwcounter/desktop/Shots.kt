@@ -62,4 +62,11 @@ fun main(args: Array<String>) {
     shot("08_settings") { it.tab = Tab.SETTINGS }
     shot("09_guide", 900) { it.guide = true }
     shot("10_home_dark", dark = true) { }
+    // 老师登录后：可以修改
+    shot("11_teacher_assignment") { it.mode = Mode.TEACHER; it.open(Route.Assign("a13")) }
+    shot("12_teacher_sheet") { s -> s.mode = Mode.TEACHER; s.open(Route.Assign("a13")); s.dialog = { StudentSheet(s, c, assigns[13], st[3]) {} } }
+    shot("13_teacher_settings", 2600) { it.mode = Mode.TEACHER; it.tab = Tab.SETTINGS }
+    shot("14_teacher_student", 1400) { s -> s.mode = Mode.TEACHER; s.open(Route.Student("s0")); s.dialog = { ScoreDialog(s, c, listOf("s0"), "给 张锦宇 加减分") } }
+    shot("15_login_unlocked", 1200) { it.prefs.loginUnlocked = true; it.tab = Tab.SETTINGS }
+    Prefs().loginUnlocked = false
 }

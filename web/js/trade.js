@@ -18,9 +18,19 @@ const px = (p) => Math.max(Number(p.price) || 0, 1);
 
 // ---------------- 账号状态（本机） ----------------
 const listeners = new Set();
-let acct = { session: session(), me: null, loading: false };
+// 登录入口默认隐藏：在 设置 页连续点三下底部的作业通图标才显示（只存本机）；已登录时总是显示，方便退出
+const UNLOCK_KEY = 'hw.loginUnlocked';
+const readUnlock = () => { try { return localStorage.getItem(UNLOCK_KEY) === '1'; } catch { return false; } };
+let acct = { session: session(), me: null, loading: false, unlocked: readUnlock() };
 const emit = () => { for (const f of listeners) f(acct); };
 export function setAccount(patch) { acct = { ...acct, ...patch }; emit(); }
+export function setLoginUnlocked(v) {
+  try { if (v) localStorage.setItem(UNLOCK_KEY, '1'); else localStorage.removeItem(UNLOCK_KEY); } catch { /* 本机 */ }
+  setAccount({ unlocked: !!v });
+}
+export const loginUnlocked = () => acct.unlocked;
+/** 登录入口是否可见：已解锁，或已经登录 */
+export const loginVisible = (a) => !!(a.unlocked || a.session);
 export function useAccount() {
   const [a, setA] = useState(acct);
   useEffect(() => { listeners.add(setA); return () => listeners.delete(setA); }, []);
@@ -65,15 +75,17 @@ export function AccountSection({ kit, onChanged, openAccounts }) {
   const a = useAccount();
   const [mode, setMode] = useState('login');
   const [f, setF] = useState({ user: '', pw: '', code: '', name: '' });
-  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [pw, setPw] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const run = async (fn) => { setBusy(true); setErr(''); try { await fn(); await refreshMe(); onChanged?.(); } catch (e) { setErr(e.message || '失败'); } finally { setBusy(false); } };
+  if (!loginVisible(a)) return null;
   if (a.session) {
     const mem = isMember(a.me);
-    return html`<${Group} title="账号">
+    return html`${pw && html`<${ChangePassword} onClose=${() => setPw(false)} />`}<${Group} title="账号">
       <${Cell} title=${mem ? `${a.me.display_name || a.me.username}（${a.me.username}）` : displayName(a.session.email)} sub=${mem ? (a.me.status === 'active' ? '普通用户 · 只读查看老师的班级数据 · 统计 → 股票 → 炒股' : '账号已被老师停用') : a.me ? '老师账号（管理员）' : '正在读取身份…'} />
       ${a.me && !mem && html`<${Cell} title="用户与邀请码" sub="生成一次性邀请码、管理用户、发放模拟币" onClick=${openAccounts} />`}
-      <${Cell} title="退出登录" sub="回到未登录预览" onClick=${() => run(async () => { await api.signOut(); })} />
+      <${Cell} title="修改密码" sub="先输入旧密码，再设置新密码" onClick=${() => setPw(true)} />
+      <${Cell} title="退出登录" sub=${mem ? '回到未登录预览' : '回到未登录预览；退出前先把改动上传到云端'} onClick=${() => run(async () => { await api.signOut(); })} />
     </${Group}>`;
   }
   return html`<${Group} title="账号">
@@ -90,6 +102,31 @@ export function AccountSection({ kit, onChanged, openAccounts }) {
       <div class="muted acct-note">${mode === 'login' ? '老师用邮箱登录后能管理邀请码和用户；凭邀请码注册的用户用用户名登录，只读查看并可模拟炒股。' : '邀请码由老师生成，一个码只能注册一个账号。模拟币只用于炒股模拟，与真实货币无关。'}</div>
     </div>
   </${Group}>`;
+}
+
+/** 修改密码：旧密码 + 两次新密码（老师和普通用户都可以改，与安卓一致） */
+function ChangePassword({ onClose }) {
+  const [f, setF] = useState({ old: '', n1: '', n2: '' }); const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [ok, setOk] = useState(false);
+  const member = isMember(acct.me);
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const submit = async () => {
+    const e = f.n1.length < 6 ? '新密码至少 6 位' : member && !strongPw(f.n1) ? '新密码需要同时包含小写字母、大写字母、数字和符号（如 Abc123!）' : f.n1 !== f.n2 ? '两次输入的新密码不一样' : f.n1 === f.old ? '新密码不能和旧密码一样' : '';
+    setErr(e); if (e) return;
+    setBusy(true);
+    try { await api.changePassword(f.old, f.n1); setOk(true); } catch (x) { setErr(x.message || '修改失败'); } finally { setBusy(false); }
+  };
+  return html`<div class="sheet-bg" onClick=${(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}><div class="sheet ed-sheet" role="dialog" aria-modal="true" aria-label="修改密码">
+    <div class="sheet-h"><b>修改密码</b><button class="guide-skip" onClick=${onClose} disabled=${busy}>关闭</button></div>
+    ${ok ? html`<p class="ed-text">密码已修改，下次登录请用新密码。</p><div class="sheet-btns"><button class="btn1" onClick=${onClose}>好的</button></div>`
+      : html`<div class="acct ed-body">
+        <input type="password" placeholder="旧密码" value=${f.old} onInput=${set('old')} autocomplete="current-password" />
+        <input type="password" placeholder=${member ? '新密码：含小写、大写、数字和符号' : '新密码（至少 6 位）'} value=${f.n1} onInput=${set('n1')} autocomplete="new-password" />
+        <input type="password" placeholder="再输一次新密码" value=${f.n2} onInput=${set('n2')} autocomplete="new-password" />
+        ${!member && html`<div class="muted acct-note">这个账号和你的游戏共用，改完后游戏里也用新密码登录。</div>`}
+        ${err && html`<div class="acct-err">${err}</div>`}
+        <button class="btn1" disabled=${busy || !f.old || !f.n1} onClick=${submit}>${busy ? '提交中…' : '确认修改'}</button>
+      </div>`}
+  </div></div>`;
 }
 
 // ---------------- 统计 → 股票 → 炒股 ----------------
@@ -126,6 +163,9 @@ export function TradePanel({ kit, c, data, openSettings, openAccounts }) {
     return () => { alive = false; };
   }, [a.session?.userId, tick]);
 
+  if (!a.session && !a.unlocked) {
+    return html`<${Group} title="模拟炒股"><div class="cell-pad muted">用老师发放的模拟币（与真实货币无关）买卖信誉分、关注度“股票”：个人和小组都有，股价随班级数据变化。</div></${Group}>`;
+  }
   if (!a.session) {
     return html`<${Group} title="模拟炒股">
       <div class="cell-pad muted">用老师发放的模拟币（与真实货币无关）买卖信誉分、关注度“股票”：个人和小组都有，股价随班级数据变化。<br />· 老师：登录后在 设置 → 账号 → 用户与邀请码 生成邀请码、发放模拟币<br />· 学生 / 家长：在 设置 → 账号 用邀请码注册</div>
