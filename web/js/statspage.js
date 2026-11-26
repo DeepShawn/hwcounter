@@ -6,7 +6,7 @@ import htm from '../vendor/htm.module.js';
 import { analysisXlsx, analysisHtml } from './reportexport.js';
 import { StockTab, creditColor } from './stockpage.js';
 import { Icon } from './icons.js';
-import { STATUS, fmtNum, signed, compareStudentNumbers, rechargeCounts, defaultPlagiarism, plagiarismFactor, copiedFrom, copiedBy, plagiarized, plagiarismDesc, creditAll, creditGroups, creditLevel, r2 } from './model.js';
+import { STATUS, fmtNum, signed, compareStudentNumbers, rechargeCounts, defaultPlagiarism, plagiarismFactor, copiedFrom, copiedBy, plagiarized, plagiarismDesc, creditAll, creditGroups, creditLevel, r2, analysisExams } from './model.js';
 import {
   report as buildReport, text as reportText, examReport, periodBounds, periodLabel, difficultyText, discriminationText,
   attention, attentionWeekly, ATT_LEVELS, stockBoard, groupStockBoard, SPANS, groupReport, groupDuel, classResets, plagiarismReport, plagiarismAssignments,
@@ -304,12 +304,13 @@ const stamp = () => { const d = new Date(); const p = (n) => String(n).padStart(
 // ---------------- 考试 ----------------
 function Exams({ kit, c, rules, open }) {
   const { Seg, Empty, Avatar, Cell } = kit;
-  const subjects = useMemo(() => [...new Set((c.exams || []).map((e) => e.subject).filter(Boolean))], [c]);
+  const subjects = useMemo(() => [...new Set(analysisExams(c).map((e) => e.subject).filter(Boolean))], [c]);
+  const skipped = (c.exams || []).filter((e) => e.skipAnalysis);
   const [si, setSi] = useKeep('examSubject');
   const idx = si > subjects.length ? 0 : si;
   const r = useMemo(() => examReport(c, subjects[idx - 1] ?? null), [c, idx, subjects.join()]);
   const corr = useMemo(() => buildReport(c, rules, { range: 'ALL' }).examCorrelation, [c, rules]);
-  const sub = subjects.length > 1 && html`<div class="pad"><${Seg} items=${['全部', ...subjects].map((l, i) => [i, l])} value=${idx} onChange=${setSi} /></div>`;
+  const sub = html`${skipped.length > 0 && html`<div class="meta">${skipped.length} 场考试不计入分析：${skipped.map((e) => e.title).join('、')}</div>`}${subjects.length > 1 && html`<div class="pad"><${Seg} items=${['全部', ...subjects].map((l, i) => [i, l])} value=${idx} onChange=${setSi} /></div>`}`;
   if (!r.exams.length) return html`${sub}<${Empty} emoji="📝" text="还没有考试成绩：老师录入考试后，这里会出现均分走势、名次进退和薄弱学生" />`;
   const ins = [...r.insights, ...(corr != null && Math.abs(corr) >= 0.3 ? [{ level: 'INFO', text: `作业交齐率与考试得分率的相关系数 r = ${corr.toFixed(2)}（${corr > 0 ? '正' : '负'}相关）。` }] : [])];
   const last = r.exams[r.exams.length - 1]; const ls = r.stats[last.id];

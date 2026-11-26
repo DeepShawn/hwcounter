@@ -119,6 +119,10 @@ export function upsertExam(c, e) {
   const full = { id: newId(), subject: '', date: Date.now(), fullScore: 100, scores: {}, absent: [], note: '', autoScore: true, ...e };
   return { ...c, exams: exams.some((x) => x.id === full.id) ? exams.map((x) => (x.id === full.id ? full : x)) : [...exams, full] };
 }
+/** 不计入分析：ids 里的考试设为 skip（其余不变） */
+export const setSkipAnalysis = (c, ids, skip) => { const set = new Set(ids); return { ...c, exams: (c.exams || []).map((e) => (set.has(e.id) ? { ...e, skipAnalysis: skip } : e)) }; };
+/** 一次选好哪些考试不计入分析（其余都计入） */
+export const setSkippedExams = (c, ids) => { const set = new Set(ids); return { ...c, exams: (c.exams || []).map((e) => ({ ...e, skipAnalysis: set.has(e.id) })) }; };
 export const deleteExam = (c, id) => ({ ...c, exams: (c.exams || []).filter((e) => e.id !== id) });
 /** 录入一位同学的成绩（score 为 null 时清除），absent 为 true 时记为缺考 */
 export const setExamScore = (c, eid, sid, score, absent = false) => ({

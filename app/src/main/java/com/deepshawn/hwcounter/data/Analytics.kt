@@ -345,7 +345,7 @@ object Analytics {
             else -> c.students.associate { it.id to rules.initial }
         }
         val rankOf = stats.sortedByDescending { it.score }.mapIndexed { i, s -> s.student.id to i + 1 }.toMap()
-        val examsIn = c.exams.filter { e -> (w.start == null || e.date >= w.start) && (w.end == null || e.date < w.end) }.sortedBy { it.date }
+        val examsIn = c.analysisExams.filter { e -> (w.start == null || e.date >= w.start) && (w.end == null || e.date < w.end) }.sortedBy { it.date }
         val examPctOf: Map<String, Double> = c.students.associate { st ->
             val v = examsIn.mapNotNull { e -> e.scores[st.id]?.let { if (e.fullScore > 0) it / e.fullScore else null } }
             st.id to (if (v.isEmpty()) Double.NaN else v.average())
@@ -416,7 +416,7 @@ object Analytics {
             longestPerfectRun = best, avgScore = if (scores.isEmpty()) 0.0 else scores.average(),
             avgScoreDelta = if (students.isEmpty()) 0.0 else students.map { it.scoreDelta }.average(), examCorrelation = corr,
             spec = spec, buckets = buckets, bucketUnit = unit,
-            sources = sources(c, rules, list, w, examsIn), reasons = reasons(c, w),
+            sources = sources(c, rules, list, w, c.exams.filter { e -> (w.start == null || e.date >= w.start) && (w.end == null || e.date < w.end) }), reasons = reasons(c, w),
             tiers = tiers(withData), streakers = withData.filter { it.handStreak >= 3 }.sortedByDescending { it.handStreak }.take(8),
             risk = risk(c), weakSubjects = weakSubjects(c, list, byId),
             rateMedian = median, rateStd = std, rounds = rounds(c), progress = progress(c, rules), examCount = examsIn.size,
@@ -533,7 +533,7 @@ object Analytics {
             fun inside(t: Long) = (from == null || from.counts(t)) && (to == null || !to.counts(t))
             val l = sorted.filter { inside(it.createdAt) }
             if (l.isEmpty() && to != null) continue
-            val pcts = c.exams.filter { inside(it.date) }.flatMap { e -> e.scores.values.map { it / e.fullScore } }
+            val pcts = c.analysisExams.filter { inside(it.date) }.flatMap { e -> e.scores.values.map { it / e.fullScore } }
             val label = if (from == null) "首次重置前" else "第 $i 次重置后" + if (to == null) "（本轮）" else ""
             out += Round(i, label, from?.start, to?.start, kpi(c, l), if (pcts.isEmpty()) null else pcts.average(), from)
         }
@@ -573,7 +573,7 @@ object Analytics {
             Triple(sorted.take(h), sorted.drop(h), "还没有全班重置：前 $h 次 vs 后 ${sorted.size - h} 次")
         }
         val cut = after.first().createdAt
-        val exBefore = c.exams.filter { it.date < cut }; val exAfter = c.exams.filter { it.date >= cut }
+        val exBefore = c.analysisExams.filter { it.date < cut }; val exAfter = c.analysisExams.filter { it.date >= cut }
         val all = c.students.mapNotNull { st ->
             val b = side(c, rules, st, before, exBefore); val a = side(c, rules, st, after, exAfter)
             if (b.expected < 2 || a.expected < 2) return@mapNotNull null
@@ -905,7 +905,7 @@ object Analytics {
     }
 
     fun examReport(c: SchoolClass, subject: String? = null): ExamReport {
-        val exams = c.exams.filter { subject == null || it.subject == subject }.sortedBy { it.date }
+        val exams = c.analysisExams.filter { subject == null || it.subject == subject }.sortedBy { it.date }
         val stats = exams.associate { it.id to it.stat(c.students) }
         val avgPct = exams.mapNotNull { e -> stats.getValue(e.id).takeIf { it.count > 0 }?.let { e to it.avg / e.fullScore } }
         val subjects = exams.groupBy { it.subject.ifBlank { "其他" } }.mapNotNull { (k, l) ->

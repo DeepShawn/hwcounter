@@ -109,6 +109,10 @@ object Ops {
     // ---------- 考试 ----------
     fun upsertExam(c: SchoolClass, e: Exam) = c.upsertExam(e)
     fun deleteExam(c: SchoolClass, id: String) = c.removeExam(id)
+    /** 不计入分析：ids 里的考试设为 skip（其余不变） */
+    fun setSkipAnalysis(c: SchoolClass, ids: Collection<String>, skip: Boolean) = c.copy(exams = c.exams.map { if (it.id in ids) it.copy(skipAnalysis = skip) else it })
+    /** 一次选好哪些考试不计入分析（其余都计入） */
+    fun setSkippedExams(c: SchoolClass, ids: Set<String>) = c.copy(exams = c.exams.map { it.copy(skipAnalysis = it.id in ids) })
     /** 录入一位同学的成绩（score 为 null 时清除），absent 为 true 时记为缺考 */
     fun setExamScore(c: SchoolClass, eid: String, sid: String, score: Double?, absent: Boolean) = c.copy(exams = c.exams.map { e ->
         if (e.id != eid) e else e.copy(scores = if (score == null || absent) e.scores - sid else e.scores + (sid to score), absent = if (absent) (e.absent + sid).distinct() else e.absent - sid)

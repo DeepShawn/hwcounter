@@ -10,7 +10,7 @@ import {
 import { api, session } from './cloud.js';
 import { useStore } from './store.js';
 import * as O from './ops.js';
-import { setKit, useLongPress, Sheet, Confirm, Toast, AssignDialog, StudentSheet, SelectBar, StudentEdit, RosterImport, ScoreDialog, RechargeDialog, ExamDialog, ExamScores, ClassDialog, CloudCard, HistorySheet, ConflictSheet, RulesEditor } from './editui.js';
+import { setKit, useLongPress, Sheet, Confirm, Toast, AssignDialog, StudentSheet, SelectBar, StudentEdit, RosterImport, ScoreDialog, RechargeDialog, ExamDialog, ExamScores, SkipExamsDialog, ClassDialog, CloudCard, HistorySheet, ConflictSheet, RulesEditor } from './editui.js';
 import { AccountSection, AccountsPage, TradePanel, refreshMe, useAccount, isMember, setLoginUnlocked } from './trade.js';
 import { installGestureGuard } from './gestures.js';
 import { StatsPage, PlagGraph } from './statspage.js';
@@ -484,12 +484,15 @@ function Stats(props) {
 function AccountsView({ data, back }) { return h(AccountsPage, { kit: KIT, data, back }); }
 function ExamList({ c, back, open, ed, data }) {
   const exams = [...(c.exams || [])].sort((a, b) => b.date - a.date);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(false); const [picking, setPicking] = useState(false);
+  const skipped = exams.filter((e) => e.skipAnalysis).length;
   return html`<${Page} title="考试" onBack=${back} actions=${ed && html`<${IconBtn} d=${I.plus} label="新建考试" onClick=${() => setAdding(true)} />`}>
+    ${picking && html`<${SkipExamsDialog} exams=${exams} onClose=${() => setPicking(false)} onSave=${(ids) => ed.cls((x) => O.setSkippedExams(x, ids), ids.length ? `${ids.length} 场考试不计入分析` : '全部考试都计入分析')} />`}
+    ${exams.length > 0 && (ed || skipped > 0) && html`<div class="chips ed-tools">${ed ? html`<button class="chip" onClick=${() => setPicking(true)}>${skipped ? `不计入分析：${skipped} 场 · 修改` : '选择不计入分析的考试'}</button>` : html`<span class="muted ed-hint">${skipped} 场考试不计入分析</span>`}</div>`}
     ${adding && html`<${ExamDialog} subjects=${data.settings.subjects || []} onClose=${() => setAdding(false)}
       onSave=${(e) => { const full = { ...e, id: O.newExamId() }; ed.cls((x) => O.upsertExam(x, full), `已新建考试「${e.title}」`); open({ view: 'exam', id: full.id }); }} />`}
     ${!exams.length && html`<${Empty} emoji="📝" text=${ed ? '还没有考试，点右上角 ＋ 新建' : '还没有考试'} />`}
-    <${Group}>${exams.map((e) => { const x = examStats(c, e); return html`<${Cell} key=${e.id} title=${e.title} sub=${`${fmtDate(e.date)}${e.subject ? ' · ' + e.subject : ''} · ${x.n} 人`} right=${html`<b>${x.avg == null ? '—' : fmtNum(x.avg)}</b>`} onClick=${() => open({ view: 'exam', id: e.id })} />`; })}</${Group}>
+    <${Group}>${exams.map((e) => { const x = examStats(c, e); return html`<${Cell} key=${e.id} title=${e.title} sub=${`${e.skipAnalysis ? '不计入分析 · ' : ''}${fmtDate(e.date)}${e.subject ? ' · ' + e.subject : ''} · ${x.n} 人`} right=${html`<b>${x.avg == null ? '—' : fmtNum(x.avg)}</b>`} onClick=${() => open({ view: 'exam', id: e.id })} />`; })}</${Group}>
   </${Page}>`;
 }
 function ExamView({ c, rules, id, back, open, ed, data }) {
@@ -503,7 +506,8 @@ function ExamView({ c, rules, id, back, open, ed, data }) {
   return html`<${Page} title=${e.title} onBack=${back} actions=${ed && html`<${IconBtn} d=${I.edit} label="修改考试" onClick=${() => setEditing(true)} />`}>
     ${editing && html`<${ExamDialog} initial=${e} subjects=${data.settings.subjects || []} onClose=${() => setEditing(false)} onDelete=${() => { setEditing(false); setDel(true); }} onSave=${(n) => ed.cls((y) => O.upsertExam(y, n), '已保存')} />`}
     ${del && html`<${Confirm} title="删除这场考试？" text=${`「${e.title}」的成绩会一起删除，积分随之重算。删除后可以撤销。`} ok="删除" danger onClose=${() => setDel(false)} onOk=${() => { ed.cls((y) => O.deleteExam(y, e.id), `已删除「${e.title}」`); back(); }} />`}
-    <div class="meta">${fmtDate(e.date)}${e.subject ? ' · ' + e.subject : ''} · 满分 ${fmtNum(x.full)}${e.note ? ' · ' + e.note : ''}</div>
+    <div class="meta">${fmtDate(e.date)}${e.subject ? ' · ' + e.subject : ''} · 满分 ${fmtNum(x.full)}${e.note ? ' · ' + e.note : ''}${e.skipAnalysis ? ' · 不计入分析' : ''}</div>
+    ${ed && html`<div class="chips ed-tools"><button class=${'chip' + (e.skipAnalysis ? ' on' : '')} onClick=${() => ed.cls((y) => O.setSkipAnalysis(y, [e.id], !e.skipAnalysis), e.skipAnalysis ? `「${e.title}」重新计入分析` : `「${e.title}」不计入分析`)}>${e.skipAnalysis ? '不计入分析（点按改回计入）' : '不计入分析'}</button></div>`}
     ${ed && html`<div class="pad"><${Seg} items=${[['rank', '成绩排名'], ['edit', '录入成绩']]} value=${tab} onChange=${setTab} /></div>`}
     ${ed && tab === 'edit' ? html`<${ExamScores} c=${c} e=${e} sorted=${sortStudents(c.students)} onScore=${(sid, v, ab) => ed.cls((y) => O.setExamScore(y, e.id, sid, v, ab), null)} />` : html`
     <div class="tiles">

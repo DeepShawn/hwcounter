@@ -488,3 +488,6 @@ main:has(.ed-selbar) { padding-bottom: calc(200px + env(safe-area-inset-bottom))
 .app:has(.ed-selbar) .ed-toast { bottom: calc(230px + env(safe-area-inset-bottom)); }
 .sheet-btns button, .guide-btns button { text-align: center; }
 .ed-toast span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ed-check { gap: 12px; }
+.ed-box { flex: none; width: 22px; height: 22px; border-radius: 7px; background: var(--chip); color: #fff; display: grid; place-items: center; font-style: normal; font-weight: 700; font-size: 14px; }
+.ed-check.on .ed-box { background: var(--accent); }

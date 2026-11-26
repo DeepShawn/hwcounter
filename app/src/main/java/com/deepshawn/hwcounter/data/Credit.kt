@@ -45,7 +45,7 @@ object Credit {
     /** 全班在时刻 [at] 的个人信誉分（从高到低；没有数据的排在最后） */
     fun all(c: SchoolClass, at: Long = System.currentTimeMillis()): List<Result> {
         val sorted = c.assignments.filter { it.createdAt <= at }.sortedWith(compareByDescending<Assignment> { it.createdAt }.thenByDescending { it.id })
-        val exams = c.exams.filter { it.date <= at }.sortedWith(compareBy<Exam> { it.date }.thenBy { it.id })
+        val exams = c.analysisExams.filter { it.date <= at }.sortedWith(compareBy<Exam> { it.date }.thenBy { it.id })
         return c.students.map { one(it, sorted, exams) }.sortedWith(compareByDescending<Result> { it.hasData }.thenByDescending { it.index })
     }
 
@@ -183,7 +183,7 @@ private fun SchoolClass.computeCreditPeriods(cr: CreditRules): List<CreditPeriod
     val buckets = LinkedHashMap<String, Pair<String, MutableList<Assignment>>>()
     for (a in sorted) { val (k, l) = periodKeyOf(cr.period, a); buckets.getOrPut(k) { l to ArrayList() }.second += a }
     val groups = Credit.groupsOf(this)
-    val examsSorted = exams.sortedWith(compareBy<Exam> { it.date }.thenBy { it.id })
+    val examsSorted = analysisExams.sortedWith(compareBy<Exam> { it.date }.thenBy { it.id })
     val out = ArrayList<CreditPeriod>()
     for ((key, v) in buckets) {
         val (label, list) = v

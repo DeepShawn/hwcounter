@@ -119,7 +119,7 @@ object Settle {
             .groupBy { it.group }.filterValues { it.size >= 2 }.mapValues { (_, m) -> m.map { base.getValue(it.id).rate }.average() }
         val topRate = groupAvg.values.maxOrNull()
         val topGroups = if (topRate == null || groupAvg.size < 2) emptySet() else groupAvg.filterValues { kotlin.math.abs(it - topRate) < 1e-9 }.keys
-        val spread = if (sr.spreadEnabled) spread(c, sr, base, prevRate, c.exams.filter { inRound(cur, end, it.date) }) else emptyMap()
+        val spread = if (sr.spreadEnabled) spread(c, sr, base, prevRate, c.analysisExams.filter { inRound(cur, end, it.date) }) else emptyMap()
         val lines = c.students.map { st ->
             val m = base.getValue(st.id)
             if (m.expected < sr.minExpected) return@map m.copy(skipped = true, reasons = listOf("本轮应交 ${m.expected} 次，少于 ${sr.minExpected} 次，不结算"))

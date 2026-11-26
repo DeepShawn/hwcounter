@@ -123,6 +123,7 @@ fun ExamListScreen(vm: AppViewModel, data: AppData) {
     var menuFor by remember { mutableStateOf<Exam?>(null) }
     var editing by remember { mutableStateOf<Exam?>(null) }
     var deleting by remember { mutableStateOf<Exam?>(null) }
+    var picking by remember { mutableStateOf(false) }
     val exams = c.exams.sortedByDescending { it.date }
     val rules = data.settings.rules.exam
 
@@ -140,6 +141,14 @@ fun ExamListScreen(vm: AppViewModel, data: AppData) {
             Text(
                 "考试成绩与作业分开统计" + if (rules.enabled) " · 按分数档自动加减积分" else " · 不自动加减积分",
                 fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = 10.dp),
+            )
+        }
+        if (exams.isNotEmpty() && (!readOnly || exams.any { it.skipAnalysis })) item(key = "skip") {
+            val n = exams.count { it.skipAnalysis }
+            Text(
+                (if (n > 0) "不计入分析：$n 场" else "全部考试都计入分析") + if (!readOnly) " · 选择不计入分析的考试 ›" else "",
+                fontSize = 13.sp, color = colors.primary, fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp).clip(CircleShape).clickable(enabled = !readOnly) { picking = true }.padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
         if (exams.isEmpty()) {
@@ -185,7 +194,7 @@ fun ExamListScreen(vm: AppViewModel, data: AppData) {
                     Column(Modifier.weight(1f)) {
                         Text(e.title, fontWeight = FontWeight.Medium, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
-                            listOf(e.subject, shortDate.format(Date(e.date)), "满分 ${e.fullScore.fmt()}", "${st.count} 人" + if (st.missing > 0) "（${st.missing} 人未录入）" else "").filter { it.isNotBlank() }.joinToString(" · "),
+                            listOf(if (e.skipAnalysis) "不计入分析" else "", e.subject, shortDate.format(Date(e.date)), "满分 ${e.fullScore.fmt()}", "${st.count} 人" + if (st.missing > 0) "（${st.missing} 人未录入）" else "").filter { it.isNotBlank() }.joinToString(" · "),
                             fontSize = 12.sp, color = colors.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -204,8 +213,33 @@ fun ExamListScreen(vm: AppViewModel, data: AppData) {
         ActionSheet(true, e.title, listOf(
             SheetAction("编辑考试信息") { editing = e },
             SheetAction("导入成绩到这场考试") { kit.nav.push(Route.ExamImport(e.id)) },
+            SheetAction(if (e.skipAnalysis) "计入分析" else "不计入分析", if (e.skipAnalysis) "重新参加考试分析等统计" else "不参加考试分析、关注度、信誉分等统计") {
+                vm.setSkipAnalysis(listOf(e.id), !e.skipAnalysis); kit.undoable(if (e.skipAnalysis) "「${e.title}」重新计入分析" else "「${e.title}」不计入分析")
+            },
             SheetAction("删除", "成绩和相应的积分加减一起删除", danger = true) { deleting = e },
         ), onDismiss = { menuFor = null })
+    }
+    if (picking) {
+        var sel by remember { mutableStateOf(exams.filter { it.skipAnalysis }.map { it.id }.toSet()) }
+        HyperDialog(true, "选择不计入分析的考试", { picking = false }, summary = "选中的考试不参加考试分析、关注度、信誉分、小组对比、个人分析等统计；成绩和本场的加减积分照常", confirmText = "保存", onConfirm = {
+            vm.setSkippedExams(sel); picking = false; kit.undoable(if (sel.isEmpty()) "全部考试都计入分析" else "${sel.size} 场考试不计入分析")
+        }) {
+            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                exams.forEach { e ->
+                    val on = e.id in sel
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { sel = if (on) sel - e.id else sel + e.id }.padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(if (on) colors.primary else colors.secondaryContainer), contentAlignment = Alignment.Center) {
+                            if (on) Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("${e.subject} ${e.title}".trim(), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(shortDate.format(Date(e.date)), fontSize = 12.sp, color = colors.onSurfaceVariantSummary)
+                        }
+                    }
+                }
+            }
+        }
     }
     deleting?.let { e ->
         HyperDialog(true, "删除「${e.title}」？", { deleting = null }, summary = "这场考试的成绩和按分数档加减的积分会一起删除，可撤销。", confirmText = "删除", danger = true, onConfirm = {
@@ -230,6 +264,7 @@ fun ExamInfoDialog(initial: Exam?, subjects: List<String>, onDismiss: () -> Unit
     var full by remember { mutableStateOf((initial?.fullScore ?: 100.0).fmt()) }
     var day by remember { mutableStateOf(startOfDay(initial?.date ?: System.currentTimeMillis())) }
     var auto by remember { mutableStateOf(initial?.autoScore ?: true) }
+    var skip by remember { mutableStateOf(initial?.skipAnalysis ?: false) }
     var pickDay by remember { mutableStateOf(false) }
     val colors = MiuixTheme.colorScheme
     val fullV = full.trim().toDoubleOrNull()?.takeIf { it > 0 && it.isFinite() }
@@ -240,7 +275,7 @@ fun ExamInfoDialog(initial: Exam?, subjects: List<String>, onDismiss: () -> Unit
             val base = initial ?: Exam(title = title.trim())
             // 保留原来的时分，只改日期
             val keep = initial?.let { it.date - startOfDay(it.date) } ?: (System.currentTimeMillis() - startOfDay(System.currentTimeMillis()))
-            onSave(base.copy(title = title.trim(), subject = subject.trim(), fullScore = fullV!!, date = day + keep, autoScore = auto))
+            onSave(base.copy(title = title.trim(), subject = subject.trim(), fullScore = fullV!!, date = day + keep, autoScore = auto, skipAnalysis = skip))
         },
     ) {
         TextField(title, { title = it }, label = "考试名称，如：期中考试", singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -262,6 +297,7 @@ fun ExamInfoDialog(initial: Exam?, subjects: List<String>, onDismiss: () -> Unit
             TextButton(fmtDay(day), onClick = { pickDay = true }, modifier = Modifier.weight(1.2f))
         }
         SuperSwitch(checked = auto, onCheckedChange = { auto = it }, title = "按分数档自动加减积分", insideMargin = PaddingValues(horizontal = 4.dp, vertical = 12.dp))
+        SuperSwitch(checked = skip, onCheckedChange = { skip = it }, title = "不计入分析", summary = "不参加考试分析、关注度、信誉分、小组对比、个人分析等统计；成绩照常保存", insideMargin = PaddingValues(horizontal = 4.dp, vertical = 12.dp))
     }
     if (pickDay) {
         val state = androidx.compose.material3.rememberDatePickerState(initialSelectedDateMillis = day + java.util.TimeZone.getDefault().getOffset(day))
@@ -357,7 +393,7 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
     ) {
         item(key = "sub") {
             Text(
-                listOf(e.subject, fmtDay(e.date), "满分 ${e.fullScore.fmt()}", if (e.autoScore && rules.enabled) "按分数档加减积分" else "不加减积分").filter { it.isNotBlank() }.joinToString(" · "),
+                listOf(e.subject, fmtDay(e.date), "满分 ${e.fullScore.fmt()}", if (e.autoScore && rules.enabled) "按分数档加减积分" else "不加减积分", if (e.skipAnalysis) "不计入分析" else "").filter { it.isNotBlank() }.joinToString(" · "),
                 fontSize = 13.sp, color = colors.onSurfaceVariantSummary, modifier = Modifier.padding(start = 28.dp, end = 28.dp, bottom = 10.dp),
             )
         }
@@ -466,6 +502,9 @@ fun ExamDetailScreen(vm: AppViewModel, data: AppData, examId: String) {
             vm.markAbsent(e.id, ids); kit.undoable("已把 ${ids.size} 人记为缺考")
         },
         SheetAction(if (e.autoScore) "这场不加减积分" else "这场按分数档加减积分") { vm.upsertExam(e.copy(autoScore = !e.autoScore)) },
+        SheetAction(if (e.skipAnalysis) "计入分析" else "不计入分析", if (e.skipAnalysis) "重新参加考试分析等统计" else "不参加考试分析、关注度、信誉分等统计，成绩照常保存") {
+            vm.setSkipAnalysis(listOf(e.id), !e.skipAnalysis); kit.undoable(if (e.skipAnalysis) "「${e.title}」重新计入分析" else "「${e.title}」不计入分析")
+        },
         SheetAction("删除考试", danger = true) { deleting = true },
     ), onDismiss = { menu = false })
     rowMenu?.let { s ->

@@ -23,7 +23,12 @@ data class Exam(
     val absent: List<String> = emptyList(),
     val note: String = "",
     val autoScore: Boolean = true,
+    /** 不计入分析：这场考试不参加考试分析、关注度、信誉分、小组对比、个人分析、股票行情等统计（成绩照常显示，本场的加减积分仍按 [autoScore]） */
+    val skipAnalysis: Boolean = false,
 )
+
+/** 参加分析统计的考试（去掉“不计入分析”的） */
+val SchoolClass.analysisExams: List<Exam> get() = if (exams.none { it.skipAnalysis }) exams else exams.filter { !it.skipAnalysis }
 
 /** 分数档：得分率在 [minPct, maxPct) 之间（最高档含 100%）加 delta 分 */
 @Serializable
@@ -109,7 +114,7 @@ fun Exam.ranks(): Map<String, Int> {
 
 /** 同一科目（科目为空则全部）按时间排序的考试中，这次考试的上一场 */
 fun SchoolClass.previousExam(e: Exam): Exam? =
-    exams.filter { it.id != e.id && it.date < e.date && (e.subject.isBlank() || it.subject == e.subject) }.maxByOrNull { it.date }
+    analysisExams.filter { it.id != e.id && it.date < e.date && (e.subject.isBlank() || it.subject == e.subject) }.maxByOrNull { it.date }
 
 // ---------- 修改 ----------
 

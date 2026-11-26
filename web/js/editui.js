@@ -163,11 +163,11 @@ export function RechargeDialog({ count, initial, onSave, onClose }) {
 
 // ---------- 考试 ----------
 export function ExamDialog({ initial, subjects, onSave, onDelete, onClose }) {
-  const [f, setF] = useState(() => ({ title: initial?.title || '', subject: initial?.subject || '', full: String(initial?.fullScore ?? 100), at: initial?.date || Date.now(), note: initial?.note || '', auto: initial ? initial.autoScore !== false : true }));
+  const [f, setF] = useState(() => ({ title: initial?.title || '', subject: initial?.subject || '', full: String(initial?.fullScore ?? 100), at: initial?.date || Date.now(), note: initial?.note || '', auto: initial ? initial.autoScore !== false : true, skip: !!initial?.skipAnalysis }));
   const full = num(f.full);
   const ok = f.title.trim() && full > 0;
   return html`<${Sheet} title=${initial ? '修改考试' : '新建考试'} onClose=${onClose}
-    foot=${html`${onDelete && html`<button class="btn2 danger-t" onClick=${onDelete}>删除</button>`}<button class="btn1" disabled=${!ok} onClick=${() => { onSave({ ...(initial || {}), title: f.title.trim(), subject: f.subject.trim(), fullScore: full, date: f.at, note: f.note.trim(), autoScore: f.auto }); onClose(); }}>${initial ? '保存' : '新建'}</button>`}>
+    foot=${html`${onDelete && html`<button class="btn2 danger-t" onClick=${onDelete}>删除</button>`}<button class="btn1" disabled=${!ok} onClick=${() => { onSave({ ...(initial || {}), title: f.title.trim(), subject: f.subject.trim(), fullScore: full, date: f.at, note: f.note.trim(), autoScore: f.auto, skipAnalysis: f.skip }); onClose(); }}>${initial ? '保存' : '新建'}</button>`}>
     <${Field} label="考试名称"><input autoFocus placeholder="如：第一单元测验" value=${f.title} onInput=${(e) => setF({ ...f, title: e.target.value })} /></${Field}>
     <${Field} label="科目"><input placeholder="可不填" value=${f.subject} onInput=${(e) => setF({ ...f, subject: e.target.value })} /></${Field}>
     <${Chips} items=${subjects} value=${f.subject} onPick=${(x) => setF({ ...f, subject: f.subject === x ? '' : x })} />
@@ -175,6 +175,7 @@ export function ExamDialog({ initial, subjects, onSave, onDelete, onClose }) {
     <${Field} label="日期"><input type="date" value=${dayInput(f.at)} onInput=${(e) => setF({ ...f, at: fromDayInput(e.target.value, f.at) })} /></${Field}>
     <${Field} label="备注"><input placeholder="可不填" value=${f.note} onInput=${(e) => setF({ ...f, note: e.target.value })} /></${Field}>
     <div class="ed-sw"><span>按得分率自动加减积分<small class="muted">分档在 设置 → 考试计分</small></span><${K.Switch} label="自动加减积分" on=${f.auto} onChange=${(v) => setF({ ...f, auto: v })} /></div>
+    <div class="ed-sw"><span>不计入分析<small class="muted">不参加考试分析、关注度、信誉分、小组对比、个人分析等统计；成绩照常保存</small></span><${K.Switch} label="不计入分析" on=${f.skip} onChange=${(v) => setF({ ...f, skip: v })} /></div>
   </${Sheet}>`;
 }
 
@@ -192,6 +193,19 @@ export function ExamScores({ c, e, sorted, onScore }) {
       <button class="chip" onClick=${() => onScore(s.id, null, !ab)}>${ab ? '取消缺考' : '缺考'}</button>
     </div>`;
   })}</${K.Group}>`;
+}
+
+/** 一次选好哪些考试不计入分析 */
+export function SkipExamsDialog({ exams, onSave, onClose }) {
+  const [sel, setSel] = useState(() => new Set(exams.filter((e) => e.skipAnalysis).map((e) => e.id)));
+  const flip = (id) => { const n = new Set(sel); if (n.has(id)) n.delete(id); else n.add(id); setSel(n); };
+  return html`<${Sheet} title="选择不计入分析的考试" onClose=${onClose} foot=${html`<button class="btn1" onClick=${() => { onSave([...sel]); onClose(); }}>保存（${sel.size} 场不计入）</button>`}>
+    <p class="ed-text muted">选中的考试不参加考试分析、关注度、信誉分、小组对比、个人分析和股票行情等统计；成绩照常显示，本场的加减积分仍按“按得分率自动加减积分”。</p>
+    ${exams.map((e) => html`<button class=${'cell tap ed-row ed-check' + (sel.has(e.id) ? ' on' : '')} key=${e.id} role="checkbox" aria-checked=${sel.has(e.id)} onClick=${() => flip(e.id)}>
+      <i class="ed-box">${sel.has(e.id) ? '✓' : ''}</i>
+      <div class="cell-main"><div class="cell-title">${e.subject ? e.subject + ' ' : ''}${e.title}</div><div class="cell-sub">${new Date(e.date).toLocaleDateString('zh-CN')}</div></div>
+    </button>`)}
+  </${Sheet}>`;
 }
 
 // ---------- 班级 ----------

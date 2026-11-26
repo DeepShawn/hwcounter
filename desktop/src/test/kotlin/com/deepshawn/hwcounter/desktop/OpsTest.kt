@@ -6,6 +6,8 @@ import com.deepshawn.hwcounter.data.SchoolClass
 import com.deepshawn.hwcounter.data.ScoreRules
 import com.deepshawn.hwcounter.data.Student
 import com.deepshawn.hwcounter.data.studentStats
+import com.deepshawn.hwcounter.data.analysisExams
+import com.deepshawn.hwcounter.data.Analytics
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -49,5 +51,21 @@ class OpsTest {
         val remote = AppData(classes = listOf(Ops.setStatus(Ops.addScore(base, listOf("c"), 1.0, "x"), aid, listOf("c"), HwStatus.LATE)))
         val m = Account.merge(local, remote).classes.single()
         assertEquals(HwStatus.SUBMITTED, m.assignments.single().statuses["a"]); assertEquals(HwStatus.LATE, m.assignments.single().statuses["c"]); assertEquals(1, m.scores.size)
+    }
+}
+
+class SkipAnalysisTest {
+    private val st = listOf(Student(id = "a", no = "01", name = "甲"), Student(id = "b", no = "02", name = "乙"))
+    private fun ex(id: String, d: Long, a: Double, b: Double) = com.deepshawn.hwcounter.data.Exam(id = id, title = id, subject = "数学", date = d, scores = mapOf("a" to a, "b" to b))
+    private val c = SchoolClass(id = "c", name = "班", students = st, exams = listOf(ex("e1", 1000, 95.0, 60.0), ex("e2", 2000, 30.0, 99.0)))
+
+    @Test fun skippedExamsLeaveAnalysisButKeepPoints() {
+        val s = Ops.setSkipAnalysis(c, listOf("e2"), true)
+        assertEquals(listOf("e1"), Analytics.examReport(s, null).exams.map { it.id })
+        assertEquals(listOf("e1"), s.analysisExams.map { it.id })
+        val rules = ScoreRules()
+        assertEquals(c.studentStats(rules).map { it.score }, s.studentStats(rules).map { it.score }, "本场加减积分照常")
+        assertEquals(0, Ops.setSkippedExams(s, setOf("e1", "e2")).analysisExams.size)
+        assertEquals(2, Ops.setSkippedExams(s, emptySet()).analysisExams.size)
     }
 }

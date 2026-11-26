@@ -35,7 +35,7 @@ object MetricStock {
         val hw = c.assignments.filter { it.createdAt in a until b }.sumOf { x ->
             x.statuses.count { (id, s) -> s != HwStatus.NONE && (ids == null || id in ids) }
         }
-        val ex = c.exams.filter { it.date in a until b }.sumOf { e -> e.scores.keys.count { ids == null || it in ids } }
+        val ex = c.analysisExams.filter { it.date in a until b }.sumOf { e -> e.scores.keys.count { ids == null || it in ids } }
         return hw + ex
     }
 

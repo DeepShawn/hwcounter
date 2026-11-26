@@ -106,7 +106,7 @@ object GroupAnalysis {
                 excellent += st.count { it == HwStatus.EXCELLENT }; missing += st.count { it == HwStatus.MISSING }
                 if (st.all { it in HANDED }) { complete++; cur++; longest = maxOf(longest, cur) } else cur = 0
             }
-            val ex = c.exams.flatMap { e -> ms.mapNotNull { m -> e.scores[m.id]?.let { it / e.fullScore } } }
+            val ex = c.analysisExams.flatMap { e -> ms.mapNotNull { m -> e.scores[m.id]?.let { it / e.fullScore } } }
             val leader = c.leaderOf(g)
             val lps = leader?.let { l -> lead[l.id].orEmpty().filter { p -> last[l.id]?.counts(p.time) ?: true } }.orEmpty()
             val deduct = ms.sumOf { m -> auto.getValue(m.id).values.filter { it < 0 }.sumOf { -it } } / ms.size
@@ -157,8 +157,8 @@ object GroupAnalysis {
             return Triple(rate, if (ex.isEmpty()) null else ex.average(), d)
         }
         val out = groups.mapNotNull { (g, ms) ->
-            val (br, bx, bd) = side(ms, before, c.exams.filter { it.date < cut })
-            val (ar, ax, ad) = side(ms, after, c.exams.filter { it.date >= cut })
+            val (br, bx, bd) = side(ms, before, c.analysisExams.filter { it.date < cut })
+            val (ar, ax, ad) = side(ms, after, c.analysisExams.filter { it.date >= cut })
             if (br == null || ar == null) return@mapNotNull null
             val dr = ar - br
             val dx = if (ax != null && bx != null) ax - bx else null
