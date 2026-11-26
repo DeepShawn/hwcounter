@@ -97,7 +97,7 @@ object AttentionStock {
                 if (id == null) as_.statuses.count { (_, s) -> s != HwStatus.NONE } else if ((as_.statuses[id] ?: HwStatus.NONE) != HwStatus.NONE) 1 else 0
             }
             val sc = c.scores.count { it.time in a until b && (id == null || it.studentId == id) }
-            val ex = c.exams.filter { it.date in a until b }.sumOf { e -> if (id == null) e.scores.size else if (id in e.scores) 1 else 0 }
+            val ex = c.analysisExams.filter { it.date in a until b }.sumOf { e -> if (id == null) e.scores.size else if (id in e.scores) 1 else 0 }
             return hw + sc + ex
         }
 

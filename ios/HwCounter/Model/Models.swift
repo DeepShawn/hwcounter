@@ -263,6 +263,8 @@ struct Exam: Codable, Identifiable, Equatable {
     var absent: [String] = []
     var note: String = ""
     var autoScore: Bool = true
+    /// 不计入分析：不参加信誉分、小组对抗等统计（成绩照常显示，本场的加减积分仍按 autoScore）。与安卓 skipAnalysis 同一字段
+    var skipAnalysis: Bool = false
 
     init(title: String, subject: String = "", date: Int64 = nowMillis(), fullScore: Double = 100, scores: [String: Double] = [:], absent: [String] = []) {
         self.title = title; self.subject = subject; self.date = date; self.fullScore = fullScore; self.scores = scores; self.absent = absent
@@ -278,6 +280,7 @@ struct Exam: Codable, Identifiable, Equatable {
         absent = try c.decodeIfPresent([String].self, forKey: .absent) ?? []
         note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
         autoScore = try c.decodeIfPresent(Bool.self, forKey: .autoScore) ?? true
+        skipAnalysis = try c.decodeIfPresent(Bool.self, forKey: .skipAnalysis) ?? false
     }
 }
 
@@ -314,6 +317,8 @@ struct SchoolClass: Codable, Identifiable, Equatable {
     var recharges: [ScoreRecharge] = []
     /// 考试
     var exams: [Exam] = []
+    /// 参加分析统计的考试（去掉“不计入分析”的）
+    var analysisExams: [Exam] { exams.contains(where: \.skipAnalysis) ? exams.filter { !$0.skipAnalysis } : exams }
     /// 小组 → 组长学生 id
     var groupLeaders: [String: String] = [:]
     /// 课代表（学生 id），可以同时是组长
@@ -1024,7 +1029,7 @@ extension SchoolClass {
             buckets[k]!.1.append(a)
         }
         var examsBy: [String: [Exam]] = [:]
-        if gr.period != "assignment" { for e in exams { examsBy[SchoolClass.periodKeyAt(gr.period, Date(timeIntervalSince1970: Double(e.date) / 1000)).0, default: []].append(e) } }
+        if gr.period != "assignment" { for e in analysisExams { examsBy[SchoolClass.periodKeyAt(gr.period, Date(timeIntervalSince1970: Double(e.date) / 1000)).0, default: []].append(e) } }
         var out: [RankPeriod] = []
         for key in order {
             let (label, list) = buckets[key]!
@@ -1063,7 +1068,7 @@ extension SchoolClass {
     /// 全班当前的信誉分：学生 id → 结果
     func creditAll(at: Int64 = nowMillis()) -> [String: CreditResult] {
         let newest = assignments.filter { $0.createdAt <= at }.sorted { ($0.createdAt, $0.id) > ($1.createdAt, $1.id) }
-        let ex = exams.filter { $0.date <= at }.sorted { ($0.date, $0.id) < ($1.date, $1.id) }
+        let ex = analysisExams.filter { $0.date <= at }.sorted { ($0.date, $0.id) < ($1.date, $1.id) }
         return Dictionary(uniqueKeysWithValues: students.map { ($0.id, Credit.one($0.id, newest: newest, exams: ex)) })
     }
     /// 已命名、2 人以上的小组
@@ -1084,7 +1089,7 @@ extension SchoolClass {
             buckets[k]!.1.append(a)
         }
         let groups = creditGroups
-        let examsSorted = exams.sorted { ($0.date, $0.id) < ($1.date, $1.id) }
+        let examsSorted = analysisExams.sorted { ($0.date, $0.id) < ($1.date, $1.id) }
         var out: [CreditPeriod] = []
         for key in order {
             let (label, list) = buckets[key]!

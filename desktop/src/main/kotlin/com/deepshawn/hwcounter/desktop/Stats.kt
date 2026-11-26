@@ -2,6 +2,8 @@
 
 package com.deepshawn.hwcounter.desktop
 
+import com.deepshawn.hwcounter.data.analysisExams
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -404,7 +406,9 @@ private fun ReportDialog(x: Ctx, onClose: () -> Unit) {
 @Composable
 private fun Exams(x: Ctx) {
     val c = x.c
-    val subjects = remember(c) { c.exams.map { it.subject }.filter { it.isNotBlank() }.distinct() }
+    val subjects = remember(c) { c.analysisExams.map { it.subject }.filter { it.isNotBlank() }.distinct() }
+    val skipped = c.exams.filter { it.skipAnalysis }
+    if (skipped.isNotEmpty()) Meta("${skipped.size} 场考试不计入分析：" + skipped.joinToString("、") { it.title })
     var si by remember { mutableIntStateOf(Keep.examSub.coerceAtMost(subjects.size)) }
     val r = remember(c, si) { Analytics.examReport(c, subjects.getOrNull(si - 1)) }
     val corr by produceState<Double?>(null, c, x.rules) { value = withContext(Dispatchers.Default) { Analytics.report(c, x.rules, Analytics.Spec(Analytics.Range.ALL)).examCorrelation } }

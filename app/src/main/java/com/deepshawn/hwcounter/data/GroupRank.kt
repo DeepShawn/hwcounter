@@ -65,7 +65,7 @@ private fun SchoolClass.computeGroupRankPeriods(rules: ScoreRules): List<RankPer
     val sorted = assignments.sortedWith(compareBy<Assignment> { it.createdAt }.thenBy { it.id })
     val buckets = LinkedHashMap<String, Pair<String, MutableList<Assignment>>>()
     for (a in sorted) { val (k, l) = periodKeyOf(gr.period, a); buckets.getOrPut(k) { l to ArrayList() }.second += a }
-    val examsBy = if (gr.period == "assignment") emptyMap() else exams.groupBy { periodKeyAt(gr.period, it.date).first }
+    val examsBy = if (gr.period == "assignment") emptyMap() else analysisExams.groupBy { periodKeyAt(gr.period, it.date).first }
     val out = ArrayList<RankPeriod>()
     for ((key, v) in buckets) {
         val (label, list) = v

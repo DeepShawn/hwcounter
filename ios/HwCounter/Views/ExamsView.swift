@@ -6,19 +6,27 @@ struct ExamRef: Hashable { let id: String }
 struct ExamsView: View {
     @EnvironmentObject var store: Store
     @State private var adding = false
+    @State private var picking = false
 
     var body: some View {
         let c = store.data.currentClass
         Group {
             if let c, !c.exams.isEmpty {
                 List {
+                    let skipped = c.exams.filter(\.skipAnalysis).count
+                    if !store.readOnly || skipped > 0 {
+                        Section {
+                            Button { picking = true } label: { Label(skipped > 0 ? "不计入分析：\(skipped) 场" + (store.readOnly ? "" : " · 修改") : "选择不计入分析的考试", systemImage: "chart.bar.xaxis") }
+                                .disabled(store.readOnly)
+                        } footer: { Text("不计入分析的考试不参加信誉分、小组对抗、考试分析等统计；成绩照常显示，本场的加减积分仍按“按得分率自动加减积分”") }
+                    }
                     ForEach(c.exams.sorted { $0.date > $1.date }) { e in
                         NavigationLink(value: ExamRef(id: e.id)) {
                             let vals = c.students.compactMap { e.scores[$0.id] }
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(e.title).font(.headline)
-                                    Text("\(fmtDate(Date(timeIntervalSince1970: Double(e.date) / 1000)))\(e.subject.isEmpty ? "" : " · \(e.subject)") · \(vals.count) 人").font(.caption).foregroundStyle(.secondary)
+                                    Text("\(e.skipAnalysis ? "不计入分析 · " : "")\(fmtDate(Date(timeIntervalSince1970: Double(e.date) / 1000)))\(e.subject.isEmpty ? "" : " · \(e.subject)") · \(vals.count) 人").font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Text(vals.isEmpty ? "—" : fmtNum(vals.reduce(0, +) / Double(vals.count))).font(.headline)
@@ -34,6 +42,45 @@ struct ExamsView: View {
         .navigationDestination(for: ExamRef.self) { r in ExamDetailView(examId: r.id) }
         .toolbar { if !store.readOnly && c != nil { Button { adding = true } label: { Label("新建考试", systemImage: "plus") } } }
         .sheet(isPresented: $adding) { ExamEditSheet(exam: nil) }
+        .sheet(isPresented: $picking) { SkipExamsSheet() }
+    }
+}
+
+/// 一次选好哪些考试不计入分析
+struct SkipExamsSheet: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) var dismiss
+    @State private var sel: Set<String>? = nil
+
+    var body: some View {
+        let exams = (store.data.currentClass?.exams ?? []).sorted { $0.date > $1.date }
+        let cur = sel ?? Set(exams.filter(\.skipAnalysis).map(\.id))
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(exams) { e in
+                        Button {
+                            var n = cur; if n.contains(e.id) { n.remove(e.id) } else { n.insert(e.id) }; sel = n
+                        } label: {
+                            HStack {
+                                Image(systemName: cur.contains(e.id) ? "checkmark.square.fill" : "square").foregroundStyle(cur.contains(e.id) ? Color.accentColor : .secondary)
+                                VStack(alignment: .leading) {
+                                    Text("\(e.subject.isEmpty ? "" : e.subject + " ")\(e.title)").foregroundStyle(.primary)
+                                    Text(fmtDate(Date(timeIntervalSince1970: Double(e.date) / 1000))).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                } footer: { Text("选中的考试不参加信誉分、小组对抗、考试分析等统计；成绩照常显示") }
+            }
+            .navigationTitle("不计入分析的考试")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { store.setSkippedExams(cur); store.say(cur.isEmpty ? "全部考试都计入分析" : "\(cur.count) 场考试不计入分析"); dismiss() }
+                }
+            }
+        }
     }
 }
 
@@ -58,7 +105,7 @@ struct ExamDetailView: View {
                         stat("及格率", vals.isEmpty ? "—" : "\(Int((Double(vals.filter { $0 / max(e.fullScore, 1) >= 0.6 }.count) / Double(vals.count) * 100).rounded()))%")
                         stat("缺考", "\(e.absent.count)")
                     }
-                } footer: { Text("\(fmtDate(Date(timeIntervalSince1970: Double(e.date) / 1000)))\(e.subject.isEmpty ? "" : " · \(e.subject)") · 满分 \(fmtNum(e.fullScore))\(e.note.isEmpty ? "" : " · \(e.note)")") }
+                } footer: { Text("\(fmtDate(Date(timeIntervalSince1970: Double(e.date) / 1000)))\(e.subject.isEmpty ? "" : " · \(e.subject)") · 满分 \(fmtNum(e.fullScore))\(e.note.isEmpty ? "" : " · \(e.note)")\(e.skipAnalysis ? " · 不计入分析" : "")") }
                 if !store.readOnly {
                     Picker("", selection: $mode) { Text("成绩排名").tag(0); Text("录入成绩").tag(1) }.pickerStyle(.segmented)
                 }
@@ -149,6 +196,7 @@ struct ExamEditSheet: View {
     @State private var date = Date()
     @State private var note = ""
     @State private var auto = true
+    @State private var skip = false
     @State private var confirmDelete = false
 
     var body: some View {
@@ -163,6 +211,9 @@ struct ExamEditSheet: View {
                     Toggle(isOn: $auto) {
                         VStack(alignment: .leading) { Text("按得分率自动加减积分"); Text("分档与安卓一致").font(.caption).foregroundStyle(.secondary) }
                     }
+                    Toggle(isOn: $skip) {
+                        VStack(alignment: .leading) { Text("不计入分析"); Text("不参加信誉分、小组对抗、考试分析等统计；成绩照常保存").font(.caption).foregroundStyle(.secondary) }
+                    }
                 }
                 if exam != nil {
                     Section { Button("删除这场考试", role: .destructive) { confirmDelete = true } }
@@ -176,7 +227,7 @@ struct ExamEditSheet: View {
                         var e = exam ?? Exam(title: "")
                         e.title = title.trimmingCharacters(in: .whitespaces); e.subject = subject
                         e.fullScore = Double(full.replacingOccurrences(of: "，", with: ".")) ?? 100
-                        e.date = Int64(date.timeIntervalSince1970 * 1000); e.note = note.trimmingCharacters(in: .whitespaces); e.autoScore = auto
+                        e.date = Int64(date.timeIntervalSince1970 * 1000); e.note = note.trimmingCharacters(in: .whitespaces); e.autoScore = auto; e.skipAnalysis = skip
                         store.upsertExam(e); store.say(exam == nil ? "已新建考试「\(e.title)」" : "已保存"); dismiss()
                     }
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || (Double(full.replacingOccurrences(of: "，", with: ".")) ?? 0) <= 0)
@@ -187,7 +238,7 @@ struct ExamEditSheet: View {
             }
             .onAppear {
                 guard let e = exam else { return }
-                title = e.title; subject = e.subject; full = fmtNum(e.fullScore); date = Date(timeIntervalSince1970: Double(e.date) / 1000); note = e.note; auto = e.autoScore
+                title = e.title; subject = e.subject; full = fmtNum(e.fullScore); date = Date(timeIntervalSince1970: Double(e.date) / 1000); note = e.note; auto = e.autoScore; skip = e.skipAnalysis
             }
         }
     }

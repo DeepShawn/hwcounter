@@ -87,6 +87,9 @@ export function normalizeData(d) {
   return out;
 }
 
+/** 参加分析统计的考试（去掉“不计入分析”的，与安卓 analysisExams 一致） */
+export const analysisExams = (c) => (c.exams || []).filter((e) => !e.skipAnalysis);
+
 export const ruleOf = (rules, s) => (s === 'NONE' || !s ? 0 : rules[{ SUBMITTED: 'submitted', EXCELLENT: 'excellent', LATE: 'late', MISSING: 'missing', LEAVE: 'leave' }[s]] ?? 0);
 
 const summaryCache = new WeakMap();
@@ -350,7 +353,7 @@ export function groupRankPeriods(c, rules) {
   const buckets = new Map();
   for (const a of sorted) { const [k, l] = periodKey(gr, a); if (!buckets.has(k)) buckets.set(k, { label: l, list: [] }); buckets.get(k).list.push(a); }
   const examsBy = {};
-  if (gr.period !== 'assignment') for (const e of c.exams || []) { const k = periodKeyAt(gr.period, e.date)[0]; (examsBy[k] = examsBy[k] || []).push(e); }
+  if (gr.period !== 'assignment') for (const e of analysisExams(c)) { const k = periodKeyAt(gr.period, e.date)[0]; (examsBy[k] = examsBy[k] || []).push(e); }
   const out = [];
   for (const [key, { label, list }] of buckets) {
     const raws = [];
@@ -444,7 +447,7 @@ export function creditAll(c, at = Date.now()) {
   const useCache = at >= lastT;
   if (useCache && creditCache.has(c)) return creditCache.get(c);
   const newest = c.assignments.filter((a) => a.createdAt <= at).sort(byNewest);
-  const exams = (c.exams || []).filter((e) => e.date <= at).sort(byExamOld);
+  const exams = analysisExams(c).filter((e) => e.date <= at).sort(byExamOld);
   const out = c.students.map((s) => creditOne(s, newest, exams)).sort((a, b) => (b.hasData - a.hasData) || b.index - a.index);
   if (useCache) creditCache.set(c, out);
   return out;
@@ -482,7 +485,7 @@ export function creditPeriods(c, rules) {
   const buckets = new Map();
   for (const a of sorted) { const [k, l] = periodKey(cr, a); if (!buckets.has(k)) buckets.set(k, { label: l, list: [] }); buckets.get(k).list.push(a); }
   const groups = creditGroupsOf(c);
-  const examsSorted = [...(c.exams || [])].sort(byExamOld);
+  const examsSorted = [...analysisExams(c)].sort(byExamOld);
   const out = [];
   for (const [key, { label, list }] of buckets) {
     const t = list[list.length - 1].createdAt;

@@ -3,7 +3,7 @@
 import {
   summary, studentStats, autoPoints, ruleOf, examDelta, leaderOf, leaderPeriods, groupRankPeriods, latestRecharges,
   rechargeStart, rechargeCounts, startOfDay, fmtNum, signed, defaultGroupRank, copiedFrom, copiedBy, plagiarized, compareStudentNumbers,
-  defaultPlagiarism, plagiarismFactor, UNKNOWN_PROVIDER, unknownProvider, creditAll, creditGroups, creditPoints, defaultCredit, r2, creditModeLabel,
+  defaultPlagiarism, plagiarismFactor, UNKNOWN_PROVIDER, unknownProvider, creditAll, creditGroups, creditPoints, defaultCredit, r2, creditModeLabel, analysisExams,
 } from './model.js';
 
 const DAY = 86_400_000;
@@ -176,7 +176,7 @@ export function report(c, rules, spec, now = Date.now()) {
   const nowScore = endT != null && endT < now ? scoresAt(c, rules, endT) : Object.fromEntries(stats.map((s) => [s.student.id, s.score]));
   const startScore = w.reset ? Object.fromEntries(c.students.map((s) => [s.id, w.reset.target])) : w.start != null ? scoresAt(c, rules, w.start - 1) : Object.fromEntries(c.students.map((s) => [s.id, rules.initial]));
   const rankOf = Object.fromEntries([...stats].sort(byDesc((s) => s.score)).map((s, i) => [s.student.id, i + 1]));
-  const examsIn = (c.exams || []).filter((e) => (w.start == null || e.date >= w.start) && (w.end == null || e.date < w.end)).sort((a, b) => a.date - b.date);
+  const examsIn = analysisExams(c).filter((e) => (w.start == null || e.date >= w.start) && (w.end == null || e.date < w.end)).sort((a, b) => a.date - b.date);
   const examPctOf = {};
   for (const s of c.students) { const v = examsIn.map((e) => { const x = e.scores?.[s.id]; return x != null && e.fullScore > 0 ? x / e.fullScore : null; }).filter((x) => x != null); if (v.length) examPctOf[s.id] = avg(v); }
 
@@ -225,7 +225,7 @@ export function report(c, rules, spec, now = Date.now()) {
     range, spec, window: w, points, kpi: k, previous: prev, totals, weekday, subjects, students, attention, improved, perfectAttendance: perfect, scoreBins,
     groupStats, rateBins, scoreTrend, risers, fallers, unregistered, slope: slope(points.map((p) => p.summary.rate)), longestPerfectRun: best,
     avgScore: scores.length ? avg(scores) : 0, avgScoreDelta: students.length ? avg(students.map((x) => x.scoreDelta)) : 0, examCorrelation: corr,
-    buckets: bks, bucketUnit: unit, sources: sources(c, rules, list, w, examsIn), reasons: reasons(c, w), tiers: tiers(withData),
+    buckets: bks, bucketUnit: unit, sources: sources(c, rules, list, w, (c.exams || []).filter((e) => (w.start == null || e.date >= w.start) && (w.end == null || e.date < w.end))), reasons: reasons(c, w), tiers: tiers(withData),
     streakers: withData.filter((x) => x.handStreak >= 3).sort(byDesc((x) => x.handStreak)).slice(0, 8),
     risk: risk(c), weakSubjects: weakSubjects(c, list, byId), rateMedian: median, rateStd: std, rounds: rounds(c), progress: progress(c, rules), examCount: examsIn.length,
     credit: creditSummary(c, rules, now, (t) => inWindow(w, t)),
@@ -333,7 +333,7 @@ export function rounds(c) {
     const inside = (t) => (!from || rechargeCounts(from, t)) && (!to || !rechargeCounts(to, t));
     const l = sorted.filter((a) => inside(a.createdAt));
     if (!l.length && to) continue;
-    const pcts = (c.exams || []).filter((e) => inside(e.date)).flatMap((e) => Object.values(e.scores || {}).map((v) => v / e.fullScore));
+    const pcts = analysisExams(c).filter((e) => inside(e.date)).flatMap((e) => Object.values(e.scores || {}).map((v) => v / e.fullScore));
     out.push({ index: i, label: !from ? '首次重置前' : `第 ${i} 次重置后${!to ? '（本轮）' : ''}`, start: from ? rechargeStart(from) : null, end: to ? rechargeStart(to) : null, kpi: kpi(c, l), examPct: pcts.length ? avg(pcts) : null, reset: from || null });
   }
   return out;
@@ -357,7 +357,7 @@ export function progress(c, rules) {
     basis = `重置前（${at} 之前）vs 重置后（${at} 起）`;
   } else { const h = Math.floor(sorted.length / 2); before = sorted.slice(0, h); after = sorted.slice(h); basis = `还没有全班重置：前 ${h} 次 vs 后 ${sorted.length - h} 次`; }
   const cut = after[0].createdAt;
-  const exB = (c.exams || []).filter((e) => e.date < cut); const exA = (c.exams || []).filter((e) => e.date >= cut);
+  const exB = analysisExams(c).filter((e) => e.date < cut); const exA = analysisExams(c).filter((e) => e.date >= cut);
   const p = (x) => `${Math.round(x * 100)}%`;
   const all = c.students.map((s) => {
     const b = side(c, rules, s, before, exB); const a = side(c, rules, s, after, exA);
@@ -503,7 +503,7 @@ export function examRanks(e) {
   sorted.forEach(([id, v], i) => { out[id] = i > 0 && Math.abs(sorted[i - 1][1] - v) < 1e-9 ? out[sorted[i - 1][0]] : i + 1; });
   return out;
 }
-export const previousExam = (c, e) => (c.exams || []).filter((x) => x.id !== e.id && x.date < e.date && (!e.subject || x.subject === e.subject)).sort((a, b) => b.date - a.date)[0] || null;
+export const previousExam = (c, e) => analysisExams(c).filter((x) => x.id !== e.id && x.date < e.date && (!e.subject || x.subject === e.subject)).sort((a, b) => b.date - a.date)[0] || null;
 export function quantile(sorted, q) {
   if (!sorted.length) return 0;
   const pos = (sorted.length - 1) * q; const lo = Math.floor(pos); const hi = Math.ceil(pos);
@@ -519,7 +519,7 @@ export const discriminationText = (d) => (d >= 0.4 ? '很好' : d >= 0.3 ? '良�
 export const difficultyText = (p) => (p >= 0.85 ? '偏易' : p >= 0.7 ? '适中' : p >= 0.55 ? '偏难' : '很难');
 
 export function examReport(c, subject = null) {
-  const exams = (c.exams || []).filter((e) => subject == null || e.subject === subject).sort((a, b) => a.date - b.date);
+  const exams = analysisExams(c).filter((e) => subject == null || e.subject === subject).sort((a, b) => a.date - b.date);
   const stats = Object.fromEntries(exams.map((e) => [e.id, examStat(c, e)]));
   const avgPct = exams.filter((e) => stats[e.id].count > 0).map((e) => [e, stats[e.id].avg / e.fullScore]);
   const sm = new Map();
@@ -638,7 +638,7 @@ export function attention(c0, rules, at = Date.now()) {
   const ranked = [...studentStats(c, rules)].sort(byDesc((x) => x.score));
   const rankOf = Object.fromEntries(ranked.map((x, i) => [x.student.id, i]));
   const n = ranked.length;
-  const exams = [...(c.exams || [])].sort((a, b) => a.date - b.date);
+  const exams = [...analysisExams(c)].sort((a, b) => a.date - b.date);
   const examZ = {}; const avgPct = {};
   for (const e of exams) {
     const v = c.students.filter((s) => e.scores?.[s.id] != null).map((s) => [s.id, e.scores[s.id] / e.fullScore]);
@@ -736,7 +736,7 @@ export function stockBoard(c, rules, span, now = Date.now()) {
   const valueAt = (t) => (first == null || t < first ? {} : Object.fromEntries(attention(c, rules, t).map((x) => [x.student.id, x.index])));
   const volumeOf = (a, b, id) => sum(c.assignments.filter((x) => x.createdAt >= a && x.createdAt < b), (x) => (id == null ? Object.values(x.statuses).filter((s) => s !== 'NONE').length : st(x, id) !== 'NONE' ? 1 : 0))
     + c.scores.filter((e) => e.time >= a && e.time < b && (id == null || e.studentId === id)).length
-    + sum((c.exams || []).filter((e) => e.date >= a && e.date < b), (e) => (id == null ? Object.keys(e.scores || {}).length : e.scores?.[id] != null ? 1 : 0));
+    + sum(analysisExams(c).filter((e) => e.date >= a && e.date < b), (e) => (id == null ? Object.keys(e.scores || {}).length : e.scores?.[id] != null ? 1 : 0));
   return buildBoard(span, from, step, now, eventTimes(c), valueAt, volumeOf, ids);
 }
 const namedGroups = (c) => { const m = {}; for (const s of c.students) if (s.group) (m[s.group] = m[s.group] || []).push(s); for (const g of Object.keys(m)) if (m[g].length < 2) delete m[g]; return m; };
@@ -749,7 +749,7 @@ function groupScoresAt(c, rules, groups, auto, sorted, t, win) {
     const sts = recent.flatMap((a) => ms.map((m) => st(a, m.id))).filter((x) => x !== 'NONE' && x !== 'LEAVE');
     if (!sts.length) continue;
     const d = sum(ms, (m) => sum(recent, (a) => { const v = auto[m.id][a.id] ?? 0; return v < 0 ? -v : 0; })) / ms.length;
-    const ex = (c.exams || []).filter((e) => e.date >= from && e.date <= t).flatMap((e) => ms.filter((m) => e.scores?.[m.id] != null).map((m) => e.scores[m.id] / e.fullScore));
+    const ex = analysisExams(c).filter((e) => e.date >= from && e.date <= t).flatMap((e) => ms.filter((m) => e.scores?.[m.id] != null).map((m) => e.scores[m.id] / e.fullScore));
     raws[g] = { rate: sts.filter((x) => HANDED.has(x)).length / sts.length, deduct: d, exc: sts.filter((x) => x === 'EXCELLENT').length / sts.length, exam: ex.length ? avg(ex) : null };
   }
   const vals = Object.values(raws); if (!vals.length) return {};
@@ -773,13 +773,13 @@ export function groupStockBoard(c, rules, span, now = Date.now(), win = 10) {
   const valueAt = (t) => groupScoresAt(c, rules, groups, auto, sorted, t, win);
   const volumeOf = (a, b, g) => { const ms = g == null ? Object.values(groups).flat() : groups[g];
     return sum(sorted.filter((x) => x.createdAt >= a && x.createdAt < b), (x) => ms.filter((m) => st(x, m.id) !== 'NONE').length)
-      + sum((c.exams || []).filter((e) => e.date >= a && e.date < b), (e) => ms.filter((m) => e.scores?.[m.id] != null).length); };
+      + sum(analysisExams(c).filter((e) => e.date >= a && e.date < b), (e) => ms.filter((m) => e.scores?.[m.id] != null).length); };
   return buildBoard(span, from, step, now, events, valueAt, volumeOf, names);
 }
 
 // ---------------- 信誉分、小组关注度行情（与安卓 MetricStock.kt 同口径） ----------------
 const recordVolume = (c, a, b, ids) => sum(c.assignments.filter((x) => x.createdAt >= a && x.createdAt < b), (x) => Object.entries(x.statuses).filter(([id, k]) => k !== 'NONE' && (!ids || ids.has(id))).length)
-  + sum((c.exams || []).filter((e) => e.date >= a && e.date < b), (e) => Object.keys(e.scores || {}).filter((id) => !ids || ids.has(id)).length);
+  + sum(analysisExams(c).filter((e) => e.date >= a && e.date < b), (e) => Object.keys(e.scores || {}).filter((id) => !ids || ids.has(id)).length);
 const recordEvents = (c) => [...new Set([...c.assignments.map((a) => a.createdAt), ...(c.exams || []).map((e) => e.date)])].sort((a, b) => a - b);
 /** 个人 · 信誉分（越高越好） */
 export function creditStockBoard(c, span, now = Date.now()) {
@@ -870,7 +870,7 @@ export function groupReport(c, rules, weeksBack = 8) {
       excellent += s.filter((x) => x === 'EXCELLENT').length; missing += s.filter((x) => x === 'MISSING').length;
       if (s.every((x) => HANDED.has(x))) { complete++; cur++; longest = Math.max(longest, cur); } else cur = 0;
     }
-    const ex = (c.exams || []).flatMap((e) => ms.filter((m) => e.scores?.[m.id] != null).map((m) => e.scores[m.id] / e.fullScore));
+    const ex = analysisExams(c).flatMap((e) => ms.filter((m) => e.scores?.[m.id] != null).map((m) => e.scores[m.id] / e.fullScore));
     const leader = leaderOf(c, g);
     const lps = leader ? (lead[leader.id] || []).filter((p) => !last[leader.id] || rechargeCounts(last[leader.id], p.time)) : [];
     const deduct = sum(ms, (m) => sum(Object.values(auto[m.id]).filter((v) => v < 0), (v) => -v)) / ms.length;
@@ -911,8 +911,8 @@ function groupProgress(c, groups, sorted, auto) {
     return [s.length ? s.filter((x) => HANDED.has(x)).length / s.length : null, ex.length ? avg(ex) : null, d];
   };
   const out = Object.entries(groups).map(([g, ms]) => {
-    const [br, bx, bd] = sideOf(ms, before, (c.exams || []).filter((e) => e.date < cut));
-    const [ar, ax, ad] = sideOf(ms, after, (c.exams || []).filter((e) => e.date >= cut));
+    const [br, bx, bd] = sideOf(ms, before, analysisExams(c).filter((e) => e.date < cut));
+    const [ar, ax, ad] = sideOf(ms, after, analysisExams(c).filter((e) => e.date >= cut));
     if (br == null || ar == null) return null;
     const dr = ar - br; const dx = ax != null && bx != null ? ax - bx : null;
     const dd = clamp((bd - ad) / 2 * 0.1, -0.3, 0.3);

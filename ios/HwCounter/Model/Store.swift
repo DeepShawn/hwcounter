@@ -301,6 +301,8 @@ final class Store: ObservableObject {
         updateClass { c in if let i = c.exams.firstIndex(where: { $0.id == e.id }) { c.exams[i] = e } else { c.exams.append(e) } }
     }
     func deleteExam(_ id: String) { updateClass { $0.exams.removeAll { $0.id == id } } }
+    /// 一次选好哪些考试不计入分析（其余都计入）
+    func setSkippedExams(_ ids: Set<String>) { updateClass { c in for i in c.exams.indices { c.exams[i].skipAnalysis = ids.contains(c.exams[i].id) } } }
     /// 录入一位同学的成绩（score 为 nil 时清除），absent 为 true 时记为缺考
     func setExamScore(_ eid: String, _ sid: String, _ score: Double?, absent: Bool = false) {
         updateClass { c in

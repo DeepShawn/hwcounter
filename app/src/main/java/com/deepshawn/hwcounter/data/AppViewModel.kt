@@ -393,6 +393,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- 考试 / 小组 ----------
     fun upsertExam(e: Exam) = updateClass { it.upsertExam(e) }
     fun deleteExam(id: String) = updateClass { it.removeExam(id) }
+    /** 不计入分析：ids 里的考试设为 skip（其余不变） */
+    fun setSkipAnalysis(ids: Collection<String>, skip: Boolean) = updateClass { c -> val set = ids.toSet(); c.copy(exams = c.exams.map { if (it.id in set) it.copy(skipAnalysis = skip) else it }) }
+    /** 一次选好哪些考试不计入分析（其余都计入） */
+    fun setSkippedExams(skipped: Set<String>) = updateClass { c -> c.copy(exams = c.exams.map { it.copy(skipAnalysis = it.id in skipped) }) }
     fun setExamScore(examId: String, studentId: String, score: Double?, absent: Boolean = false) = updateClass { c ->
         c.copy(exams = c.exams.map { e ->
             if (e.id != examId) e else e.copy(

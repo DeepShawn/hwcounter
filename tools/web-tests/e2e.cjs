@@ -433,6 +433,14 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await p3.click('.ed-exam:has-text("林静") .chip');
   await p3.click('.seg button:has-text("成绩排名")');
   check(await p3.isVisible('text=成绩排名 · 2 人') && await p3.isVisible('text=缺考 · 1 人'), '考试：录入成绩、缺考');
+  // 考试不计入分析：单场开关、考试列表里一次选多场
+  await p3.click('.ed-tools .chip:has-text("不计入分析")'); await p3.waitForSelector('.meta:has-text("不计入分析")');
+  check(true, '单场考试设为不计入分析');
+  await p3.goBack(); await p3.waitForSelector('.chip:has-text("不计入分析：1 场")');
+  await p3.click('.ed-tools .chip:has-text("不计入分析")'); await p3.click('.ed-check:has-text("第一次月考")'); await p3.click('.ed-sheet .btn1');
+  check(await p3.isVisible('.chip:has-text("不计入分析：2 场")') && (await p3.locator('.cell:has-text("不计入分析 ·")').count()) === 2, '一次选多场考试不计入分析');
+  await p3.click('.ed-tools .chip:has-text("不计入分析")'); await p3.click('.ed-check:has-text("第一次月考")'); await p3.click('.ed-sheet .btn1');
+  await p3.click('.cell:has-text("单元测验")'); await p3.waitForSelector('h1:has-text("单元测验")');
   await p3.goBack(); await p3.goBack(); await p3.waitForSelector('.tabbar');
   // 计分规则：初始分改为 0，积分立即重算
   await p3.click('.tabbar button:has-text("设置")');
@@ -444,7 +452,7 @@ const check = (ok, msg) => { console.log(`${ok ? '✓' : '✗'} ${msg}`); if (!o
   await p3.click('.tabbar button:has-text("首页")'); check(await p3.isVisible('h1:has-text("高一(4)班")'), '新建班级并切换过去');
   const n0 = pushes.length; await waitPush(n0 + 1);
   const d = lastPush();
-  check(d.classes.length === 2 && d.settings.rules.initial === 0 && cls().exams.some((e) => e.title === '单元测验' && e.scores.s0 === 48 && e.absent.includes('s2')), '所有改动都上传到云端（班级、规则、考试）');
+  check(d.classes.length === 2 && d.settings.rules.initial === 0 && cls().exams.some((e) => e.title === '单元测验' && e.scores.s0 === 48 && e.absent.includes('s2') && e.skipAnalysis === true) && cls().exams.some((e) => e.id === 'e1' && !e.skipAnalysis), '所有改动都上传到云端（班级、规则、考试、不计入分析）');
   check(!JSON.stringify(d).includes('apiKey":"sk'), '上传的数据不含 AI Key');
   // 冲突：别的设备先改过 → 自动重试后上传
   conflictOnce = true; await p3.click('.ib[aria-label="新建作业"]'); await p3.fill('.ed-sheet input >> nth=0', '冲突测试'); await p3.click('.ed-sheet .btn1');

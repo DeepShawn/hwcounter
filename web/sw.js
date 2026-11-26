@@ -1,5 +1,5 @@
 // 离线缓存：静态资源缓存优先；云端接口不缓存
-const CACHE = 'hwcounter-v10';
+const CACHE = 'hwcounter-v11';
 const ASSETS = ['./', './index.html', './style.css', './manifest.webmanifest', './js/viewer.js', './js/gestures.js', './js/trade.js', './js/store.js', './js/ops.js', './js/editui.js', './js/statspage.js', './js/analytics.js', './js/stockworker.js', './js/stockpage.js', './js/icons.js', './js/reportexport.js', './js/xlsx.js', './js/model.js', './js/cloud.js',
   './vendor/preact.module.js', './vendor/hooks.module.js', './vendor/htm.module.js', './icons/icon.svg', './icons/icon-180.png', './icons/icon-192.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())); });

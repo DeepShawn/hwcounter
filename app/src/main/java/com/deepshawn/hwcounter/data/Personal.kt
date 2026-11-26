@@ -58,7 +58,7 @@ object Attention {
         val scores = c.studentStats(rules).sortedByDescending { it.score }
         val rankOf = scores.mapIndexed { i, s -> s.student.id to i }.toMap()
         val n = scores.size
-        val exams = c.exams.sortedBy { it.date }
+        val exams = c.analysisExams.sortedBy { it.date }
         // 每场考试的标准分
         val examZ = exams.associate { e ->
             val v = c.students.mapNotNull { s -> e.scores[s.id]?.let { s.id to it / e.fullScore } }
@@ -226,7 +226,7 @@ object Personal {
             .map { (r, l) -> r to l.sumOf { it.delta } }.sortedByDescending { abs(it.second) }.take(8)
 
         // —— 考试 ——
-        val exams = c.exams.sortedBy { it.date }.map { e ->
+        val exams = c.analysisExams.sortedBy { it.date }.map { e ->
             val v = c.students.mapNotNull { s -> e.scores[s.id]?.let { it / e.fullScore } }
             val mean = if (v.isEmpty()) 0.0 else v.average()
             val sd = if (v.size < 2) 0.0 else sqrt(v.sumOf { (it - mean) * (it - mean) } / v.size)

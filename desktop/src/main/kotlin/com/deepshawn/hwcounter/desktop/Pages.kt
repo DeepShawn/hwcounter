@@ -433,9 +433,10 @@ fun ScoresPage(x: Ctx) {
 @Composable
 fun ExamListPage(x: Ctx) {
     val exams = x.c.exams.sortedByDescending { it.date }
-    Page("考试", x::back, actions = if (x.ed) ({ Act("＋ 新建考试") { x.dialog { ExamDialog(x.state, x.c, null) { x.open(Route.Exam(it)) } } } }) else null) {
+    Page("考试", x::back, actions = if (x.ed) ({ if (exams.isNotEmpty()) Act("不计入分析…") { x.dialog { SkipExamsDialog(x.state, x.c) } }; Act("＋ 新建考试") { x.dialog { ExamDialog(x.state, x.c, null) { x.open(Route.Exam(it)) } } } }) else null) {
+        exams.count { it.skipAnalysis }.takeIf { it > 0 }?.let { Meta("$it 场考试不计入分析") }
         if (exams.isEmpty()) Empty("📝", if (x.ed) "还没有考试，点右上角新建" else "还没有考试")
-        if (exams.isNotEmpty()) Group { exams.forEach { e -> val st = e.stat(x.c.students); Cell(e.title, "${fmtDay(e.date)}" + (if (e.subject.isNotBlank()) " · ${e.subject}" else "") + " · ${st.count} 人", right = { Text(if (st.count == 0) "—" else st.avg.fmt(), fontWeight = FontWeight.Bold) }, onClick = { x.open(Route.Exam(e.id)) }) } }
+        if (exams.isNotEmpty()) Group { exams.forEach { e -> val st = e.stat(x.c.students); Cell(e.title, (if (e.skipAnalysis) "不计入分析 · " else "") + "${fmtDay(e.date)}" + (if (e.subject.isNotBlank()) " · ${e.subject}" else "") + " · ${st.count} 人", right = { Text(if (st.count == 0) "—" else st.avg.fmt(), fontWeight = FontWeight.Bold) }, onClick = { x.open(Route.Exam(e.id)) }) } }
     }
 }
 
@@ -448,8 +449,11 @@ fun ExamPage(x: Ctx, id: String) {
     val absent = c.students.filter { it.id in e.absent }
     val none = c.students.filter { it.id !in e.scores && it.id !in e.absent }
     var tab by remember(id) { mutableStateOf("rank") }
-    Page(e.title, x::back, actions = if (x.ed) ({ Act("修改") { x.dialog { ExamDialog(x.state, c, e) } } }) else null) {
-        Meta(fmtDay(e.date) + (if (e.subject.isNotBlank()) " · ${e.subject}" else "") + " · 满分 ${e.fullScore.fmt()}" + if (e.note.isNotBlank()) " · ${e.note}" else "")
+    Page(e.title, x::back, actions = if (x.ed) ({
+        Act(if (e.skipAnalysis) "改回计入分析" else "不计入分析") { x.edit(if (e.skipAnalysis) "「${e.title}」重新计入分析" else "「${e.title}」不计入分析") { Ops.setSkipAnalysis(it, listOf(e.id), !e.skipAnalysis) } }
+        Act("修改") { x.dialog { ExamDialog(x.state, c, e) } }
+    }) else null) {
+        Meta(fmtDay(e.date) + (if (e.subject.isNotBlank()) " · ${e.subject}" else "") + " · 满分 ${e.fullScore.fmt()}" + (if (e.note.isNotBlank()) " · ${e.note}" else "") + if (e.skipAnalysis) " · 不计入分析" else "")
         Tiles {
             Tile("平均分", if (st.count == 0) "—" else st.avg.fmt()); Tile("最高", if (st.count == 0) "—" else st.max.fmt(), GOOD)
             Tile("最低", if (st.count == 0) "—" else st.min.fmt(), BAD); Tile("及格率", pct(st.passRate)); Tile("缺考", "${absent.size}")

@@ -287,14 +287,14 @@ fun RechargeDialog(state: AppState, c: SchoolClass, rules: ScoreRules, ids: List
 @Composable
 fun ExamDialog(state: AppState, c: SchoolClass, e: Exam?, onCreated: (String) -> Unit = {}) {
     var title by remember { mutableStateOf(e?.title ?: "") }; var subject by remember { mutableStateOf(e?.subject ?: "") }
-    var full by remember { mutableStateOf((e?.fullScore ?: 100.0).fmt()) }; var note by remember { mutableStateOf(e?.note ?: "") }; var auto by remember { mutableStateOf(e?.autoScore ?: true) }
+    var full by remember { mutableStateOf((e?.fullScore ?: 100.0).fmt()) }; var note by remember { mutableStateOf(e?.note ?: "") }; var auto by remember { mutableStateOf(e?.autoScore ?: true) }; var skip by remember { mutableStateOf(e?.skipAnalysis ?: false) }
     val close = { state.dialog = null }
     val f = num(full)
     Dialog(if (e == null) "新建考试" else "修改考试", close, buttons = {
         if (e != null) Btn("删除", primary = false, danger = true) { state.dialog = { Confirm(state, "删除这场考试？", "「${e.title}」的成绩会一起删除，积分随之重算。删除后可以撤销。", "删除") { state.updateClass(c.id, "已删除「${e.title}」") { Ops.deleteExam(it, e.id) }; state.back() } } }
         Btn(if (e == null) "新建" else "保存", enabled = title.isNotBlank() && f != null && f > 0) {
             close()
-            val n = (e ?: Exam(title = "")).copy(title = title.trim(), subject = subject.trim(), fullScore = f!!, note = note.trim(), autoScore = auto)
+            val n = (e ?: Exam(title = "")).copy(title = title.trim(), subject = subject.trim(), fullScore = f!!, note = note.trim(), autoScore = auto, skipAnalysis = skip)
             state.updateClass(c.id, if (e == null) "已新建考试「${n.title}」" else "已保存") { Ops.upsertExam(it, n) }
             if (e == null) onCreated(n.id)
         }
@@ -305,6 +305,7 @@ fun ExamDialog(state: AppState, c: SchoolClass, e: Exam?, onCreated: (String) ->
         Field("满分", full) { full = it }
         Field("备注", note, "可不填") { note = it }
         SuperSwitch(title = "按得分率自动加减积分", summary = "分档与安卓一致", checked = auto, onCheckedChange = { auto = it })
+        SuperSwitch(title = "不计入分析", summary = "不参加考试分析、关注度、信誉分、小组对比、个人分析等统计；成绩照常保存", checked = skip, onCheckedChange = { skip = it })
     }
 }
 
@@ -327,6 +328,27 @@ fun ExamScoreRow(state: AppState, c: SchoolClass, e: Exam, s: Student) {
         else Box(Modifier.width(110.dp)) { Field(null, t, "—", onDone = commit) { t = it } }
         if (!ab && t != (v?.fmt() ?: "")) Text("保存", Modifier.clip(CircleShape).clickable(onClick = commit).padding(8.dp), color = MiuixTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
         Chip(if (ab) "取消缺考" else "缺考", false) { state.updateClass(c.id) { Ops.setExamScore(it, e.id, s.id, null, !ab) } }
+    }
+}
+
+/** 一次选好哪些考试不计入分析 */
+@Composable
+fun SkipExamsDialog(state: AppState, c: SchoolClass) {
+    val exams = c.exams.sortedByDescending { it.date }
+    var sel by remember { mutableStateOf(exams.filter { it.skipAnalysis }.map { it.id }.toSet()) }
+    val close = { state.dialog = null }
+    Dialog("选择不计入分析的考试", close, buttons = {
+        Btn("保存（${sel.size} 场不计入）") { close(); state.updateClass(c.id, if (sel.isEmpty()) "全部考试都计入分析" else "${sel.size} 场考试不计入分析") { Ops.setSkippedExams(it, sel) } }
+    }) {
+        Text("选中的考试不参加考试分析、关注度、信誉分、小组对比、个人分析和股票行情等统计；成绩照常显示，本场的加减积分仍按“按得分率自动加减积分”。", fontSize = 13.sp, color = sub())
+        exams.forEach { e ->
+            val on = e.id in sel
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { sel = if (on) sel - e.id else sel + e.id }.padding(horizontal = 6.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(22.dp).height(22.dp).clip(RoundedCornerShape(6.dp)).background(if (on) MiuixTheme.colorScheme.primary else track()), contentAlignment = Alignment.Center) { if (on) Text("✓", color = Color.White, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) { Text("${e.subject} ${e.title}".trim(), fontSize = 15.sp); Text(fmtDay(e.date), fontSize = 12.sp, color = sub()) }
+            }
+        }
     }
 }
 

@@ -20,7 +20,7 @@ object GroupStock {
             val st = recent.flatMap { a -> ms.map { a.statuses[it.id] ?: HwStatus.NONE } }.filter { it != HwStatus.NONE && it != HwStatus.LEAVE }
             if (st.isEmpty()) return@mapNotNull null
             val d = ms.sumOf { m -> recent.sumOf { a -> (auto.getValue(m.id)[a.id] ?: 0.0).let { if (it < 0) -it else 0.0 } } } / ms.size
-            val ex = c.exams.filter { it.date in from..t }.flatMap { e -> ms.mapNotNull { m -> e.scores[m.id]?.let { it / e.fullScore } } }
+            val ex = c.analysisExams.filter { it.date in from..t }.flatMap { e -> ms.mapNotNull { m -> e.scores[m.id]?.let { it / e.fullScore } } }
             g to Raw(st.count { it in HANDED }.toDouble() / st.size, d, st.count { it == HwStatus.EXCELLENT }.toDouble() / st.size, if (ex.isEmpty()) null else ex.average())
         }.toMap()
         if (raws.isEmpty()) return emptyMap()
@@ -58,7 +58,7 @@ object GroupStock {
         fun volume(a: Long, b: Long, g: String?): Int {
             val ms = if (g == null) groups.values.flatten() else groups.getValue(g)
             return sorted.filter { it.createdAt in a until b }.sumOf { x -> ms.count { (x.statuses[it.id] ?: HwStatus.NONE) != HwStatus.NONE } } +
-                c.exams.filter { it.date in a until b }.sumOf { e -> ms.count { it.id in e.scores } }
+                c.analysisExams.filter { it.date in a until b }.sumOf { e -> ms.count { it.id in e.scores } }
         }
         fun quote(g: String?) = AttentionStock.Quote(g ?: "", bounds.zipWithNext().mapIndexed { i, (a, b) ->
             val vs = listOf(v(a, g)) + inner[i].map { v(it, g) } + v(b, g)

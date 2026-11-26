@@ -400,6 +400,10 @@ do {
     check(base.creditAll(at: Int64(1e12))["s1"]?.index == 68.43 && base.creditAll(at: Int64(1e12))["s1"]?.level == "一般", "个人信誉分 68.43（一般）")
     var withExam = base; withExam.exams = [Exam(title: "月考", subject: "数学", date: 6000, fullScore: 100, scores: ["s1": 90])]
     check(withExam.creditAll(at: Int64(1e12))["s1"]?.index == 71.67, "加一场考试后 71.67")
+    var skipped = withExam; skipped.exams[0].skipAnalysis = true
+    check(skipped.creditAll(at: Int64(1e12))["s1"]?.index == 68.43 && skipped.analysisExams.isEmpty, "不计入分析的考试不参加信誉分")
+    let skipJSON = try! JSONEncoder().encode(skipped.exams[0])
+    check((try! JSONDecoder().decode(Exam.self, from: skipJSON)).skipAnalysis && (try! JSONDecoder().decode(Exam.self, from: Data(#"{"title":"x"}"#.utf8))).skipAnalysis == false, "不计入分析可编码 / 旧数据默认计入")
     check(mk([("s1", ["LEAVE"])]).creditAll(at: Int64(1e12))["s1"]?.hasData == false, "没有记录时没有信誉分")
     let failed = mk([("s1", ["SUBMITTED", "SUBMITTED", "MISSING"])], review: [2: ["s1"]]).creditAll(at: Int64(1e12))["s1"]!.index
     check(failed < mk([("s1", ["SUBMITTED", "SUBMITTED", "MISSING"])]).creditAll(at: Int64(1e12))["s1"]!.index, "复审不合格拉低信誉分")
